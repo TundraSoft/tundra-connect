@@ -4,117 +4,115 @@
 [default]
 # Extend the default identifier list with more technical terms
 extend-identifiers = false
-# Extend the default word list with more technical terms
-extend-words = false
 
 [default.extend-words]
 # Technical terms and proper nouns
-deno = "deno"
+aes = "aes"
 api = "api"
 apis = "apis"
+ascii = "ascii"
 auth = "auth"
-oauth = "oauth"
-jwt = "jwt"
-json = "json"
-xml = "xml"
-yaml = "yaml"
-yml = "yml"
-sql = "sql"
-nosql = "nosql"
-postgresql = "postgresql"
-postgres = "postgres"
-mysql = "mysql"
-mongodb = "mongodb"
-redis = "redis"
+base64 = "base64"
+cdn = "cdn"
+cli = "cli"
+cors = "cors"
+crud = "crud"
+csrf = "csrf"
+deno = "deno"
+dns = "dns"
 elasticsearch = "elasticsearch"
-webhook = "webhook"
-webhooks = "webhooks"
+gdpr = "gdpr"
+graphql = "graphql"
+grpc = "grpc"
+gui = "gui"
+hipaa = "hipaa"
+hmac = "hmac"
 http = "http"
 https = "https"
-tcp = "tcp"
-udp = "udp"
-websocket = "websocket"
-grpc = "grpc"
-graphql = "graphql"
+iso = "iso"
+json = "json"
+jwt = "jwt"
+md5 = "md5"
+mongodb = "mongodb"
+mysql = "mysql"
+nosql = "nosql"
+oauth = "oauth"
+postgres = "postgres"
+postgresql = "postgresql"
+redis = "redis"
 rest = "rest"
-crud = "crud"
-uuid = "uuid"
+rsa = "rsa"
+sdk = "sdk"
+sha = "sha"
+sql = "sql"
+ssh = "ssh"
+ssl = "ssl"
+tcp = "tcp"
+tls = "tls"
+udp = "udp"
+ui = "ui"
+unicode = "unicode"
 uri = "uri"
 url = "url"
 urls = "urls"
-sdk = "sdk"
-cli = "cli"
-gui = "gui"
-ui = "ui"
-ux = "ux"
-cdn = "cdn"
-dns = "dns"
-ssl = "ssl"
-tls = "tls"
-ssh = "ssh"
-cors = "cors"
-csrf = "csrf"
-xss = "xss"
-gdpr = "gdpr"
-hipaa = "hipaa"
-iso = "iso"
 utf = "utf"
-ascii = "ascii"
-unicode = "unicode"
-base64 = "base64"
-sha = "sha"
-md5 = "md5"
-hmac = "hmac"
-rsa = "rsa"
-aes = "aes"
+uuid = "uuid"
+ux = "ux"
+webhook = "webhook"
+webhooks = "webhooks"
+websocket = "websocket"
+xml = "xml"
+xss = "xss"
+yaml = "yaml"
+yml = "yml"
 
 # Project specific terms
-tundra = "tundra"
-tundasoft = "tundasoft"
 connect = "connect"
 connects = "connects"
+tundasoft = "tundasoft"
+tundra = "tundra"
 
 # Common technical abbreviations
-config = "config"
-configs = "configs"
-env = "env"
-envs = "envs"
-impl = "impl"
-impls = "impls"
-repo = "repo"
-repos = "repos"
-param = "param"
-params = "params"
 arg = "arg"
 args = "args"
-func = "func"
 async = "async"
 await = "await"
+config = "config"
+configs = "configs"
 const = "const"
 enum = "enum"
-struct = "struct"
+env = "env"
+envs = "envs"
+func = "func"
+impl = "impl"
+impls = "impls"
+instanceof = "instanceof"
 interface = "interface"
 namespace = "namespace"
+param = "param"
+params = "params"
 readonly = "readonly"
+repo = "repo"
+repos = "repos"
+struct = "struct"
 typeof = "typeof"
-instanceof = "instanceof"
 
 [files]
 # Extend the default ignore list
 extend-exclude = [
-    "*.lock",
-    "*.log",
-    "*.min.js",
-    "*.min.css",
-    "dist/**",
-    "build/**",
-    "node_modules/**",
-    ".git/**",
-    "coverage/**",
-    "*.generated.*",
-    "*.bundle.*",
-    "*.map",
-    "deno.lock"
+  "*.lock",
+  "*.log",
+  "*.min.js",
+  "*.min.css",
+  "dist/**",
+  "build/**",
+  "node_modules/**",
+  ".git/**",
+  "coverage/**",
+  "*.generated.*",
+  "*.bundle.*",
+  "*.map",
+  "deno.lock",
 ]
 
 [type.deno]

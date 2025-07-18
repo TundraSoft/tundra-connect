@@ -104,7 +104,7 @@ jobs:
             npm install -g @microsoft/sarif-multitool
             
             # Merge all SARIF files into one
-            sarif merge trivy-*-results.sarif --output-file trivy-merged-results.sarif
+            sarif-multitool merge trivy-*-results.sarif --output-file trivy-merged-results.sarif
             
             echo "SARIF files merged successfully"
             ls -la trivy-*.sarif
