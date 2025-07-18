@@ -3,7 +3,7 @@
 
 [default]
 # Extend the default identifier list with more technical terms
-extend-identifiers = false
+check-filename = true
 
 [default.extend-words]
 # Technical terms and proper nouns
