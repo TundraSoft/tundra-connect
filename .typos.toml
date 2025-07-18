@@ -1,0 +1,127 @@
+# Configuration for typos spell checker
+# See: https://github.com/crate-ci/typos
+
+[default]
+# Extend the default identifier list with more technical terms
+extend-identifiers = false
+# Extend the default word list with more technical terms
+extend-words = false
+
+[default.extend-words]
+# Technical terms and proper nouns
+deno = "deno"
+api = "api"
+apis = "apis"
+auth = "auth"
+oauth = "oauth"
+jwt = "jwt"
+json = "json"
+xml = "xml"
+yaml = "yaml"
+yml = "yml"
+sql = "sql"
+nosql = "nosql"
+postgresql = "postgresql"
+postgres = "postgres"
+mysql = "mysql"
+mongodb = "mongodb"
+redis = "redis"
+elasticsearch = "elasticsearch"
+webhook = "webhook"
+webhooks = "webhooks"
+http = "http"
+https = "https"
+tcp = "tcp"
+udp = "udp"
+websocket = "websocket"
+grpc = "grpc"
+graphql = "graphql"
+rest = "rest"
+crud = "crud"
+uuid = "uuid"
+uri = "uri"
+url = "url"
+urls = "urls"
+sdk = "sdk"
+cli = "cli"
+gui = "gui"
+ui = "ui"
+ux = "ux"
+cdn = "cdn"
+dns = "dns"
+ssl = "ssl"
+tls = "tls"
+ssh = "ssh"
+cors = "cors"
+csrf = "csrf"
+xss = "xss"
+gdpr = "gdpr"
+hipaa = "hipaa"
+iso = "iso"
+utf = "utf"
+ascii = "ascii"
+unicode = "unicode"
+base64 = "base64"
+sha = "sha"
+md5 = "md5"
+hmac = "hmac"
+rsa = "rsa"
+aes = "aes"
+
+# Project specific terms
+tundra = "tundra"
+tundasoft = "tundasoft"
+connect = "connect"
+connects = "connects"
+
+# Common technical abbreviations
+config = "config"
+configs = "configs"
+env = "env"
+envs = "envs"
+impl = "impl"
+impls = "impls"
+repo = "repo"
+repos = "repos"
+param = "param"
+params = "params"
+arg = "arg"
+args = "args"
+func = "func"
+async = "async"
+await = "await"
+const = "const"
+enum = "enum"
+struct = "struct"
+interface = "interface"
+namespace = "namespace"
+readonly = "readonly"
+typeof = "typeof"
+instanceof = "instanceof"
+
+[files]
+# Extend the default ignore list
+extend-exclude = [
+    "*.lock",
+    "*.log",
+    "*.min.js",
+    "*.min.css",
+    "dist/**",
+    "build/**",
+    "node_modules/**",
+    ".git/**",
+    "coverage/**",
+    "*.generated.*",
+    "*.bundle.*",
+    "*.map",
+    "deno.lock"
+]
+
+[type.deno]
+extend-glob = ["*.ts", "*.js", "*.tsx", "*.jsx"]
+
+[type.config]
+extend-glob = ["*.json", "*.yml", "*.yaml", "*.toml", "*.ini"]
+
+[type.docs]
+extend-glob = ["*.md", "*.mdx", "*.txt", "*.rst"]

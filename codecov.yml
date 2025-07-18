@@ -1,0 +1,52 @@
+ignore:
+  - '**/tests/**/*.ts'
+  - '**/**.bench.ts'
+  - '**/**.test.ts'
+  - '**/fixtures/**/**'
+  - .github/**
+coverage:
+  precision: 2
+  round: down
+  range: 70...90
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 1%
+      openexchange:
+        target: 75%
+        flags:
+          - openexchange
+    patch:
+      default:
+        target: 70%
+        threshold: 5%
+    changes: true
+comment:
+  layout: 'reach, diff, flags, files, footer'
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+  after_n_builds: 1
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        branches:
+          - '!main'
+  individual_components:
+    - component_id: openexchange
+      name: openexchange
+      paths:
+        - openexchange/**.ts
+        - '!openexchange/**.test.ts'
+      statuses:
+        - type: project
+          target: 75%
+flags:
+  default:
+    paths:
+      - '**/*.ts'
+    carryforward: true

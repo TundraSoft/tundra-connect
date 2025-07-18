@@ -1,0 +1,24 @@
+{
+  "deno.enable": true,
+  "deno.unstable": [],
+  "deno.lint": true,
+  "deno.cacheOnSave": true,
+  "deno.suggest.imports.autoDiscover": true,
+  "deno.codeLens.implementations": true,
+  "deno.codeLens.references": true,
+  "deno.codeLens.referencesAllFunctions": true,
+  "deno.codeLens.test": true,
+  "deno.codeLens.testArgs": [
+    "--allow-all",
+    "--no-check",
+  ],
+
+  "editor.tabSize": 2,
+  "editor.formatOnSave": true,
+  "sonarlint.connectedMode.project": {
+    "connectionId": "Sonar",
+    "projectKey": "TundraSoft_TundraLibs"
+  },
+  // "sonarlint.testFilePattern": "**/*.test.ts",
+  "sonarlint.analysisExcludesStandalone": "**/.vscode-test/**, **/.vscode/**, **/*.test.ts, **/tests/**, **/tests/**.test.ts, .github/**",
+}

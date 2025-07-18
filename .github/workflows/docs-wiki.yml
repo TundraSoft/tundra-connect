@@ -1,0 +1,113 @@
+name: Update Documentation Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*/.docs/**'
+      - '*/README.md'
+      - '.github/DOCUMENTATION.md'
+      - 'CONTRIBUTING.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v1.x
+
+      - name: Validate Documentation
+        run: |
+          deno task docs:validate || echo "Documentation validation completed with warnings"
+
+      - name: Validate Links
+        run: |
+          deno task docs:links || echo "Link validation completed with warnings"
+
+      - name: Generate Documentation Index
+        run: |
+          deno task docs:index
+
+      - name: Generate Wiki Content
+        run: |
+          deno task docs:wiki
+
+      - name: Checkout Wiki
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki-repo
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Wiki Repository
+        run: |
+          # Clear existing wiki content (except .git)
+          find wiki-repo -name "*.md" -delete
+          
+          # Copy generated wiki content from .wiki directory
+          cp -r .wiki/* wiki-repo/
+          
+          cd wiki-repo
+          
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Add all changes
+          git add .
+          
+          # Commit if there are changes
+          if ! git diff --staged --quiet; then
+            git commit -m "Update documentation wiki from main branch
+          
+          Auto-generated from workspace documentation in .docs/ folders
+          
+          Updated workspaces:
+          $(git diff --name-only HEAD~1 HEAD | grep -E '\\.docs/|README\\.md' | cut -d'/' -f1 | sort -u || echo 'All workspaces')"
+            
+            git push origin master
+            echo "✅ Wiki updated successfully"
+          else
+            echo "ℹ️ No changes to wiki content"
+          fi
+
+      - name: Update Documentation Index
+        run: |
+          # Commit DOCS.md to main repository
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          git add DOCS.md
+          
+          if ! git diff --staged --quiet; then
+            git commit -m "docs: update documentation index"
+            git push origin main
+            echo "✅ Documentation index updated"
+          else
+            echo "ℹ️ No changes to documentation index"
+          fi
+
+  summary:
+    needs: update-wiki
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Documentation Update Summary
+        run: |
+          echo "📚 Documentation update completed!"
+          echo "🔍 Validation: Documentation structure and links checked"
+          echo "📝 Wiki: Generated from .docs/ folders in workspaces"
+          echo "📋 Index: Updated DOCS.md with latest workspace information"
+          echo ""
+          echo "📖 View the updated wiki: https://github.com/${{ github.repository }}/wiki"

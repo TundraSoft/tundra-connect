@@ -1,0 +1,257 @@
+name: Manual Release
+'on':
+  workflow_dispatch:
+    inputs:
+      workspace:
+        description: Workspace to release
+        required: true
+        type: choice
+        options:
+          - all
+      version_type:
+        description: Version bump type
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      changelog_notes:
+        description: Custom changelog notes (optional)
+        required: false
+        type: string
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+jobs:
+  get-workspaces:
+    runs-on: ubuntu-latest
+    outputs:
+      workspaces: '${{ steps.workspaces.outputs.list }}'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v1.x
+      - name: Get workspaces
+        id: workspaces
+        run: |
+          if [ "${{ inputs.workspace }}" = "all" ]; then
+            workspaces=$(deno eval "
+              const deno = JSON.parse(Deno.readTextFileSync('deno.json'));
+              const workspaces = deno.workspace || [];
+              console.log(JSON.stringify(workspaces.map(w => w.replace('./', ''))));
+            ")
+          else
+            workspaces='["${{ inputs.workspace }}"]'
+          fi
+          echo "list=$workspaces" >> $GITHUB_OUTPUT
+  release:
+    needs: get-workspaces
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        workspace: '${{ fromJson(needs.get-workspaces.outputs.workspaces) }}'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          fetch-depth: 0
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v1.x
+      - name: Check workspace exists
+        run: |
+          if [ ! -d "${{ matrix.workspace }}" ]; then
+            echo "Error: Workspace '${{ matrix.workspace }}' does not exist"
+            exit 1
+          fi
+      - name: Get current version
+        id: current-version
+        run: |
+          current_version=$(deno eval "
+            const deno = JSON.parse(Deno.readTextFileSync('${{ matrix.workspace }}/deno.json'));
+            console.log(deno.version || '0.1.0');
+          ")
+          echo "version=$current_version" >> $GITHUB_OUTPUT
+          echo "Current version: $current_version"
+      - name: Bump version
+        id: bump-version
+        run: |
+          current="${{ steps.current-version.outputs.version }}"
+          version_type="${{ inputs.version_type }}"
+
+          IFS='.' read -ra VERSION_PARTS <<< "$current"
+          major=${VERSION_PARTS[0]}
+          minor=${VERSION_PARTS[1]}
+          patch=${VERSION_PARTS[2]}
+
+          case $version_type in
+            "major")
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            "minor")
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            "patch")
+              patch=$((patch + 1))
+              ;;
+          esac
+
+          new_version="$major.$minor.$patch"
+
+          # Update version in deno.json
+          deno eval "
+            const config = JSON.parse(Deno.readTextFileSync('${{ matrix.workspace }}/deno.json'));
+            config.version = '$new_version';
+            Deno.writeTextFileSync('${{ matrix.workspace }}/deno.json', JSON.stringify(config, null, 2));
+          "
+
+          echo "version=$new_version" >> $GITHUB_OUTPUT
+          echo "Bumped version from $current to $new_version ($version_type)"
+      - name: Run tests
+        run: |
+          cd "${{ matrix.workspace }}"
+          deno test --allow-all || echo "Tests failed or no tests found"
+      - name: Type check
+        run: |
+          cd "${{ matrix.workspace }}"
+          deno check mod.ts || echo "Type check failed"
+      - name: Update CHANGELOG
+        run: >
+          workspace="${{ matrix.workspace }}"
+
+          version="${{ steps.bump-version.outputs.version }}"
+
+          version_type="${{ inputs.version_type }}"
+
+          custom_notes="${{ inputs.changelog_notes }}"
+
+          date=$(date +%Y-%m-%d)
+
+
+          changelog_file="$workspace/CHANGELOG.md"
+
+
+          # Determine change type based on version bump
+
+          case $version_type in
+            "major")
+              change_type="### ⚠️ BREAKING CHANGES"
+              change_description="- Major version release with potential breaking changes"
+              ;;
+            "minor")
+              change_type="### Added"
+              change_description="- New features and enhancements"
+              ;;
+            "patch")
+              change_type="### Fixed"
+              change_description="- Bug fixes and improvements"
+              ;;
+          esac
+
+
+          # Create CHANGELOG.md if it doesn't exist
+
+          if [ ! -f "$changelog_file" ]; then
+            cat > "$changelog_file" << EOF
+          # Changelog
+
+
+          All notable changes to this project will be documented in this file.
+
+
+          The format is based on [Keep a
+          Changelog](https://keepachangelog.com/en/1.0.0/),
+
+          and this project adheres to [Semantic
+          Versioning](https://semver.org/spec/v2.0.0.html).
+
+
+          ## [Unreleased]
+
+
+          ## [$version] - $date
+
+
+          $change_type
+
+          $change_description
+
+
+          EOF
+
+          else
+            # Add new version entry to existing changelog
+            changelog_entry="## [$version] - $date"$'\n'$'\n'"$change_type"$'\n'"$change_description"
+            
+            if [ -n "$custom_notes" ]; then
+              changelog_entry="$changelog_entry"$'\n'"- $custom_notes"
+            fi
+            
+            if grep -q "## \[Unreleased\]" "$changelog_file"; then
+              sed -i "/## \[Unreleased\]/a\\
+          \\
+
+          $changelog_entry\\
+
+          " "$changelog_file"
+            else
+              sed -i "1,/^#/ {
+                /^# /a\\
+          \\
+
+          $changelog_entry\\
+
+              }" "$changelog_file"
+            fi
+          fi
+
+
+          echo "Updated CHANGELOG.md for $workspace"
+      - name: Commit version bump
+        run: |
+          workspace="${{ matrix.workspace }}"
+          version="${{ steps.bump-version.outputs.version }}"
+          version_type="${{ inputs.version_type }}"
+
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          git add "$workspace/deno.json" "$workspace/CHANGELOG.md"
+          git commit -m "release($workspace): $version_type bump to $version"
+      - name: Publish to JSR
+        run: |
+          cd "${{ matrix.workspace }}"
+          deno publish --allow-dirty --allow-slow-types
+      - name: Push changes
+        run: |
+          git push origin main
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+        with:
+          tag_name: '${{ matrix.workspace }}-v${{ steps.bump-version.outputs.version }}'
+          release_name: '${{ matrix.workspace }} v${{ steps.bump-version.outputs.version }}'
+          body: "## \U0001F680 Release v${{ steps.bump-version.outputs.version }}\n\n**Type:** ${{ inputs.version_type }} release\n\n### \U0001F4E6 JSR Package\n\n```bash\ndeno add jsr:@tundraconnect/${{ matrix.workspace }}@^${{ steps.bump-version.outputs.version }}\n```\n\n### \U0001F4CB Changes\n\n${{ inputs.changelog_notes && inputs.changelog_notes || 'See CHANGELOG.md for detailed changes.' }}\n\n### \U0001F4D6 Documentation\n\n- [CHANGELOG.md](${{ matrix.workspace }}/CHANGELOG.md)\n- [JSR Package](https://jsr.io/@tundraconnect/${{ matrix.workspace }})\n"
+          draft: false
+          prerelease: ${{ inputs.version_type == 'major' }}
+  summary:
+    needs:
+      - get-workspaces
+      - release
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release Summary
+        run: "echo \"\U0001F389 Manual release completed!\"\necho \"\U0001F4E6 Workspaces: ${{ needs.get-workspaces.outputs.workspaces }}\"\necho \"\U0001F504 Version type: ${{ inputs.version_type }}\"\nif [ -n \"${{ inputs.changelog_notes }}\" ]; then\n  echo \"\U0001F4DD Custom notes: ${{ inputs.changelog_notes }}\"\nfi\n"

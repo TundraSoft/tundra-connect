@@ -1,0 +1,44 @@
+version: 2
+updates:
+  # Enable version updates for Deno dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "TundraSoft"
+    assignees:
+      - "TundraSoft"
+    commit-message:
+      prefix: "[deps]"
+      prefix-development: "[deps-dev]"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+
+  # Monitor for security updates more frequently
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 3
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    reviewers:
+      - "TundraSoft"
+    assignees:
+      - "TundraSoft"
+    commit-message:
+      prefix: "[security]"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "security"
+      - "automated"
+      - "priority-high"

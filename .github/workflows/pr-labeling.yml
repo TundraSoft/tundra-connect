@@ -1,0 +1,73 @@
+name: 🏷️ PR Auto-Labeling
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+  pull_request_target:
+    types: [opened, edited, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🏷️ Auto-label based on file changes
+        uses: actions/labeler@v5
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          configuration-path: .github/labeler.yml
+
+      - name: 📝 Label based on PR title and description
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            const title = pullRequest.title.toLowerCase();
+            const body = (pullRequest.body || '').toLowerCase();
+            const labels = [];
+
+            // Extract connect name from title or branch
+            const connectMatch = title.match(/\[(.*?)\]/) || pullRequest.head.ref.match(/^([^\/]+)/);
+            if (connectMatch) {
+              const connectName = connectMatch[1].toLowerCase();
+              labels.push(`connect:${connectName}`);
+            }
+
+            // Auto-label based on keywords in title and description
+            const keywordLabels = {
+              'bug': ['bug', 'fix', 'error', 'issue', 'broken'],
+              'enhancement': ['feature', 'add', 'new', 'enhance', 'improve'],
+              'documentation': ['docs', 'documentation', 'readme', 'guide'],
+              'security': ['security', 'vulnerability', 'auth', 'secure'],
+              'performance': ['performance', 'speed', 'optimize', 'fast'],
+              'breaking-change': ['breaking', 'major', 'incompatible'],
+              'dependencies': ['deps', 'dependency', 'package', 'upgrade'],
+              'tests': ['test', 'testing', 'spec', 'coverage'],
+              'ci': ['ci', 'build', 'workflow', 'action'],
+              'refactor': ['refactor', 'cleanup', 'reorganize']
+            };
+
+            for (const [label, keywords] of Object.entries(keywordLabels)) {
+              if (keywords.some(keyword => title.includes(keyword) || body.includes(keyword))) {
+                labels.push(label);
+              }
+            }
+
+            // Apply labels if any were found
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: labels
+              });
+            }
