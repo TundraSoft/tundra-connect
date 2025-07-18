@@ -1,0 +1,189 @@
+name: "\U0001F4DA Documentation Request"
+description: Request documentation improvements for existing integrations
+title: '[DOCS] Connect Name - Documentation Type'
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Thanks for helping improve our documentation! Please provide details
+        about what documentation is needed.
+
+
+        Good documentation helps the entire community use Tundra Connect more
+        effectively.
+  - type: dropdown
+    id: connect-name
+    attributes:
+      label: Connect Name
+      description: Which connect needs documentation improvements?
+      options:
+        - All
+        - Repository/General
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: documentation-type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation is needed?
+      options:
+        - 'Code Documentation (JSDoc, inline comments)'
+        - 'Usage Documentation (how-to guides, examples)'
+        - API Reference Documentation
+        - Wiki/Conceptual Documentation
+        - Tutorial/Getting Started Guide
+        - Troubleshooting Guide
+        - Migration Guide
+        - Best Practices Guide
+        - Architecture Documentation
+        - Contributing Guidelines
+      default: 1
+    validations:
+      required: true
+  - type: checkboxes
+    id: specific-sections
+    attributes:
+      label: Specific Sections Needed
+      description: Which specific areas need documentation? (Select all that apply)
+      options:
+        - label: Installation/Setup instructions
+        - label: Basic usage examples
+        - label: Advanced configuration options
+        - label: Error handling and troubleshooting
+        - label: Performance optimization
+        - label: Security considerations
+        - label: Testing strategies
+        - label: Deployment guidelines
+        - label: Integration examples
+        - label: Migration from other solutions
+        - label: FAQ section
+        - label: Changelog/Release notes
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current Documentation State
+      description: |
+        What is the current state of documentation for this connect?
+        - What exists already?
+        - What is missing or unclear?
+        - What specific gaps have you identified?
+      placeholder: |
+        Current state:
+        - Existing documentation: ...
+        - Missing sections: ...
+        - Unclear areas: ...
+        - Specific pain points: ...
+    validations:
+      required: true
+  - type: textarea
+    id: specific-needs
+    attributes:
+      label: Specific Documentation Needs
+      description: |
+        Please describe in detail what documentation you need:
+        - What specific topics should be covered?
+        - What questions should the documentation answer?
+        - What examples would be most helpful?
+        - What is your intended audience level?
+      placeholder: |
+        Specific needs:
+        - Topics to cover: ...
+        - Questions to answer: ...
+        - Helpful examples: ...
+        - Target audience: (beginner/intermediate/advanced)
+    validations:
+      required: true
+  - type: dropdown
+    id: audience-level
+    attributes:
+      label: Target Audience Level
+      description: What skill level is this documentation intended for?
+      options:
+        - Beginner (new to the connect/API)
+        - Intermediate (some experience)
+        - Advanced (power users)
+        - All levels (comprehensive guide)
+      default: 3
+    validations:
+      required: true
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases & Scenarios
+      description: |
+        What are the main use cases this documentation should address?
+        Include specific scenarios where users might need this information.
+      placeholder: |
+        Use cases:
+        - Scenario 1: ...
+        - Scenario 2: ...
+        - Common questions: ...
+        - Typical workflows: ...
+    validations:
+      required: false
+  - type: textarea
+    id: existing-resources
+    attributes:
+      label: Existing Resources
+      description: |
+        Are there any existing resources that could be referenced or built upon?
+        - External documentation
+        - Community discussions
+        - Stack Overflow posts
+        - Blog articles
+        - Video tutorials
+      placeholder: |
+        Existing resources:
+        - Links to helpful content: ...
+        - Community discussions: ...
+        - Reference materials: ...
+    validations:
+      required: false
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority Level
+      description: How important is this documentation improvement?
+      options:
+        - Low (would be nice to have)
+        - Medium (would improve user experience)
+        - High (blocking user adoption)
+        - Critical (essential for project success)
+      default: 1
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution Interest
+      description: Would you be interested in helping with this documentation?
+      options:
+        - label: I would like to write the documentation
+        - label: I can provide examples and use cases
+        - label: I can review and provide feedback
+        - label: I can help with technical accuracy
+        - label: I can help with formatting and structure
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: |
+        Any additional context that would help create better documentation:
+        - Related issues or discussions
+        - User feedback received
+        - Common support questions
+        - Integration challenges faced
+      placeholder: Any additional context or background information...
+    validations:
+      required: false
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: 'By submitting this request, you agree to follow our Code of Conduct'
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true

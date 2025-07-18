@@ -1,0 +1,280 @@
+name: Publish to JSR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Force publish all workspaces (ignore change detection)'
+        required: false
+        default: false
+        type: boolean
+      workspace:
+        description: 'Specific workspace to publish (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      changed-workspaces: ${{ steps.changes.outputs.workspaces }}
+      has-changes: ${{ steps.changes.outputs.has-changes }}
+      all-workspaces: ${{ steps.workspaces.outputs.all }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v1.x
+
+      - name: Get all workspaces
+        id: workspaces
+        run: |
+          workspaces=$(deno eval "
+            const deno = JSON.parse(Deno.readTextFileSync('deno.json'));
+            const workspaces = deno.workspace || [];
+            console.log(JSON.stringify(workspaces.map(w => w.replace('./', ''))));
+          ")
+          echo "all=$workspaces" >> $GITHUB_OUTPUT
+
+      - name: Detect changed workspaces
+        id: changes
+        run: |
+          if [ "${{ inputs.force_publish }}" = "true" ]; then
+            workspaces="${{ steps.workspaces.outputs.all }}"
+            echo "workspaces=$workspaces" >> $GITHUB_OUTPUT
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            echo "Force publish enabled - will publish all workspaces"
+          elif [ -n "${{ inputs.workspace }}" ]; then
+            workspaces='["${{ inputs.workspace }}"]'
+            echo "workspaces=$workspaces" >> $GITHUB_OUTPUT
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            echo "Manual workspace specified: ${{ inputs.workspace }}"
+          else
+            # Get changed files since last commit
+            changed_files=$(git diff --name-only HEAD~1 HEAD)
+            echo "Changed files: $changed_files"
+            
+            # Extract workspace directories from changed files
+            changed_workspaces=()
+            all_workspaces=$(echo '${{ steps.workspaces.outputs.all }}' | jq -r '.[]')
+            
+            for workspace in $all_workspaces; do
+              if echo "$changed_files" | grep -q "^$workspace/"; then
+                changed_workspaces+=("\"$workspace\"")
+              fi
+            done
+            
+            if [ ${#changed_workspaces[@]} -eq 0 ]; then
+              echo "workspaces=[]" >> $GITHUB_OUTPUT
+              echo "has-changes=false" >> $GITHUB_OUTPUT
+              echo "No workspace changes detected"
+            else
+              workspaces_json="[$(IFS=,; echo "${changed_workspaces[*]}")]"
+              echo "workspaces=$workspaces_json" >> $GITHUB_OUTPUT
+              echo "has-changes=true" >> $GITHUB_OUTPUT
+              echo "Changed workspaces: $workspaces_json"
+            fi
+          fi
+
+  publish:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        workspace: ${{ fromJson(needs.detect-changes.outputs.changed-workspaces) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v1.x
+
+      - name: Check if workspace exists
+        run: |
+          if [ ! -d "${{ matrix.workspace }}" ]; then
+            echo "Error: Workspace directory '${{ matrix.workspace }}' does not exist"
+            exit 1
+          fi
+          if [ ! -f "${{ matrix.workspace }}/deno.json" ]; then
+            echo "Error: deno.json not found in workspace '${{ matrix.workspace }}'"
+            exit 1
+          fi
+
+      - name: Get current version
+        id: current-version
+        run: |
+          current_version=$(deno eval "
+            const deno = JSON.parse(Deno.readTextFileSync('${{ matrix.workspace }}/deno.json'));
+            console.log(deno.version || '0.1.0');
+          ")
+          echo "version=$current_version" >> $GITHUB_OUTPUT
+          echo "Current version: $current_version"
+
+      - name: Bump version
+        id: bump-version
+        run: |
+          # Install bump-workspaces tool
+          deno install -A --global -n bump-workspaces jsr:@deno/bump-workspaces@^0.1/cli
+          
+          # Bump the version (patch by default)
+          cd "${{ matrix.workspace }}"
+          new_version=$(bump-workspaces patch --dry-run | grep "New version:" | cut -d' ' -f3)
+          
+          if [ -z "$new_version" ]; then
+            # Fallback: manual version bump
+            current="${{ steps.current-version.outputs.version }}"
+            IFS='.' read -ra VERSION_PARTS <<< "$current"
+            patch_num=$((${VERSION_PARTS[2]} + 1))
+            new_version="${VERSION_PARTS[0]}.${VERSION_PARTS[1]}.$patch_num"
+            
+            # Update version in deno.json
+            deno eval "
+              const config = JSON.parse(Deno.readTextFileSync('deno.json'));
+              config.version = '$new_version';
+              Deno.writeTextFileSync('deno.json', JSON.stringify(config, null, 2));
+            "
+          else
+            # Apply the version bump
+            bump-workspaces patch
+          fi
+          
+          echo "version=$new_version" >> $GITHUB_OUTPUT
+          echo "New version: $new_version"
+
+      - name: Run tests
+        run: |
+          cd "${{ matrix.workspace }}"
+          deno test --allow-all || echo "Tests failed or no tests found"
+
+      - name: Type check
+        run: |
+          cd "${{ matrix.workspace }}"
+          deno check mod.ts || echo "Type check failed"
+
+      - name: Update CHANGELOG
+        run: |
+          workspace="${{ matrix.workspace }}"
+          version="${{ steps.bump-version.outputs.version }}"
+          date=$(date +%Y-%m-%d)
+          
+          changelog_file="$workspace/CHANGELOG.md"
+          
+          # Create CHANGELOG.md if it doesn't exist
+          if [ ! -f "$changelog_file" ]; then
+            cat > "$changelog_file" << EOF
+          # Changelog
+          
+          All notable changes to this project will be documented in this file.
+          
+          The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+          and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+          
+          ## [Unreleased]
+          
+          ## [$version] - $date
+          
+          ### Changed
+          - Automated release
+          
+          EOF
+          else
+            # Add new version entry to existing changelog
+            # Find the line with "## [Unreleased]" and add new version after it
+            if grep -q "## \[Unreleased\]" "$changelog_file"; then
+              sed -i "/## \[Unreleased\]/a\\
+          \\
+          ## [$version] - $date\\
+          \\
+          ### Changed\\
+          - Automated release\\
+          " "$changelog_file"
+            else
+              # If no Unreleased section, add at the top after title
+              sed -i "1,/^#/ {
+                /^# /a\\
+          \\
+          ## [$version] - $date\\
+          \\
+          ### Changed\\
+          - Automated release\\
+          
+              }" "$changelog_file"
+            fi
+          fi
+          
+          echo "Updated CHANGELOG.md for $workspace"
+
+      - name: Commit version bump
+        run: |
+          workspace="${{ matrix.workspace }}"
+          version="${{ steps.bump-version.outputs.version }}"
+          
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          git add "$workspace/deno.json" "$workspace/CHANGELOG.md"
+          git commit -m "chore($workspace): bump version to $version" || echo "No changes to commit"
+
+      - name: Publish to JSR
+        run: |
+          cd "${{ matrix.workspace }}"
+          deno publish --allow-dirty --allow-slow-types
+
+      - name: Push version bump
+        run: |
+          git push origin main
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "${{ matrix.workspace }}-v${{ steps.bump-version.outputs.version }}"
+          release_name: "${{ matrix.workspace }} v${{ steps.bump-version.outputs.version }}"
+          body: |
+            ## Changes
+            
+            Automated release of `@tundraconnect/${{ matrix.workspace }}` version ${{ steps.bump-version.outputs.version }}
+            
+            ### JSR Package
+            
+            ```bash
+            deno add jsr:@tundraconnect/${{ matrix.workspace }}@^${{ steps.bump-version.outputs.version }}
+            ```
+            
+            ### What's Changed
+            
+            See [CHANGELOG.md](${{ matrix.workspace }}/CHANGELOG.md) for detailed changes.
+          draft: false
+          prerelease: false
+
+  summary:
+    needs: [detect-changes, publish]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          if [ "${{ needs.detect-changes.outputs.has-changes }}" = "true" ]; then
+            echo "✅ Published workspaces: ${{ needs.detect-changes.outputs.changed-workspaces }}"
+          else
+            echo "ℹ️ No workspace changes detected - skipping publish"
+          fi

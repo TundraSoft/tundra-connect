@@ -1,0 +1,11 @@
+{
+  "name": "@tundraconnect/openexchange",
+  "version": "0.1.0",
+  "description": "TODO: Add description",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./OpenExchangeError.ts"
+  },
+  "imports": {}
+}

@@ -1,0 +1,106 @@
+name: 🔌 New Connect Request
+description: Request a new API integration connect
+title: "[NEW CONNECT] API/Service Name"
+labels: ["new-connect", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for requesting a new connect! Please provide detailed information about the API/service you'd like to integrate.
+        
+        This helps us understand the need and prioritize development accordingly.
+
+  - type: input
+    id: service-name
+    attributes:
+      label: Service/API Name
+      description: What is the name of the service or API you want to integrate?
+      placeholder: "e.g., Stripe, Salesforce, Discord, etc."
+    validations:
+      required: true
+
+  - type: input
+    id: service-website
+    attributes:
+      label: Service Website/URL
+      description: Official website or main URL of the service
+      placeholder: "https://example.com"
+    validations:
+      required: true
+
+  - type: textarea
+    id: justification
+    attributes:
+      label: Justification & Use Case
+      description: |
+        Please explain why this integration is needed and how it would benefit the community.
+        Include specific use cases and scenarios where this connect would be valuable.
+      placeholder: |
+        - Why is this integration important?
+        - What specific problems does it solve?
+        - How would developers use this connect?
+        - What are the main use cases?
+        - Is there community demand for this integration?
+    validations:
+      required: true
+
+  - type: input
+    id: api-documentation
+    attributes:
+      label: API Documentation URL
+      description: Link to the official API documentation
+      placeholder: "https://docs.example.com/api"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-resources
+    attributes:
+      label: Additional Resources
+      description: |
+        Please provide any additional resources that would help with implementation:
+        - SDK/Library links (official or community)
+        - Code examples
+        - Community discussions
+        - Similar integrations in other languages
+      placeholder: |
+        - Official SDK: https://...
+        - Code examples: https://...
+        - Community resources: https://...
+    validations:
+      required: false
+
+  - type: textarea
+    id: special-considerations
+    attributes:
+      label: Special Considerations
+      description: |
+        Are there any special considerations for this integration?
+        - Complex authentication flows
+        - Webhook requirements
+        - Data format specifics
+        - Regional availability
+        - Compliance requirements (GDPR, SOX, etc.)
+      placeholder: Any special requirements or considerations...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution Interest
+      description: Would you be interested in contributing to this integration?
+      options:
+        - label: I would like to contribute to the development
+        - label: I can help with testing
+        - label: I can provide API access for testing
+        - label: I can help with documentation
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this request, you agree to follow our Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true
