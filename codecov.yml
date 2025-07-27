@@ -17,6 +17,10 @@ coverage:
         target: 75%
         flags:
           - openexchange
+      surepass:
+        target: 75%
+        flags:
+          - surepass
     patch:
       default:
         target: 70%
@@ -42,6 +46,14 @@ component_management:
       paths:
         - openexchange/**.ts
         - '!openexchange/**.test.ts'
+      statuses:
+        - type: project
+          target: 75%
+    - component_id: surepass
+      name: surepass
+      paths:
+        - surepass/**.ts
+        - '!surepass/**.test.ts'
       statuses:
         - type: project
           target: 75%

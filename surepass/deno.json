@@ -1,0 +1,9 @@
+{
+  "name": "@tundraconnect/surepass",
+  "version": "0.1.0",
+  "description": "Surepass API interface",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {}
+}

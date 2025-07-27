@@ -8,3 +8,5 @@ documentation:
       - any-glob-to-any-file: .github/workflows/release.yaml
 'connect:openexchange':
   - openexchange/**
+'connect:surepass':
+  - surepass/**
