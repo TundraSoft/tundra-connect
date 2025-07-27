@@ -28,20 +28,11 @@ jobs:
             style
             chore
           scopes: |-
-            cacher
-            crypt
-            dam
-            deps
-            docs
             emergency
-            guardian
-            id
             openexchange
             release
-            restler
-            slogger
-            utils
+            surepass
             workflows
           requireScope: true
-          subjectPattern: '^[A-Z].+$'
-          subjectPatternError: Subject must start with a capital letter
+          # subjectPattern: '^[A-Z].+$'
+          # subjectPatternError: Subject must start with a capital letter

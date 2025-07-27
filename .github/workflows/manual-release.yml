@@ -9,6 +9,7 @@ name: Manual Release
         options:
           - all
           - openexchange
+          - surepass
       version_type:
         description: Version bump type
         required: true
