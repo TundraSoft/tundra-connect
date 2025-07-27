@@ -247,7 +247,7 @@ jobs:
           release_name: '${{ matrix.workspace }} v${{ steps.bump-version.outputs.version }}'
           body: "## \U0001F680 Release v${{ steps.bump-version.outputs.version }}\n\n**Type:** ${{ inputs.version_type }} release\n\n### \U0001F4E6 JSR Package\n\n```bash\ndeno add jsr:@tundraconnect/${{ matrix.workspace }}@^${{ steps.bump-version.outputs.version }}\n```\n\n### \U0001F4CB Changes\n\n${{ inputs.changelog_notes && inputs.changelog_notes || 'See CHANGELOG.md for detailed changes.' }}\n\n### \U0001F4D6 Documentation\n\n- [CHANGELOG.md](${{ matrix.workspace }}/CHANGELOG.md)\n- [JSR Package](https://jsr.io/@tundraconnect/${{ matrix.workspace }})\n"
           draft: false
-          prerelease: '${{ inputs.version_type == ''major'' }}'
+          prerelease: ${{ inputs.version_type == 'major' }}
   summary:
     needs:
       - get-workspaces

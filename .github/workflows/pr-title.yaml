@@ -28,20 +28,10 @@ jobs:
             style
             chore
           scopes: |-
-            cacher
-            crypt
-            dam
-            deps
-            docs
             emergency
-            guardian
-            id
             openexchange
             release
-            restler
-            slogger
             surepass
-            utils
             workflows
           requireScope: true
           # subjectPattern: '^[A-Z].+$'
