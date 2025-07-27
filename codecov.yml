@@ -17,6 +17,10 @@ coverage:
         target: 75%
         flags:
           - openexchange
+      aptos:
+        target: 75%
+        flags:
+          - aptos
     patch:
       default:
         target: 70%
@@ -42,6 +46,14 @@ component_management:
       paths:
         - openexchange/**.ts
         - '!openexchange/**.test.ts'
+      statuses:
+        - type: project
+          target: 75%
+    - component_id: aptos
+      name: aptos
+      paths:
+        - aptos/**.ts
+        - '!aptos/**.test.ts'
       statuses:
         - type: project
           target: 75%

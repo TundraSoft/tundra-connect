@@ -8,6 +8,7 @@ name: Manual Release
         type: choice
         options:
           - all
+          - aptos
           - openexchange
       version_type:
         description: Version bump type

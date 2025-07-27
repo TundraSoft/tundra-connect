@@ -9,6 +9,7 @@
   },
   "unstable": [],
   "workspace": [
+    "./aptos",
     "./openexchange"
   ],
   "imports": {

@@ -28,6 +28,7 @@ jobs:
             style
             chore
           scopes: |-
+            aptos
             cacher
             crypt
             dam

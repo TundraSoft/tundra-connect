@@ -391,9 +391,11 @@ const updateManualReleaseWorkflow = async (
   }
 
   try {
-    const workflowContent = yaml.parse(
-      await Deno.readTextFile(manualReleaseFile),
-    ) as Record<string, unknown>;
+    // Read the raw content to preserve formatting
+    const rawContent = await Deno.readTextFile(manualReleaseFile);
+    
+    // Parse to get the structured data
+    const workflowContent = yaml.parse(rawContent) as Record<string, unknown>;
     
     const on = workflowContent.on as Record<string, unknown>;
     const workflowDispatch = on.workflow_dispatch as Record<string, unknown>;
@@ -415,12 +417,20 @@ const updateManualReleaseWorkflow = async (
         }
       }
       
-      workspace.options = currentOptions.sort();
+      const sortedOptions = currentOptions.sort();
+      
+      // Instead of using yaml.stringify (which escapes GitHub Actions expressions),
+      // we'll do a targeted string replacement to preserve the original formatting
+      const optionsSection = sortedOptions.map(option => `          - ${option}`).join('\n');
+      
+      // Use regex to replace only the options section
+      const optionsRegex = /(options:\s*\n)((?:\s*-\s*\w+\s*\n)*)/;
+      const newRawContent = rawContent.replace(optionsRegex, `$1${optionsSection}\n`);
+      
+      // Write the updated content back to file
+      await Deno.writeTextFile(manualReleaseFile, newRawContent);
+      console.log(`Updated manual release workflow with workspaces: ${workspaces.join(', ')}`);
     }
-    
-    // Write the updated content back to file
-    await Deno.writeTextFile(manualReleaseFile, yaml.stringify(workflowContent));
-    console.log(`Updated manual release workflow with workspaces: ${workspaces.join(', ')}`);
   } catch (error) {
     console.warn(`Failed to update manual release workflow: ${error instanceof Error ? error.message : String(error)}`);
   }
