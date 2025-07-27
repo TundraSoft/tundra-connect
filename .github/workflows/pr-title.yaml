@@ -44,5 +44,5 @@ jobs:
             utils
             workflows
           requireScope: true
-          subjectPattern: '^[A-Z].+$'
-          subjectPatternError: Subject must start with a capital letter
+          # subjectPattern: '^[A-Z].+$'
+          # subjectPatternError: Subject must start with a capital letter

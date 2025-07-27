@@ -6,7 +6,7 @@ documentation:
       - any-glob-to-any-file: CHANGELOG.md
       - any-glob-to-any-file: '**/README.md'
       - any-glob-to-any-file: .github/workflows/release.yaml
-'connect:openexchange':
+openexchange:
   - openexchange/**
-'connect:surepass':
+surepass:
   - surepass/**
