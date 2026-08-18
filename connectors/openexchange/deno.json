@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/openexchange",
+  "version": "0.1.1",
+  "description": "OpenExchangeRates API client for currency exchange rates and conversions",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.0.5"
+  }
+}

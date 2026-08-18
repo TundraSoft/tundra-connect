@@ -1,0 +1,28 @@
+{
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "connectors/*"
+  ],
+  "scripts": {
+    "test": "bun run test:bun && bun run test:deno && bun run test:node",
+    "test:bun": "bun test connectors/",
+    "test:deno": "deno test --allow-all --parallel",
+    "test:node": "node --import tsx --import ./.github/scripts/node-alias-loader.mjs --test 'connectors/**/*.test.ts'",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  },
+  "dependencies": {
+    "@std/assert": "npm:@jsr/std__assert@^1.0.0",
+    "@tundralibs/compat": "npm:@jsr/tundralibs__compat@^1.1.4",
+    "@tundralibs/guardian": "npm:@jsr/tundralibs__guardian@^1.1.0",
+    "@tundralibs/restler": "npm:@jsr/tundralibs__restler@^1.1.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  },
+  "license": "MIT"
+}

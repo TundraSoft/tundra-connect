@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/slack",
+  "version": "0.0.0",
+  "description": "Slack Web API client for messaging, conversations, and users",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.0.5"
+  }
+}

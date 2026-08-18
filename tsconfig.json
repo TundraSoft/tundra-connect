@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "useUnknownInCatchVariables": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "allowUnreachableCode": false,
+    "noErrorTruncation": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "paths": {
+      "@asserts": ["./node_modules/@std/assert/mod.ts"],
+      "@test": ["./node_modules/@tundralibs/compat/test.ts"],
+      "@restler": ["./node_modules/@tundralibs/restler/mod.ts"],
+      "@guardian": ["./node_modules/@tundralibs/guardian/mod.ts"],
+      "@utils": ["./node_modules/@tundralibs/utils/mod.ts"],
+      "@tundraconnect/openexchange": ["./connectors/openexchange/mod.ts"]
+    }
+  },
+  "exclude": ["node_modules", ".git"]
+}

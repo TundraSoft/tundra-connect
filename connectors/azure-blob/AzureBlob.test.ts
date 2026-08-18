@@ -1,0 +1,788 @@
+import * as asserts from '@asserts';
+import { describe, it } from '@test';
+import { AzureBlob } from './AzureBlob.ts';
+import { AzureBlobError } from './errors/mod.ts';
+import { signSharedKey } from './AzureBlobSigner.ts';
+
+const ACCOUNT = 'devstoreaccount1';
+const ACCOUNT_KEY =
+  'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==';
+
+type CapturedRequest = {
+  url: string;
+  method?: string;
+  headers: Record<string, string>;
+  body?: BodyInit | null;
+};
+
+class MockAzureBlob extends AzureBlob {
+  public lastRequest?: CapturedRequest;
+  private responseFactory: (req: CapturedRequest) => Response = () =>
+    new Response(null, { status: 200 });
+
+  setResponseFactory(factory: (req: CapturedRequest) => Response): void {
+    this.responseFactory = factory;
+  }
+
+  setResponse(
+    body: BodyInit | null,
+    status: number,
+    headers?: Record<string, string>,
+  ): void {
+    this.responseFactory = () => new Response(body, { status, headers });
+  }
+
+  constructor(options: ConstructorParameters<typeof AzureBlob>[0]) {
+    super(options);
+    this._fetch = async (input, init) => {
+      // Build a real `Request` from the exact (url, init) pair RESTler
+      // hands to fetch, and capture ITS headers — the true wire headers.
+      // Capturing `init.headers` directly would miss anything the fetch
+      // machinery itself adds at `Request` construction — most importantly
+      // the `Content-Type` it auto-appends from a typed `Blob` body's
+      // `.type`, the exact signed-vs-sent divergence this suite must be
+      // able to observe. Header names come back lowercased (`Headers`
+      // normalization), so assertions use lowercase names throughout.
+      const wire = new Request(String(input), init);
+      const request: CapturedRequest = {
+        url: String(input),
+        method: init?.method,
+        headers: Object.fromEntries(wire.headers.entries()),
+        body: init?.body,
+      };
+      this.lastRequest = request;
+      return this.responseFactory(request);
+    };
+  }
+}
+
+const LIST_BLOBS_XML = `<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults ServiceEndpoint="https://devstoreaccount1.blob.core.windows.net/" ContainerName="my-container">
+  <Blobs>
+    <Blob>
+      <Name>photos/cat.png</Name>
+      <Properties>
+        <Last-Modified>Tue, 01 Jan 2019 12:00:00 GMT</Last-Modified>
+        <Etag>"0x8D1234567890ABC"</Etag>
+        <Content-Length>12345</Content-Length>
+        <Content-Type>image/png</Content-Type>
+      </Properties>
+    </Blob>
+    <Blob>
+      <Name>photos/dog.png</Name>
+      <Properties>
+        <Last-Modified>Tue, 01 Jan 2019 13:00:00 GMT</Last-Modified>
+        <Etag>"0x8D1234567890ABD"</Etag>
+        <Content-Length>54321</Content-Length>
+        <Content-Type>image/png</Content-Type>
+      </Properties>
+    </Blob>
+  </Blobs>
+  <NextMarker>continue-here</NextMarker>
+</EnumerationResults>`;
+
+const NOT_FOUND_ERROR_XML = `<?xml version="1.0" encoding="utf-8"?>
+<Error>
+  <Code>BlobNotFound</Code>
+  <Message>The specified blob does not exist.
+RequestId:abc123
+Time:2026-08-16T00:00:00.0000000Z</Message>
+</Error>`;
+
+describe('AzureBlob', () => {
+  describe('configuration', () => {
+    it('derives baseURL from auth.account', () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      asserts.assertEquals(client.vendor, 'AzureBlob');
+      asserts.assertEquals(client.account, ACCOUNT);
+      asserts.assertEquals(client.apiVersion, '2021-08-06');
+    });
+
+    it('accepts an explicit baseURL override (e.g. for Azurite)', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+        baseURL: 'http://127.0.0.1:10000/devstoreaccount1',
+      });
+      client.setResponse(null, 202);
+      await client.deleteObject({ bucket: 'my-container', key: 'a.txt' });
+      asserts.assertStringIncludes(
+        client.lastRequest?.url ?? '',
+        'http://127.0.0.1:10000/devstoreaccount1/',
+      );
+    });
+
+    it('accepts a configurable apiVersion', () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+        apiVersion: '2020-10-02',
+      });
+      asserts.assertEquals(client.apiVersion, '2020-10-02');
+    });
+
+    it('rejects a missing/empty account', () => {
+      asserts.assertThrows(
+        () =>
+          new MockAzureBlob({
+            auth: { type: 'CUSTOM', account: '', accountKey: ACCOUNT_KEY },
+          }),
+        AzureBlobError,
+        'account',
+      );
+      asserts.assertThrows(
+        // deno-lint-ignore no-explicit-any
+        () => new MockAzureBlob({} as any),
+        AzureBlobError,
+      );
+    });
+
+    it('rejects when neither accountKey nor sasToken is supplied', () => {
+      asserts.assertThrows(
+        () =>
+          new MockAzureBlob({
+            auth: { type: 'CUSTOM', account: ACCOUNT },
+          }),
+        AzureBlobError,
+        'accountKey',
+      );
+    });
+
+    it('rejects an empty apiVersion', () => {
+      asserts.assertThrows(
+        () =>
+          new MockAzureBlob({
+            auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+            apiVersion: '',
+          }),
+        AzureBlobError,
+      );
+    });
+
+    it('prefers sasToken over accountKey when both are supplied', async () => {
+      const client = new MockAzureBlob({
+        auth: {
+          type: 'CUSTOM',
+          account: ACCOUNT,
+          accountKey: ACCOUNT_KEY,
+          sasToken: 'sv=2021-08-06&sig=abc123%3D%3D',
+        },
+      });
+      client.setResponse(null, 202);
+      await client.deleteObject({ bucket: 'my-container', key: 'a.txt' });
+      asserts.assertEquals(
+        client.lastRequest?.headers['authorization'],
+        undefined,
+      );
+      asserts.assertStringIncludes(client.lastRequest?.url ?? '', 'sig=abc123');
+    });
+  });
+
+  describe('input validation', () => {
+    const client = new MockAzureBlob({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+    });
+
+    it('rejects an empty bucket', async () => {
+      await asserts.assertRejects(
+        () => client.getObject({ bucket: '', key: 'a.txt' }),
+        AzureBlobError,
+      );
+    });
+
+    it('rejects an empty key', async () => {
+      await asserts.assertRejects(
+        () => client.getObject({ bucket: 'my-container', key: '' }),
+        AzureBlobError,
+      );
+    });
+  });
+
+  describe('bucket/key path-segment validation', () => {
+    // Regression coverage for a path-traversal hole identical to
+    // `s3/S3.ts`'s: `encodeURIComponent` leaves a literal `.`/`..`
+    // *segment* unchanged (dots aren't URI-reserved), and RESTler's
+    // `_processEndpoint` resolves the final URL with
+    // `path.join(url.pathname, endpoint.path)` — the same collapsing a
+    // filesystem path does. An unvalidated `key: '..'` on `deleteObject`
+    // would build and sign `/{bucket}/..`, which `path.join` collapses to
+    // `/{bucket}` — the container, not the blob — at actual-send time, so
+    // the signed `CanonicalizedResource` and the sent request diverge.
+    // This is worse under SAS-token auth, where `_authInjector` skips
+    // client-side signing entirely.
+    const badKeys = ['.', '..', 'foo/../bar', 'foo/./bar', '../'];
+
+    for (const badKey of badKeys) {
+      it(`rejects a key of ${JSON.stringify(badKey)} before any request is sent`, async () => {
+        const client = new MockAzureBlob({
+          auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+        });
+        const error = await asserts.assertRejects(
+          () => client.deleteObject({ bucket: 'my-container', key: badKey }),
+          AzureBlobError,
+        );
+        asserts.assertEquals(
+          (error as AzureBlobError).getContextValue('field'),
+          'key',
+        );
+        asserts.assertEquals(client.lastRequest, undefined);
+      });
+    }
+
+    it('rejects the same bad segments in bucket', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      const error = await asserts.assertRejects(
+        () => client.deleteObject({ bucket: '..', key: 'a.txt' }),
+        AzureBlobError,
+      );
+      asserts.assertEquals(
+        (error as AzureBlobError).getContextValue('field'),
+        'bucket',
+      );
+      asserts.assertEquals(client.lastRequest, undefined);
+    });
+
+    it('rejects a bad key across every public method that builds a blob path', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      await asserts.assertRejects(
+        () => client.putObject({ bucket: 'b', key: '..', body: 'x' }),
+        AzureBlobError,
+      );
+      await asserts.assertRejects(
+        () => client.getObject({ bucket: 'b', key: '..' }),
+        AzureBlobError,
+      );
+      await asserts.assertRejects(
+        () => client.headObject({ bucket: 'b', key: '..' }),
+        AzureBlobError,
+      );
+      await asserts.assertRejects(
+        () => client.deleteObject({ bucket: 'b', key: '..' }),
+        AzureBlobError,
+      );
+      // Not one of these four reached the network.
+      asserts.assertEquals(client.lastRequest, undefined);
+    });
+
+    it('rejects a bad bucket on listObjects (container-only path)', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      await asserts.assertRejects(
+        () => client.listObjects({ bucket: '..' }),
+        AzureBlobError,
+      );
+      asserts.assertEquals(client.lastRequest, undefined);
+    });
+
+    it('still accepts a normal key with legitimate dots in a filename', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(null, 202);
+
+      await client.deleteObject({
+        bucket: 'my-container',
+        key: 'photo.v2.jpg',
+      });
+
+      asserts.assertStringIncludes(
+        client.lastRequest?.url ?? '',
+        '/my-container/photo.v2.jpg',
+      );
+    });
+
+    it('still accepts a normal hierarchical key containing slashes', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(null, 202);
+
+      await client.deleteObject({
+        bucket: 'my-container',
+        key: 'reports/2024/jan.csv',
+      });
+
+      asserts.assertStringIncludes(
+        client.lastRequest?.url ?? '',
+        '/my-container/reports%2F2024%2Fjan.csv',
+      );
+    });
+  });
+
+  describe('putObject', () => {
+    it('signs with Shared Key and sets Content-Type/x-ms-blob-type/x-ms-meta-* before signing', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(null, 201, {
+        ETag: '"0x8D1234567890ABC"',
+        'Last-Modified': 'Tue, 01 Jan 2019 12:00:00 GMT',
+      });
+
+      const result = await client.putObject({
+        bucket: 'my-container',
+        key: 'hello.txt',
+        body: 'hello world',
+        contentType: 'text/plain; charset=UTF-8',
+        metadata: { author: 'ada' },
+      });
+
+      asserts.assertEquals(result.etag, '"0x8D1234567890ABC"');
+      asserts.assert(result.lastModified instanceof Date);
+
+      const req = client.lastRequest;
+      asserts.assertEquals(req?.method, 'PUT');
+      asserts.assertStringIncludes(req?.url ?? '', '/my-container/hello.txt');
+      asserts.assertEquals(req?.headers['x-ms-blob-type'], 'BlockBlob');
+      asserts.assertEquals(
+        req?.headers['content-type'],
+        'text/plain; charset=UTF-8',
+      );
+      asserts.assertEquals(req?.headers['x-ms-meta-author'], 'ada');
+      asserts.assertExists(req?.headers['x-ms-date']);
+      asserts.assertEquals(req?.headers['x-ms-version'], '2021-08-06');
+      asserts.assertStringIncludes(
+        req?.headers['authorization'] ?? '',
+        `SharedKey ${ACCOUNT}:`,
+      );
+    });
+
+    it('omits Content-Type from both the signature and the wire for an untyped body with no contentType', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(null, 201, {
+        ETag: '"abc"',
+        'Last-Modified': 'Tue, 01 Jan 2019 12:00:00 GMT',
+      });
+      await client.putObject({
+        bucket: 'my-container',
+        key: 'hello.bin',
+        body: new Uint8Array([1, 2, 3]),
+      });
+      const req = client.lastRequest!;
+      // Absent from the wire: a non-Blob body is wrapped in an UNTYPED
+      // Blob, which triggers no Content-Type auto-append at `Request`
+      // construction (the mock captures real wire headers, so this
+      // assertion would catch one).
+      asserts.assertEquals(req.headers['content-type'], undefined);
+      // Absent from the signature too: a signature recomputed from the
+      // exact wire headers/path — whose string-to-sign Content-Type line
+      // is empty — matches the Authorization actually sent.
+      const { authorizationHeader, stringToSign } = await signSharedKey({
+        method: 'PUT',
+        path: new URL(req.url).pathname,
+        account: ACCOUNT,
+        accountKey: ACCOUNT_KEY,
+        contentLength: 3,
+        headers: req.headers,
+      });
+      asserts.assertEquals(req.headers['authorization'], authorizationHeader);
+      asserts.assertEquals(stringToSign.split('\n')[5], '');
+    });
+
+    it("promotes a typed Blob body's own type to a Content-Type that is both signed and sent", async () => {
+      // Regression coverage: `fetch` auto-appends `Content-Type` from a
+      // typed `Blob`'s `.type` at `Request` construction — AFTER signing.
+      // putObject used to sign an EMPTY Content-Type line in that case,
+      // guaranteeing a 403 AuthenticationFailed on every typed-Blob upload
+      // with no explicit `contentType`.
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(null, 201, {
+        ETag: '"abc"',
+        'Last-Modified': 'Tue, 01 Jan 2019 12:00:00 GMT',
+      });
+
+      const body = new Blob(['png-bytes'], { type: 'image/png' });
+      await client.putObject({ bucket: 'my-container', key: 'cat.png', body });
+
+      const req = client.lastRequest!;
+      // Sent: the wire request carries the Blob's own type...
+      asserts.assertEquals(req.headers['content-type'], 'image/png');
+      // ...and signed: a signature recomputed from the exact wire
+      // headers/path only matches the Authorization actually sent if the
+      // client's own signature covered this same Content-Type line.
+      const { authorizationHeader, stringToSign } = await signSharedKey({
+        method: 'PUT',
+        path: new URL(req.url).pathname,
+        account: ACCOUNT,
+        accountKey: ACCOUNT_KEY,
+        contentLength: body.size,
+        headers: req.headers,
+      });
+      asserts.assertEquals(req.headers['authorization'], authorizationHeader);
+      asserts.assertEquals(stringToSign.split('\n')[5], 'image/png');
+    });
+
+    it("lets an explicit contentType win over a typed Blob body's own type", async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(null, 201, {
+        ETag: '"abc"',
+        'Last-Modified': 'Tue, 01 Jan 2019 12:00:00 GMT',
+      });
+
+      const body = new Blob(['x'], { type: 'image/png' });
+      await client.putObject({
+        bucket: 'my-container',
+        key: 'x.bin',
+        body,
+        contentType: 'application/octet-stream',
+      });
+
+      const req = client.lastRequest!;
+      // An explicit header suppresses fetch's auto-append, so the explicit
+      // value is what goes on the wire — and what was signed.
+      asserts.assertEquals(
+        req.headers['content-type'],
+        'application/octet-stream',
+      );
+      const { authorizationHeader, stringToSign } = await signSharedKey({
+        method: 'PUT',
+        path: new URL(req.url).pathname,
+        account: ACCOUNT,
+        accountKey: ACCOUNT_KEY,
+        contentLength: body.size,
+        headers: req.headers,
+      });
+      asserts.assertEquals(req.headers['authorization'], authorizationHeader);
+      asserts.assertEquals(
+        stringToSign.split('\n')[5],
+        'application/octet-stream',
+      );
+    });
+
+    it('rejects an empty bucket/key before sending a request', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      await asserts.assertRejects(
+        () => client.putObject({ bucket: '', key: 'a.txt', body: 'x' }),
+        AzureBlobError,
+      );
+      asserts.assertEquals(client.lastRequest, undefined);
+    });
+  });
+
+  describe('getObject', () => {
+    it('requests a BLOB response and returns body + properties + metadata', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse('hello world', 200, {
+        'Content-Type': 'text/plain',
+        'Content-Length': '11',
+        ETag: '"0x8D1234567890ABC"',
+        'Last-Modified': 'Tue, 01 Jan 2019 12:00:00 GMT',
+        'x-ms-meta-author': 'ada',
+      });
+
+      const result = await client.getObject({
+        bucket: 'my-container',
+        key: 'hello.txt',
+      });
+
+      asserts.assertEquals(await result.body.text(), 'hello world');
+      asserts.assertEquals(result.contentType, 'text/plain');
+      asserts.assertEquals(result.contentLength, 11);
+      asserts.assertEquals(result.etag, '"0x8D1234567890ABC"');
+      asserts.assert(result.lastModified instanceof Date);
+      asserts.assertEquals(result.metadata, { author: 'ada' });
+      asserts.assertEquals(client.lastRequest?.method, 'GET');
+    });
+  });
+
+  describe('headObject', () => {
+    it('sends HEAD and returns properties without a body', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(null, 200, {
+        'Content-Type': 'text/plain',
+        'Content-Length': '11',
+        ETag: '"abc"',
+        'Last-Modified': 'Tue, 01 Jan 2019 12:00:00 GMT',
+      });
+
+      const result = await client.headObject({
+        bucket: 'my-container',
+        key: 'hello.txt',
+      });
+      asserts.assertEquals(result.contentLength, 11);
+      asserts.assertEquals(client.lastRequest?.method, 'HEAD');
+    });
+  });
+
+  describe('deleteObject', () => {
+    it('succeeds on a 202 Accepted response with no body', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(null, 202);
+      await client.deleteObject({ bucket: 'my-container', key: 'hello.txt' });
+      asserts.assertEquals(client.lastRequest?.method, 'DELETE');
+      asserts.assertStringIncludes(
+        client.lastRequest?.url ?? '',
+        '/my-container/hello.txt',
+      );
+    });
+  });
+
+  describe('blob key encoding', () => {
+    it('percent-encodes every internal slash in a key so path.join never collapses a literal "//"', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(null, 202);
+
+      // 'a//b.txt' is a legal Azure blob name (a literal double slash, not
+      // a two-level virtual directory). RESTler's `path.join` would
+      // silently collapse a literal `//` to a single `/`, corrupting the
+      // key on the wire while the Shared-Key signer (which runs before
+      // `path.join`) would still sign the pre-collapse path — a signature
+      // mismatch. Encoding every internal `/` as `%2F` removes the hazard.
+      await client.deleteObject({ bucket: 'my-container', key: 'a//b.txt' });
+
+      const req = client.lastRequest!;
+      const url = new URL(req.url);
+      asserts.assertEquals(url.pathname, '/my-container/a%2F%2Fb.txt');
+
+      // Recompute the signature independently, from the exact path/headers
+      // actually sent, and confirm it matches the Authorization header
+      // that was actually sent — proving signing and sending used the
+      // SAME (collapse-immune) path string.
+      const { authorizationHeader } = await signSharedKey({
+        method: 'DELETE',
+        path: url.pathname,
+        account: ACCOUNT,
+        accountKey: ACCOUNT_KEY,
+        contentLength: 0,
+        headers: req.headers,
+      });
+      asserts.assertEquals(req.headers['authorization'], authorizationHeader);
+    });
+  });
+
+  describe('listObjects', () => {
+    it('parses a real List Blobs XML response end-to-end', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(LIST_BLOBS_XML, 200, {
+        'Content-Type': 'application/xml',
+      });
+
+      const result = await client.listObjects({ bucket: 'my-container' });
+
+      asserts.assertEquals(result.objects.length, 2);
+      asserts.assertEquals(result.objects[0]?.key, 'photos/cat.png');
+      asserts.assertEquals(result.objects[0]?.size, 12345);
+      asserts.assertEquals(result.objects[0]?.contentType, 'image/png');
+      asserts.assert(result.objects[0]?.lastModified instanceof Date);
+      asserts.assertEquals(result.continuationToken, 'continue-here');
+      asserts.assertEquals(result.isTruncated, true);
+
+      const req = client.lastRequest;
+      asserts.assertEquals(req?.method, 'GET');
+      asserts.assertStringIncludes(req?.url ?? '', 'restype=container');
+      asserts.assertStringIncludes(req?.url ?? '', 'comp=list');
+    });
+
+    it('applies prefix/maxKeys/continuationToken as query params', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(
+        `<?xml version="1.0" encoding="utf-8"?><EnumerationResults><Blobs/><NextMarker/></EnumerationResults>`,
+        200,
+        { 'Content-Type': 'application/xml' },
+      );
+
+      const result = await client.listObjects({
+        bucket: 'my-container',
+        prefix: 'photos/',
+        maxKeys: 10,
+        continuationToken: 'prev-token',
+      });
+
+      asserts.assertEquals(result.objects.length, 0);
+      asserts.assertEquals(result.continuationToken, undefined);
+      asserts.assertEquals(result.isTruncated, false);
+
+      const url = new URL(client.lastRequest?.url ?? '');
+      asserts.assertEquals(url.searchParams.get('prefix'), 'photos/');
+      asserts.assertEquals(url.searchParams.get('maxresults'), '10');
+      asserts.assertEquals(url.searchParams.get('marker'), 'prev-token');
+    });
+  });
+
+  describe('SAS token authentication', () => {
+    it('appends the SAS token as query params and skips Shared Key signing', async () => {
+      const client = new MockAzureBlob({
+        auth: {
+          type: 'CUSTOM',
+          account: ACCOUNT,
+          sasToken:
+            'sv=2021-08-06&ss=b&srt=co&sp=rwdlacx&se=2030-01-01T00%3A00%3A00Z&spr=https&sig=abcDEF123%3D%3D',
+        },
+      });
+      client.setResponse('hello world', 200, {
+        'Content-Type': 'text/plain',
+        ETag: '"abc"',
+        'Last-Modified': 'Tue, 01 Jan 2019 12:00:00 GMT',
+      });
+
+      await client.getObject({ bucket: 'my-container', key: 'hello.txt' });
+
+      const req = client.lastRequest;
+      asserts.assertEquals(req?.headers['authorization'], undefined);
+      asserts.assertEquals(req?.headers['x-ms-date'], undefined);
+      const url = new URL(req?.url ?? '');
+      asserts.assertEquals(url.searchParams.get('sv'), '2021-08-06');
+      asserts.assertEquals(url.searchParams.get('sig'), 'abcDEF123==');
+    });
+
+    it('accepts a SAS token with a leading "?"', async () => {
+      const client = new MockAzureBlob({
+        auth: {
+          type: 'CUSTOM',
+          account: ACCOUNT,
+          sasToken: '?sv=2021-08-06&sig=abc123%3D%3D',
+        },
+      });
+      client.setResponse(null, 202);
+      await client.deleteObject({ bucket: 'my-container', key: 'a.txt' });
+      const url = new URL(client.lastRequest?.url ?? '');
+      asserts.assertEquals(url.searchParams.get('sv'), '2021-08-06');
+    });
+  });
+
+  describe('error mapping', () => {
+    it('maps a documented vendor code from the x-ms-error-code header', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(NOT_FOUND_ERROR_XML, 404, {
+        'Content-Type': 'application/xml',
+        'x-ms-error-code': 'BlobNotFound',
+      });
+
+      const error = await asserts.assertRejects(
+        () => client.getObject({ bucket: 'my-container', key: 'missing.txt' }),
+        AzureBlobError,
+      );
+      asserts.assertEquals(
+        (error as AzureBlobError).getContextValue('vendorCode'),
+        'BlobNotFound',
+      );
+    });
+
+    it('maps a documented vendor code from the XML body when the header is absent', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(NOT_FOUND_ERROR_XML, 404, {
+        'Content-Type': 'application/xml',
+      });
+
+      const error = await asserts.assertRejects(
+        () => client.getObject({ bucket: 'my-container', key: 'missing.txt' }),
+        AzureBlobError,
+      );
+      asserts.assertEquals(
+        (error as AzureBlobError).getContextValue('vendorCode'),
+        'BlobNotFound',
+      );
+    });
+
+    it('falls back to RESPONSE_ERROR for an unrecognised vendor code', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      client.setResponse(
+        `<?xml version="1.0" encoding="utf-8"?><Error><Code>SomeNewCode</Code><Message>???</Message></Error>`,
+        409,
+        { 'Content-Type': 'application/xml' },
+      );
+
+      await asserts.assertRejects(
+        () => client.getObject({ bucket: 'my-container', key: 'x.txt' }),
+        AzureBlobError,
+      );
+    });
+
+    it('populates the ${key}/${bucket} placeholders in BLOB_NOT_FOUND/CONTAINER_NOT_FOUND messages', async () => {
+      // Regression coverage: `__toError` used to be called with no
+      // knowledge of the calling method's bucket/key, so
+      // `BLOB_NOT_FOUND`/`CONTAINER_NOT_FOUND`'s `${key}`/`${bucket}`
+      // template placeholders rendered as the literal un-substituted text
+      // on every real 404, instead of the actual value.
+      const blobClient = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      blobClient.setResponse(NOT_FOUND_ERROR_XML, 404, {
+        'Content-Type': 'application/xml',
+        'x-ms-error-code': 'BlobNotFound',
+      });
+      const blobError = await asserts.assertRejects(
+        () =>
+          blobClient.getObject({
+            bucket: 'my-container',
+            key: 'missing.txt',
+          }),
+        AzureBlobError,
+      );
+      asserts.assertStringIncludes(blobError.message, 'missing.txt');
+      asserts.assertStringIncludes(blobError.message, 'my-container');
+      asserts.assertEquals(
+        (blobError as AzureBlobError).getContextValue('key'),
+        'missing.txt',
+      );
+      asserts.assertEquals(
+        (blobError as AzureBlobError).getContextValue('bucket'),
+        'my-container',
+      );
+
+      const containerClient = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      containerClient.setResponse(
+        `<?xml version="1.0" encoding="utf-8"?><Error><Code>ContainerNotFound</Code><Message>The specified container does not exist.</Message></Error>`,
+        404,
+        {
+          'Content-Type': 'application/xml',
+          'x-ms-error-code': 'ContainerNotFound',
+        },
+      );
+      const containerError = await asserts.assertRejects(
+        () => containerClient.listObjects({ bucket: 'missing-container' }),
+        AzureBlobError,
+      );
+      asserts.assertStringIncludes(containerError.message, 'missing-container');
+      asserts.assertEquals(
+        (containerError as AzureBlobError).getContextValue('bucket'),
+        'missing-container',
+      );
+    });
+
+    it('surfaces RESPONSE_ERROR when a successful response fails schema validation', async () => {
+      const client = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      // 200 OK but missing the required ETag/Last-Modified headers.
+      client.setResponse(null, 200, {});
+      await asserts.assertRejects(
+        () => client.headObject({ bucket: 'my-container', key: 'x.txt' }),
+        AzureBlobError,
+      );
+    });
+  });
+});

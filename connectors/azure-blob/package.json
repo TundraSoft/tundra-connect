@@ -1,0 +1,17 @@
+{
+  "name": "@tundraconnect/azure-blob",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Azure Blob Storage REST API client with Shared Key (HMAC-SHA256) request signing",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@tundralibs/utils": "npm:@jsr/tundralibs__utils@^1.0.5"
+  }
+}

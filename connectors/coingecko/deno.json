@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/coingecko",
+  "version": "0.0.0",
+  "description": "CoinGecko API client for cryptocurrency price, market, and coin-list data",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.0.5"
+  }
+}

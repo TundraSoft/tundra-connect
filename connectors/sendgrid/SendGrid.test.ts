@@ -1,0 +1,316 @@
+import * as asserts from '@asserts';
+import { describe, it } from '@test';
+import { GuardianError } from '@guardian';
+import { SendGrid } from './SendGrid.ts';
+import { SendGridError } from './errors/mod.ts';
+
+const validMailRequest = {
+  personalizations: [{ to: [{ email: 'dest@example.com' }] }],
+  from: { email: 'sender@example.com' },
+  subject: 'Hello',
+  content: [{ type: 'text/plain', value: 'Hi there!' }],
+};
+
+class MockSendGrid extends SendGrid {
+  public request?: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+  };
+  private responseBody: BodyInit | null = null;
+  private responseStatus = 202;
+  private responseHeaders: Record<string, string> = {};
+
+  setResponse(
+    body: BodyInit | null,
+    status = 202,
+    headers: Record<string, string> = {},
+  ): void {
+    this.responseBody = body;
+    this.responseStatus = status;
+    this.responseHeaders = headers;
+    this._fetch = (input, init) => {
+      this.request = {
+        url: String(input),
+        method: init?.method,
+        headers: init?.headers as Record<string, string> | undefined,
+      };
+      return Promise.resolve(
+        new Response(this.responseBody, {
+          status: this.responseStatus,
+          headers: this.responseHeaders,
+        }),
+      );
+    };
+  }
+}
+
+describe('SendGrid', () => {
+  it('exposes validated configuration through named getters', () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    asserts.assertEquals(client.vendor, 'SendGrid');
+    asserts.assertEquals(client.apiKey, 'SG.test-key');
+  });
+
+  it('rejects a blank API key', () => {
+    asserts.assertThrows(
+      () =>
+        new MockSendGrid({
+          auth: { type: 'BEARER', token: '', prefix: 'Bearer' },
+        }),
+      SendGridError,
+      'API key must be a non-empty string',
+    );
+    asserts.assertThrows(
+      () =>
+        new MockSendGrid({
+          auth: { type: 'BEARER', token: '   ', prefix: 'Bearer' },
+        }),
+      SendGridError,
+      'API key must be a non-empty string',
+    );
+  });
+
+  it('rejects a completely missing API key', () => {
+    asserts.assertThrows(
+      // deno-lint-ignore no-explicit-any
+      () => new MockSendGrid({} as any),
+      SendGridError,
+      'API key must be a non-empty string',
+    );
+  });
+
+  it('rejects an auth config that is not a Bearer token', () => {
+    asserts.assertThrows(
+      () =>
+        // deno-lint-ignore no-explicit-any
+        new MockSendGrid({
+          auth: { type: 'BASIC', username: 'x', password: 'y' },
+        } as any),
+      SendGridError,
+      'API key must be a non-empty string',
+    );
+  });
+
+  it('never leaks the configured auth value into a thrown config error', () => {
+    const secretLookingToken = 'SG.super-secret-value-that-must-not-leak';
+    let caught: SendGridError | undefined;
+    try {
+      // `type: 'BASIC'` is not a shape SendGrid supports — fails
+      // validation just like a blank/missing token would — while still
+      // carrying a secret-looking value in `password`, to prove it never
+      // surfaces on the thrown error.
+      new MockSendGrid({
+        auth: { type: 'BASIC', username: 'x', password: secretLookingToken },
+        // deno-lint-ignore no-explicit-any
+      } as any);
+    } catch (err) {
+      caught = err as SendGridError;
+    }
+    asserts.assertExists(caught);
+    asserts.assertEquals(caught?.message.includes(secretLookingToken), false);
+    asserts.assertEquals(
+      JSON.stringify(caught?.toJSON()).includes(secretLookingToken),
+      false,
+    );
+  });
+
+  it('sends the configured API key as a Bearer token', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    client.setResponse(null, 202, { 'x-message-id': 'msg-1' });
+
+    await client.sendMail(validMailRequest);
+
+    const headers = client.request?.headers as Record<string, string>;
+    asserts.assertEquals(headers['Authorization'], 'Bearer SG.test-key');
+    asserts.assertEquals(client.request?.method, 'POST');
+    asserts.assertStringIncludes(client.request?.url ?? '', '/mail/send');
+    asserts.assertStringIncludes(
+      client.request?.url ?? '',
+      'https://api.sendgrid.com/v3',
+    );
+  });
+
+  it('treats 202 Accepted as success and returns the message id when present', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    client.setResponse(null, 202, { 'x-message-id': 'msg-202' });
+
+    const result = await client.sendMail(validMailRequest);
+    asserts.assertEquals(result.messageId, 'msg-202');
+  });
+
+  it('treats sandbox-mode 200 OK as success too, not just 202', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    client.setResponse(null, 200, { 'x-message-id': 'msg-sandbox' });
+
+    const result = await client.sendMail({
+      ...validMailRequest,
+      mail_settings: { sandbox_mode: { enable: true } },
+    });
+    asserts.assertEquals(result.messageId, 'msg-sandbox');
+  });
+
+  it('omits messageId when the X-Message-Id header is absent, rather than assuming it', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    client.setResponse(null, 202);
+
+    const result = await client.sendMail(validMailRequest);
+    asserts.assertEquals(result, {});
+    asserts.assertEquals(result.messageId, undefined);
+  });
+
+  it('rejects a locally invalid mail-send request before making a request', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    // Stub the network so an unexpected real call would fail fast instead
+    // of hanging, then confirm below that it was never actually reached.
+    client.setResponse(null, 202);
+
+    const error = await asserts.assertRejects(
+      () =>
+        client.sendMail({
+          personalizations: [],
+          from: { email: 'sender@example.com' },
+          content: [{ type: 'text/plain', value: 'hi' }],
+          // deno-lint-ignore no-explicit-any
+        } as any),
+      SendGridError,
+    );
+    asserts.assertInstanceOf(error.cause, GuardianError);
+    asserts.assertEquals(client.request, undefined);
+  });
+
+  it('lists API key scopes', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    client.setResponse(
+      JSON.stringify({ scopes: ['mail.send', 'alerts.read'] }),
+      200,
+      { 'content-type': 'application/json' },
+    );
+
+    const result = await client.getScopes();
+    asserts.assertEquals(result.scopes, ['mail.send', 'alerts.read']);
+    asserts.assertEquals(client.request?.method, 'GET');
+    asserts.assertStringIncludes(client.request?.url ?? '', '/scopes');
+  });
+
+  it('raises RESPONSE_ERROR when a 200 scopes body fails validation', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    client.setResponse(
+      JSON.stringify({ scopes: 'not-an-array' }),
+      200,
+      { 'content-type': 'application/json' },
+    );
+
+    await asserts.assertRejects(
+      () => client.getScopes(),
+      SendGridError,
+      'response',
+    );
+  });
+
+  it('maps every documented vendor error status to its connect-specific code', async () => {
+    const cases: Array<{ status: number; expectedSubstring: string }> = [
+      { status: 400, expectedSubstring: 'invalid' },
+      { status: 401, expectedSubstring: 'unauthenticated' },
+      { status: 403, expectedSubstring: 'not permitted' },
+      { status: 404, expectedSubstring: 'not found' },
+      { status: 405, expectedSubstring: 'not allowed' },
+      { status: 413, expectedSubstring: 'size limit' },
+      { status: 429, expectedSubstring: 'rate limit' },
+    ];
+
+    for (const { status, expectedSubstring } of cases) {
+      const client = new MockSendGrid({
+        auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+      });
+      client.setResponse(
+        JSON.stringify({
+          errors: [{ message: 'Vendor error.', field: null }],
+        }),
+        status,
+        { 'content-type': 'application/json' },
+      );
+
+      await asserts.assertRejects(
+        () => client.sendMail(validMailRequest),
+        SendGridError,
+        expectedSubstring,
+      );
+    }
+  });
+
+  it('carries the raw vendor errors array on the thrown error', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    client.setResponse(
+      JSON.stringify({
+        errors: [
+          {
+            message: 'The from email does not contain a valid address.',
+            field: 'from.email',
+          },
+        ],
+        id: 'req-1',
+      }),
+      400,
+      { 'content-type': 'application/json' },
+    );
+
+    try {
+      await client.sendMail(validMailRequest);
+      throw new Error('expected sendMail to reject');
+    } catch (error) {
+      asserts.assert(error instanceof SendGridError);
+      asserts.assertEquals(error.getContextValue('id'), 'req-1');
+      const errors = error.getContextValue('errors') as Array<
+        { message: string; field: string | null }
+      >;
+      asserts.assertEquals(errors[0]?.field, 'from.email');
+    }
+  });
+
+  it('falls back to SERVICE_UNAVAILABLE for an unparseable 5xx response', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    client.setResponse('<html>Internal Server Error</html>', 500, {
+      'content-type': 'text/html',
+    });
+
+    await asserts.assertRejects(
+      () => client.sendMail(validMailRequest),
+      SendGridError,
+      'unavailable',
+    );
+  });
+
+  it('falls back to UNKNOWN_ERROR for an unmapped status without a documented envelope', async () => {
+    const client = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+    });
+    client.setResponse('teapot', 418);
+
+    await asserts.assertRejects(
+      () => client.sendMail(validMailRequest),
+      SendGridError,
+      'unknown error',
+    );
+  });
+});

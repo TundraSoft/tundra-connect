@@ -1,0 +1,17 @@
+{
+  "azure-blob": "AzureBlob",
+  "coingecko": "CoinGecko",
+  "discord": "Discord",
+  "gcs": "GCS",
+  "ntfy": "ntfy",
+  "openexchange": "OpenExchange",
+  "openweathermap": "OpenWeatherMap",
+  "paypal": "PayPal",
+  "razorpay": "Razorpay",
+  "s3": "S3",
+  "sendgrid": "SendGrid",
+  "slack": "Slack",
+  "stripe": "Stripe",
+  "telegram": "Telegram",
+  "twilio": "Twilio"
+}

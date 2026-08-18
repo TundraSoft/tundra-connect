@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/s3",
+  "version": "0.0.0",
+  "description": "AWS S3 (and S3-compatible: R2, MinIO) object storage client with SigV4 request signing",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.0.5"
+  }
+}

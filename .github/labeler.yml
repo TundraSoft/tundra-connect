@@ -1,12 +1,59 @@
 workflows:
   - changed-files:
       - any-glob-to-any-file: .github/workflows/*
+infra:
+  - changed-files:
+      - any-glob-to-any-file:
+          - deno.json
+          - package.json
+          - release-please-config.json
+          - .release-please-manifest.json
 documentation:
   - changed-files:
-      - any-glob-to-any-file: CHANGELOG.md
-      - any-glob-to-any-file: '**/README.md'
-      - any-glob-to-any-file: .github/workflows/release.yaml
-openexchange:
-  - openexchange/**
-surepass:
-  - surepass/**
+      - any-glob-to-any-file: ['**/README.md', '**/CHANGELOG.md']
+
+'connector: azure-blob':
+  - changed-files:
+      - any-glob-to-any-file: connectors/azure-blob/**
+'connector: coingecko':
+  - changed-files:
+      - any-glob-to-any-file: connectors/coingecko/**
+'connector: discord':
+  - changed-files:
+      - any-glob-to-any-file: connectors/discord/**
+'connector: gcs':
+  - changed-files:
+      - any-glob-to-any-file: connectors/gcs/**
+'connector: ntfy':
+  - changed-files:
+      - any-glob-to-any-file: connectors/ntfy/**
+'connector: openexchange':
+  - changed-files:
+      - any-glob-to-any-file: connectors/openexchange/**
+'connector: openweathermap':
+  - changed-files:
+      - any-glob-to-any-file: connectors/openweathermap/**
+'connector: paypal':
+  - changed-files:
+      - any-glob-to-any-file: connectors/paypal/**
+'connector: razorpay':
+  - changed-files:
+      - any-glob-to-any-file: connectors/razorpay/**
+'connector: s3':
+  - changed-files:
+      - any-glob-to-any-file: connectors/s3/**
+'connector: sendgrid':
+  - changed-files:
+      - any-glob-to-any-file: connectors/sendgrid/**
+'connector: slack':
+  - changed-files:
+      - any-glob-to-any-file: connectors/slack/**
+'connector: stripe':
+  - changed-files:
+      - any-glob-to-any-file: connectors/stripe/**
+'connector: telegram':
+  - changed-files:
+      - any-glob-to-any-file: connectors/telegram/**
+'connector: twilio':
+  - changed-files:
+      - any-glob-to-any-file: connectors/twilio/**

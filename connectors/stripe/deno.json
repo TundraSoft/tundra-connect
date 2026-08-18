@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/stripe",
+  "version": "0.0.0",
+  "description": "Stripe REST API client for PaymentIntents and Customers",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.0.5"
+  }
+}

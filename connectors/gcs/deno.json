@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/gcs",
+  "version": "0.0.0",
+  "description": "Google Cloud Storage JSON API client for object upload, download, listing, and metadata",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.0.5"
+  }
+}

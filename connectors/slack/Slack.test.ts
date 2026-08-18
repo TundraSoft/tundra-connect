@@ -1,0 +1,533 @@
+import * as asserts from '@asserts';
+import { describe, it } from '@test';
+import { GuardianError } from '@guardian';
+import { Slack } from './Slack.ts';
+import { SlackError } from './errors/mod.ts';
+
+class MockSlack extends Slack {
+  public request?: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: BodyInit;
+  };
+  private responseBody: BodyInit | null = null;
+  private responseStatus = 200;
+  private responseHeaders: Record<string, string> = {
+    'content-type': 'application/json',
+  };
+
+  setResponse(
+    body: BodyInit | null,
+    status = 200,
+    headers: Record<string, string> = { 'content-type': 'application/json' },
+  ): void {
+    this.responseBody = body;
+    this.responseStatus = status;
+    this.responseHeaders = headers;
+    this._fetch = (input, init) => {
+      this.request = {
+        url: String(input),
+        method: init?.method,
+        headers: init?.headers as Record<string, string> | undefined,
+        body: init?.body ?? undefined,
+      };
+      return Promise.resolve(
+        new Response(this.responseBody, {
+          status: this.responseStatus,
+          headers: this.responseHeaders,
+        }),
+      );
+    };
+  }
+}
+
+describe('Slack', () => {
+  it('constructs with the required auth option', () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    asserts.assertEquals(client.vendor, 'Slack');
+    asserts.assertEquals(client.botToken, 'xoxb-test-token');
+  });
+
+  it('rejects a blank bot token', () => {
+    asserts.assertThrows(
+      () => new MockSlack({ auth: { type: 'BEARER', token: '' } }),
+      SlackError,
+      'non-empty string',
+    );
+    asserts.assertThrows(
+      () => new MockSlack({ auth: { type: 'BEARER', token: '   ' } }),
+      SlackError,
+      'non-empty string',
+    );
+  });
+
+  it('rejects a completely missing auth option', () => {
+    asserts.assertThrows(
+      // deno-lint-ignore no-explicit-any
+      () => new MockSlack({} as any),
+      SlackError,
+      'non-empty string',
+    );
+  });
+
+  it('rejects an auth config that is not a Bearer token', () => {
+    asserts.assertThrows(
+      () =>
+        // deno-lint-ignore no-explicit-any
+        new MockSlack({
+          auth: { type: 'BASIC', username: 'x', password: 'y' },
+        } as any),
+      SlackError,
+      'non-empty string',
+    );
+  });
+
+  it('never leaks the configured token into a thrown config error', () => {
+    const secretLookingToken = 'xoxb-super-secret-value-that-must-not-leak';
+    let caught: SlackError | undefined;
+    try {
+      // `type: 'BASIC'` is not a shape Slack supports — fails validation
+      // just like a blank/missing token would — while still carrying a
+      // secret-looking value in `password`, to prove it never surfaces on
+      // the thrown error.
+      new MockSlack({
+        auth: { type: 'BASIC', username: 'x', password: secretLookingToken },
+        // deno-lint-ignore no-explicit-any
+      } as any);
+    } catch (err) {
+      caught = err as SlackError;
+    }
+    asserts.assertExists(caught);
+    asserts.assertEquals(
+      caught?.message.includes(secretLookingToken),
+      false,
+    );
+    asserts.assertEquals(
+      JSON.stringify(caught?.toJSON()).includes(secretLookingToken),
+      false,
+    );
+  });
+
+  it('sends the configured bot token as a Bearer credential', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({
+        ok: true,
+        channel: 'C123ABC456',
+        ts: '1503435956.000247',
+        message: {
+          type: 'message',
+          ts: '1503435956.000247',
+          text: "Here's a message for you",
+          bot_id: 'B123ABC456',
+        },
+      }),
+    );
+
+    await client.postMessage({ channel: 'C123ABC456', text: 'Hello' });
+
+    const headers = client.request?.headers as Record<string, string>;
+    asserts.assertEquals(headers['Authorization'], 'BEARER xoxb-test-token');
+    asserts.assertEquals(client.request?.method, 'POST');
+    asserts.assertStringIncludes(
+      client.request?.url ?? '',
+      '/chat.postMessage',
+    );
+    asserts.assertStringIncludes(
+      client.request?.url ?? '',
+      'https://slack.com/api',
+    );
+  });
+
+  it('posts a message', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({
+        ok: true,
+        channel: 'C123ABC456',
+        ts: '1503435956.000247',
+        message: {
+          type: 'message',
+          ts: '1503435956.000247',
+          text: 'Deploy succeeded',
+          bot_id: 'B123ABC456',
+        },
+      }),
+    );
+
+    const result = await client.postMessage({
+      channel: 'C123ABC456',
+      text: 'Deploy succeeded',
+    });
+    asserts.assertEquals(result.ok, true);
+    asserts.assertEquals(result.ts, '1503435956.000247');
+    asserts.assertEquals(result.message.text, 'Deploy succeeded');
+  });
+
+  it('rejects postMessage with a missing required field before making a request', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    // Stub the network so an unexpected real call would fail fast instead
+    // of hanging, then confirm below that it was never actually reached.
+    client.setResponse(JSON.stringify({ ok: true }));
+
+    const error = await asserts.assertRejects(
+      () =>
+        client.postMessage(
+          // deno-lint-ignore no-explicit-any
+          { channel: 'C123ABC456' } as any,
+        ),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'INVALID_REQUEST');
+    asserts.assertInstanceOf(error.cause, GuardianError);
+    asserts.assertEquals(client.request, undefined);
+  });
+
+  it('updates a message', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({
+        ok: true,
+        channel: 'C123ABC456',
+        ts: '1401383885.000061',
+        text: 'Updated text you carefully authored',
+        message: {
+          text: 'Updated text you carefully authored',
+          user: 'U34567890',
+        },
+      }),
+    );
+
+    const result = await client.updateMessage({
+      channel: 'C123ABC456',
+      ts: '1401383885.000061',
+      text: 'Updated text you carefully authored',
+    });
+    asserts.assertEquals(result.text, 'Updated text you carefully authored');
+    asserts.assertEquals(client.request?.method, 'POST');
+    asserts.assertStringIncludes(client.request?.url ?? '', '/chat.update');
+  });
+
+  it('deletes a message', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({
+        ok: true,
+        channel: 'C123ABC456',
+        ts: '1401383885.000061',
+      }),
+    );
+
+    const result = await client.deleteMessage({
+      channel: 'C123ABC456',
+      ts: '1401383885.000061',
+    });
+    asserts.assertEquals(result.ok, true);
+    asserts.assertStringIncludes(client.request?.url ?? '', '/chat.delete');
+  });
+
+  it('lists conversations, forwarding pagination and filter params', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({
+        ok: true,
+        channels: [
+          {
+            id: 'C123ABC456',
+            name: 'general',
+            is_channel: true,
+            is_archived: false,
+          },
+        ],
+        response_metadata: { next_cursor: 'abc123' },
+      }),
+    );
+
+    const result = await client.listConversations({
+      cursor: 'prev-cursor',
+      limit: 200,
+      exclude_archived: true,
+      types: 'public_channel,private_channel',
+    });
+    asserts.assertEquals(result.channels[0]?.name, 'general');
+    asserts.assertEquals(result.response_metadata?.next_cursor, 'abc123');
+    asserts.assertStringIncludes(
+      client.request?.url ?? '',
+      '/conversations.list',
+    );
+    asserts.assertStringIncludes(
+      client.request?.url ?? '',
+      'cursor=prev-cursor',
+    );
+    asserts.assertStringIncludes(client.request?.url ?? '', 'limit=200');
+    asserts.assertStringIncludes(
+      client.request?.url ?? '',
+      'exclude_archived=true',
+    );
+    asserts.assertEquals(client.request?.method, 'GET');
+  });
+
+  it('fetches conversation history', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({
+        ok: true,
+        messages: [
+          { type: 'message', ts: '1512085950.000216', text: 'Sample message' },
+        ],
+        has_more: true,
+        response_metadata: { next_cursor: 'def456' },
+      }),
+    );
+
+    const result = await client.getConversationHistory({
+      channel: 'C123ABC456',
+      limit: 50,
+    });
+    asserts.assertEquals(result.messages[0]?.text, 'Sample message');
+    asserts.assertEquals(result.has_more, true);
+    asserts.assertStringIncludes(
+      client.request?.url ?? '',
+      '/conversations.history',
+    );
+    asserts.assertStringIncludes(
+      client.request?.url ?? '',
+      'channel=C123ABC456',
+    );
+  });
+
+  it('rejects getConversationHistory without a channel', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(JSON.stringify({ ok: true }));
+
+    await asserts.assertRejects(
+      // deno-lint-ignore no-explicit-any
+      () => client.getConversationHistory({} as any),
+      SlackError,
+    );
+    asserts.assertEquals(client.request, undefined);
+  });
+
+  it('looks up a user', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({
+        ok: true,
+        user: {
+          id: 'U123ABC456',
+          team_id: 'T123ABC',
+          name: 'ada',
+          real_name: 'Ada Lovelace',
+          is_bot: false,
+          profile: {
+            email: 'ada@example.com',
+            image_192: 'https://example.com/a.png',
+          },
+        },
+      }),
+    );
+
+    const result = await client.getUserInfo('U123ABC456');
+    asserts.assertEquals(result.user.real_name, 'Ada Lovelace');
+    asserts.assertEquals(result.user.profile?.email, 'ada@example.com');
+    asserts.assertStringIncludes(client.request?.url ?? '', '/users.info');
+    asserts.assertStringIncludes(client.request?.url ?? '', 'user=U123ABC456');
+  });
+
+  it('raises RESPONSE_ERROR when a success body fails schema validation', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({ ok: true, channels: 'not-an-array' }),
+    );
+
+    await asserts.assertRejects(
+      () => client.listConversations(),
+      SlackError,
+      'schema',
+    );
+  });
+
+  it('maps ok:false invalid_auth to AUTH_FAILED', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({ ok: false, error: 'invalid_auth' }),
+      200,
+    );
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'AUTH_FAILED');
+    asserts.assertEquals(error.getContextValue('vendorError'), 'invalid_auth');
+  });
+
+  it('maps ok:false channel_not_found to NOT_FOUND', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({ ok: false, error: 'channel_not_found' }),
+      200,
+    );
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'NOT_FOUND');
+  });
+
+  it('maps ok:false missing_scope to FORBIDDEN', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({ ok: false, error: 'missing_scope' }),
+      200,
+    );
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'FORBIDDEN');
+  });
+
+  it('maps ok:false not_in_channel to the dedicated NOT_IN_CHANNEL code', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({ ok: false, error: 'not_in_channel' }),
+      200,
+    );
+
+    const error = await asserts.assertRejects(
+      () => client.getConversationHistory({ channel: 'C1' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'NOT_IN_CHANNEL');
+  });
+
+  it('maps ok:false ratelimited (in a 200 body) to RATE_LIMITED', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({ ok: false, error: 'ratelimited' }),
+      200,
+    );
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'RATE_LIMITED');
+  });
+
+  it('falls back to UNKNOWN_ERROR for an unmapped ok:false error string', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({
+        ok: false,
+        error: 'some_future_error_slack_adds_later',
+      }),
+      200,
+    );
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'UNKNOWN_ERROR');
+    asserts.assertEquals(
+      error.getContextValue('vendorError'),
+      'some_future_error_slack_adds_later',
+    );
+  });
+
+  it('maps a genuine HTTP 429 to RATE_LIMITED and threads Retry-After into context', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(null, 429, { 'retry-after': '30' });
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'RATE_LIMITED');
+    asserts.assertEquals(error.getContextValue('retryAfter'), 30);
+    asserts.assertStringIncludes(error.message, '30s');
+  });
+
+  it('falls back to a generic retry hint when Retry-After is absent', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(null, 429, {});
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'RATE_LIMITED');
+    asserts.assertEquals(error.getContextValue('retryAfter'), 'a few');
+  });
+
+  it('maps an HTTP 5xx to SERVICE_UNAVAILABLE', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse('<html>Internal Server Error</html>', 503, {
+      'content-type': 'text/html',
+    });
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'SERVICE_UNAVAILABLE');
+  });
+
+  it('falls back to UNKNOWN_ERROR for an unexplained non-2xx status', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse('Not Found', 404, { 'content-type': 'text/plain' });
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'UNKNOWN_ERROR');
+  });
+});
