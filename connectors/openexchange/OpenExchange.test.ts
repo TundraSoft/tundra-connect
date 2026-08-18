@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { OpenExchange } from './OpenExchange.ts';
 import { OpenExchangeError } from './errors/mod.ts';
 
@@ -395,4 +396,39 @@ describe('OpenExchange', () => {
       );
     }
   });
+});
+
+const env = envArgs();
+const credentials = {
+  appId: env.get('CONNECTOR_OPENEXCHANGE_APP_ID'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'OpenExchange — live',
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    // Only `getRates()` and `listCurrencies()` are exercised here — both
+    // are available on Open Exchange Rates' free plan. `getHistoricalRates`,
+    // `getTimeSeries`, `getOHLC`, and `convert` are Developer/Enterprise-plan
+    // features that a free-tier `appId` commonly gets `NOT_ALLOWED` (403)
+    // for, so they're deliberately left untested here.
+    it('fetches real latest rates from the OpenExchange API', async () => {
+      const client = new OpenExchange({
+        auth: { type: 'CUSTOM', appId: credentials.appId! },
+      });
+      const rates = await client.getRates({ symbols: ['EUR'] });
+      asserts.assertExists(rates['EUR']);
+    });
+
+    it('lists real currencies from the OpenExchange API', async () => {
+      const client = new OpenExchange({
+        auth: { type: 'CUSTOM', appId: credentials.appId! },
+      });
+      const currencies = await client.listCurrencies();
+      asserts.assertEquals(currencies['USD'], 'United States Dollar');
+    });
+  },
 });

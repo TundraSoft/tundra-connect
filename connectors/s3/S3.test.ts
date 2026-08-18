@@ -928,3 +928,70 @@ describe('S3 — canonical header/query building matches SigV4 directly', () => 
     asserts.assertEquals(canonicalQueryString({ b: '2', a: 'J' }), 'a=J&b=2');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Live test — exercises a real AWS S3 (or S3-compatible) bucket over the
+// network. Skipped entirely unless CONNECTOR_S3_ACCESS_KEY_ID/
+// CONNECTOR_S3_SECRET_ACCESS_KEY/CONNECTOR_S3_REGION/CONNECTOR_S3_TEST_BUCKET
+// are all set (via env or a `.env` file — see `envArgs`), which is never the
+// case in CI/sandboxed environments, so this never runs unattended.
+//
+// This is the "mutating operation, self-cleaning, but needs a
+// pre-existing external resource" pattern: unlike a resource this suite
+// could safely create-then-delete itself (e.g. a throwaway object), a
+// *bucket* is provisioned out-of-band and just referenced by name here —
+// creating/deleting a real bucket on every test run is unsafe (propagation
+// delays, accidental collisions with other buckets, IAM policies scoped to
+// a fixed bucket name, etc). Only the object this test itself creates is
+// cleaned up, in a `finally`, so nothing lingers in the bucket even if the
+// `putObject`/`getObject` call or the assertion in between throws.
+// ---------------------------------------------------------------------------
+import { envArgs } from '@utils';
+
+const env = envArgs();
+const credentials = {
+  accessKeyId: env.get('CONNECTOR_S3_ACCESS_KEY_ID'),
+  secretAccessKey: env.get('CONNECTOR_S3_SECRET_ACCESS_KEY'),
+  region: env.get('CONNECTOR_S3_REGION'),
+  testBucket: env.get('CONNECTOR_S3_TEST_BUCKET'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'S3 — live',
+  // Deno only: Bun/Node each get their own connect-wide live-test job
+  // (see the repo's CI matrix), so this suite only registers on Deno —
+  // it must not double-run the same live assertions three times.
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('puts and gets a real object against the live bucket, then cleans up', async () => {
+      const client = new S3({
+        auth: {
+          type: 'CUSTOM',
+          accessKeyId: credentials.accessKeyId!,
+          secretAccessKey: credentials.secretAccessKey!,
+          region: credentials.region!,
+        },
+      });
+      const key = `tundra-connect-live-test-${Date.now()}.txt`;
+      try {
+        await client.putObject({
+          bucket: credentials.testBucket!,
+          key,
+          body: new TextEncoder().encode('live test'),
+        });
+        const object = await client.getObject({
+          bucket: credentials.testBucket!,
+          key,
+        });
+        asserts.assertEquals(await object.body.text(), 'live test');
+      } finally {
+        // Runs even if putObject/getObject/the assertion above threw, so a
+        // failed assertion never leaves a stray object in the real bucket.
+        await client.deleteObject({ bucket: credentials.testBucket!, key });
+      }
+    });
+  },
+});

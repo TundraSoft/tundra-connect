@@ -1,6 +1,7 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { GuardianError } from '@guardian';
+import { envArgs } from '@utils';
 import { UpstashRedis } from './UpstashRedis.ts';
 import { UpstashRedisError } from './errors/mod.ts';
 
@@ -564,4 +565,40 @@ describe('UpstashRedis', () => {
       );
     });
   });
+});
+
+// =============================================================================
+// Live tests — run only when real Upstash Redis credentials are present in
+// the environment. Skipped (not failed) otherwise, and on Bun/Node
+// regardless of credentials — this suite is Deno-only.
+// =============================================================================
+
+const env = envArgs();
+const credentials = {
+  token: env.get('CONNECTOR_UPSTASH_REDIS_TOKEN'),
+  baseURL: env.get('CONNECTOR_UPSTASH_REDIS_BASE_URL'),
+};
+const liveTestsEnabled = !!credentials.token && !!credentials.baseURL;
+
+describe({
+  name: 'UpstashRedis — live',
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('sets and gets a real key against the live database, then cleans up', async () => {
+      const client = new UpstashRedis({
+        auth: { type: 'BEARER', token: credentials.token!, prefix: 'Bearer' },
+        baseURL: credentials.baseURL!,
+      });
+      const key = `tundra-connect-live-test-${Date.now()}`;
+      try {
+        await client.set(key, 'live-test-value');
+        const value = await client.get(key);
+        asserts.assertEquals(value, 'live-test-value');
+      } finally {
+        await client.del(key);
+      }
+    });
+  },
 });

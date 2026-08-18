@@ -19,9 +19,14 @@ export const coinIdGuard: BaseGuardian<string> = Guardian.string().minLength(
   1,
 );
 
-/** Validates a coin ticker symbol (e.g. `btc`). */
-export const coinSymbolGuard: BaseGuardian<string> = Guardian.string()
-  .minLength(1);
+/**
+ * Validates a coin ticker symbol (e.g. `btc`). Unlike {@link coinIdGuard} and
+ * {@link coinNameGuard}, this allows an empty string: CoinGecko's real
+ * `/coins/list` response contains a small number of listings (e.g.
+ * `basket-2`, `galaconnect-bridged-uni-galachain`) with `symbol: ""` — a
+ * `minLength(1)` here would reject otherwise-well-formed vendor data.
+ */
+export const coinSymbolGuard: BaseGuardian<string> = Guardian.string();
 
 /** Validates a coin display name (e.g. `Bitcoin`). */
 export const coinNameGuard: BaseGuardian<string> = Guardian.string()

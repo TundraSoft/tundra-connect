@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { Algolia, type AlgoliaOptions } from './Algolia.ts';
 import { AlgoliaError } from './errors/mod.ts';
 
@@ -547,4 +548,57 @@ describe('Algolia', () => {
       asserts.assertStringIncludes(json, 'LEAKCHECKAPPID');
     });
   });
+});
+
+// ---------------------------------------------------------------------------
+// Live test — exercises the real Algolia Search API. Skipped entirely unless
+// CONNECTOR_ALGOLIA_APPLICATION_ID/CONNECTOR_ALGOLIA_API_KEY are both set
+// (via env or a `.env` file — see `envArgs`), which is never the case in
+// CI/sandboxed environments, so this never runs unattended. Fully
+// self-contained: saveObject auto-creates its (throwaway) index, and the
+// object it creates is cleaned up in a `finally`, so nothing lingers even
+// if the assertion in between throws.
+// ---------------------------------------------------------------------------
+
+const env = envArgs();
+const credentials = {
+  applicationId: env.get('CONNECTOR_ALGOLIA_APPLICATION_ID'),
+  apiKey: env.get('CONNECTOR_ALGOLIA_API_KEY'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'Algolia — live',
+  // Deno only: Bun/Node each get their own connect-wide live-test job
+  // (see the repo's CI matrix), so this suite only registers on Deno — it
+  // must not double-run the same live assertions three times.
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('saves and deletes a real object against the live API, then cleans up', async () => {
+      const client = new Algolia({
+        auth: {
+          type: 'CUSTOM',
+          applicationId: credentials.applicationId!,
+          apiKey: credentials.apiKey!,
+        },
+      });
+      const indexName = 'tundra-connect-live-test';
+      const objectID = `tundra-connect-live-test-${Date.now()}`;
+      try {
+        const saved = await client.saveObject(indexName, {
+          objectID,
+          source: 'tundra-connect live test',
+        });
+        asserts.assertEquals(saved.objectID, objectID);
+        asserts.assertEquals(typeof saved.taskID, 'number');
+      } finally {
+        // Runs even if saveObject/the assertion above threw, so a failed
+        // assertion never leaves a stray object in the real (throwaway)
+        // index.
+        await client.deleteObject(indexName, objectID);
+      }
+    });
+  },
 });

@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { PayPal, type PayPalAuth } from './PayPal.ts';
 import { PayPalError } from './errors/mod.ts';
 
@@ -840,4 +841,55 @@ describe('PayPal', () => {
       );
     });
   });
+});
+
+// =============================================================================
+// Live tests — run only when real PayPal sandbox credentials are present in
+// the environment. Skipped (not failed) otherwise, and on Bun/Node
+// regardless of credentials — this suite is Deno-only.
+// =============================================================================
+
+const env = envArgs();
+const credentials = {
+  clientId: env.get('CONNECTOR_PAYPAL_CLIENT_ID'),
+  clientSecret: env.get('CONNECTOR_PAYPAL_CLIENT_SECRET'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'PayPal — live',
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('creates a real sandbox order, then fetches it back', async () => {
+      // `environment` is hardcoded to 'sandbox' here, deliberately not
+      // env-driven — a live test must never be able to target 'live'.
+      const client = new PayPal({
+        auth: {
+          type: 'CUSTOM',
+          clientId: credentials.clientId!,
+          clientSecret: credentials.clientSecret!,
+          environment: 'sandbox',
+        },
+      });
+
+      const order = await client.createOrder({
+        intent: 'CAPTURE',
+        purchase_units: [
+          { amount: { currency_code: 'USD', value: '1.00' } },
+        ],
+      });
+      asserts.assertEquals(order.status, 'CREATED');
+
+      const fetched = await client.getOrder(order.id);
+      asserts.assertEquals(fetched.id, order.id);
+
+      // captureOrder is deliberately NOT exercised here: PayPal's
+      // documented flow requires the buyer to approve the order in an
+      // interactive checkout first — not producible through this API
+      // alone. No cleanup is needed either way; an uncaptured sandbox
+      // order simply expires.
+    });
+  },
 });

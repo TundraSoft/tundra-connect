@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { Razorpay } from './Razorpay.ts';
 import { RazorpayError } from './errors/mod.ts';
 
@@ -631,4 +632,54 @@ describe('Razorpay', () => {
       asserts.assertEquals(order.id, validOrder.id);
     });
   });
+});
+
+// =============================================================================
+// Live tests — run only when real Razorpay test-mode credentials are present
+// in the environment. Skipped (not failed) otherwise, and on Bun/Node
+// regardless of credentials — this suite is Deno-only.
+// =============================================================================
+
+const env = envArgs();
+const credentials = {
+  keyId: env.get('CONNECTOR_RAZORPAY_KEY_ID'),
+  keySecret: env.get('CONNECTOR_RAZORPAY_KEY_SECRET'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'Razorpay — live',
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('creates a real test-mode order, then fetches it back', async () => {
+      const client = new Razorpay({
+        auth: {
+          type: 'BASIC',
+          username: credentials.keyId!,
+          password: credentials.keySecret!,
+        },
+      });
+
+      // 100 paise = ₹1.00, Razorpay's minimum order amount.
+      const order = await client.createOrder({
+        amount: 100,
+        currency: 'INR',
+        receipt: `tundra-connect-live-test-${Date.now()}`,
+      });
+      asserts.assertEquals(order.amount, 100);
+      asserts.assertEquals(order.currency, 'INR');
+
+      const fetched = await client.getOrder(order.id);
+      asserts.assertEquals(fetched.id, order.id);
+      asserts.assertEquals(fetched.amount, order.amount);
+
+      // capturePayment is deliberately NOT exercised here: it requires a
+      // real authorized payment id, only obtainable via an interactive
+      // checkout — not producible through this API alone. No cleanup is
+      // needed either way; an uncaptured test-mode order is harmless and
+      // only ever visible on the dashboard.
+    });
+  },
 });

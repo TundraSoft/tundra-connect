@@ -1147,3 +1147,69 @@ describe('GCS', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Live test — exercises a real GCS bucket over the network. Skipped
+// entirely unless CONNECTOR_GCS_CLIENT_EMAIL/CONNECTOR_GCS_PRIVATE_KEY/
+// CONNECTOR_GCS_TEST_BUCKET are all set (via env or a `.env` file — see
+// `envArgs`), which is never the case in CI/sandboxed environments, so this
+// never runs unattended.
+//
+// This is the "mutating operation, self-cleaning, but needs a
+// pre-existing external resource" pattern: unlike a resource this suite
+// could safely create-then-delete itself (e.g. a throwaway object), a
+// *bucket* is provisioned out-of-band and just referenced by name here —
+// creating/deleting a real bucket on every test run is unsafe (propagation
+// delays, accidental collisions with other buckets, IAM policies scoped to
+// a fixed bucket name, etc). Only the object this test itself creates is
+// cleaned up, in a `finally`, so nothing lingers in the bucket even if the
+// `putObject`/`getObject` call or the assertion in between throws.
+// ---------------------------------------------------------------------------
+import { envArgs } from '@utils';
+
+const env = envArgs();
+const credentials = {
+  clientEmail: env.get('CONNECTOR_GCS_CLIENT_EMAIL'),
+  privateKey: env.get('CONNECTOR_GCS_PRIVATE_KEY'),
+  testBucket: env.get('CONNECTOR_GCS_TEST_BUCKET'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'GCS — live',
+  // Deno only: Bun/Node each get their own connect-wide live-test job
+  // (see the repo's CI matrix), so this suite only registers on Deno —
+  // it must not double-run the same live assertions three times.
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('puts and gets a real object against the live bucket, then cleans up', async () => {
+      const client = new GCS({
+        auth: {
+          type: 'CUSTOM',
+          clientEmail: credentials.clientEmail!,
+          privateKey: credentials.privateKey!,
+        },
+      });
+      const key = `tundra-connect-live-test-${Date.now()}.txt`;
+      try {
+        await client.putObject({
+          bucket: credentials.testBucket!,
+          key,
+          body: new TextEncoder().encode('live test'),
+        });
+        const object = await client.getObject({
+          bucket: credentials.testBucket!,
+          key,
+        });
+        asserts.assertEquals(await object.body.text(), 'live test');
+        asserts.assertEquals(object.metadata.name, key);
+      } finally {
+        // Runs even if putObject/getObject/the assertion above threw, so a
+        // failed assertion never leaves a stray object in the real bucket.
+        await client.deleteObject({ bucket: credentials.testBucket!, key });
+      }
+    });
+  },
+});

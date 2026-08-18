@@ -326,6 +326,56 @@ and the **browser** even though those aren't in CI yet: stick to `fetch`,
   test endpoint are available. Keep secrets out of source and skip those tests
   when the required environment is absent. When live testing is unavailable,
   mock `@restler`'s transport or use captured fixtures instead.
+- **Live tests are a `describe` block appended to the connect's existing
+  `<Connect>.test.ts`** — after the mock suite, same file, same `@test`
+  import, never a separate file. Read env vars with `envArgs()` from
+  `@utils` (already aliased in every connect); gate on every credential the
+  connect needs being present, and restrict actual execution to one runtime
+  so a local dev running `deno task test && bun test && npm run test:node`
+  back-to-back only fires the real call once, not three times:
+  ```typescript
+  import { envArgs } from '@utils';
+
+  const env = envArgs();
+  const credentials = { apiKey: env.get('CONNECTOR_<NAME>_API_KEY') };
+  const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+  describe({
+    name: '<Connect> — live',
+    ignore: !liveTestsEnabled,
+    bun: false,
+    node: false,
+    fn: () => {
+      it('...', async () => {/* real call against the vendor */});
+    },
+  });
+  ```
+  `describe`'s options form takes a **single** options object
+  (`describe({ name, fn, ignore, bun, node, ... })`) — there is no
+  `describe(name, options)` two-argument overload. A mutating call
+  self-cleans in a `try`/`finally` (`putObject`/`deleteObject`,
+  `saveObject`/`deleteObject`, ...) wherever the vendor supports an inverse;
+  where no inverse exists but the object only ever appears in the vendor's
+  own test-mode/sandbox dashboard (Stripe, Razorpay, PayPal), leaving it
+  behind is fine — say so in a comment. Never live-test an operation that
+  needs an interactive step this repo can't automate (e.g. capturing a
+  payment requires a real checkout) or that would mutate real, undo-less
+  state on a live account (e.g. Sentry's `updateIssue`) — exclude it with a
+  one-line comment explaining why, don't force it.
+- **`LIVE_TEST_ALLOW_VISIBLE_EFFECTS`** additionally gates any live call
+  whose side effect is real-world-visible with no way to undo it (an actual
+  chat message, SMS, or call — e.g. Discord/Telegram/ntfy/Twilio's send
+  methods, and Slack's `postMessage`, which is still briefly visible before
+  its own `deleteMessage` cleanup runs): `ignore: !liveTestsEnabled ||
+  !env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS')`. Never set on the automatic
+  monthly CI schedule (`.github/workflows/live-tests.yml`) — only locally,
+  or via that workflow's manual `workflow_dispatch` opt-in.
+- Env var names follow `CONNECTOR_<NAME>_<FIELD>` (uppercase, connect name
+  with `-` → `_`) — see `.env.sample` for the full, current list per
+  connect, including any extra test-resource var a connect needs (e.g.
+  `CONNECTOR_S3_TEST_BUCKET` for a bucket that must already exist — a live
+  test can't safely create and tear down a whole bucket/container in a
+  normal run).
 - One `.test.ts` per source file, co-located.
 - Import `describe`/`it` (+ `beforeAll`/`afterAll`/`beforeEach`/`afterEach`)
   from `@test` — this resolves to `@tundralibs/compat/test`, which

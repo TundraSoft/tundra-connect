@@ -1,6 +1,7 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { GuardianError } from '@guardian';
+import { envArgs } from '@utils';
 import { Ntfy } from './Ntfy.ts';
 import { NtfyError } from './errors/mod.ts';
 
@@ -263,4 +264,40 @@ describe('Ntfy', () => {
       'unknown error',
     );
   });
+});
+
+// ---------------------------------------------------------------------------
+// Live test — publishes a real message to a real ntfy topic. ntfy.sh topics
+// are effectively public/guessable (no account needed to subscribe), and
+// `publish` — the only method this connect has — is this connect's sole
+// operation, with no way to delete a published message afterward. Skipped
+// entirely unless CONNECTOR_NTFY_TEST_TOPIC is set (via env or a `.env`
+// file — see `envArgs`) AND LIVE_TEST_ALLOW_VISIBLE_EFFECTS is set.
+// ---------------------------------------------------------------------------
+const env = envArgs();
+const credentials = {
+  testTopic: env.get('CONNECTOR_NTFY_TEST_TOPIC'),
+};
+const liveTestsEnabled = !!credentials.testTopic;
+const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
+
+// Sends a real, visible message — gated behind LIVE_TEST_ALLOW_VISIBLE_EFFECTS
+// so it never fires on the unattended monthly schedule.
+describe({
+  name: 'Ntfy — live',
+  ignore: !liveTestsEnabled || !visibleEffectsAllowed,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('publishes a real message to the configured test topic', async () => {
+      const client = new Ntfy();
+
+      const result = await client.publish({
+        topic: credentials.testTopic!,
+        message: `[tundra-connect live test — ${new Date().toISOString()}]`,
+      });
+
+      asserts.assertExists(result.id);
+    });
+  },
 });

@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { OpenWeatherMap } from './OpenWeatherMap.ts';
 import { OpenWeatherMapError } from './errors/mod.ts';
 
@@ -358,4 +359,30 @@ describe('OpenWeatherMap', () => {
       );
     }
   });
+});
+
+const env = envArgs();
+const credentials = {
+  apiKey: env.get('CONNECTOR_OPENWEATHERMAP_API_KEY'),
+};
+const liveTestsEnabled = !!credentials.apiKey;
+
+describe({
+  name: 'OpenWeatherMap — live',
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('fetches real current weather from the OpenWeatherMap API', async () => {
+      const client = new OpenWeatherMap({
+        auth: { type: 'CUSTOM', apiKey: credentials.apiKey! },
+      });
+      const weather = await client.getCurrentWeather({
+        q: 'London,GB',
+        units: 'metric',
+      });
+      asserts.assertEquals(weather.name, 'London');
+      asserts.assertExists(weather.main.temp);
+    });
+  },
 });

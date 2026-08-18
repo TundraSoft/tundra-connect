@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { CoinGecko } from './CoinGecko.ts';
 import { CoinGeckoError } from './errors/mod.ts';
 
@@ -452,4 +453,57 @@ describe('CoinGecko', () => {
     asserts.assertStringIncludes(eventErrorJson, '[REDACTED]');
     asserts.assertEquals(eventErrorJson.includes(rawKey), false);
   });
+});
+
+const env = envArgs();
+const credentials = {
+  apiKey: env.get('CONNECTOR_COINGECKO_API_KEY'),
+};
+const liveTestsEnabled = !!credentials.apiKey;
+
+describe({
+  name: 'CoinGecko — live',
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('fetches real prices from the CoinGecko API', async () => {
+      const client = new CoinGecko({
+        auth: {
+          type: 'CUSTOM',
+          environment: 'demo',
+          apiKey: credentials.apiKey!,
+        },
+      });
+      const prices = await client.getPrice({
+        ids: 'bitcoin',
+        vsCurrencies: ['usd'],
+      });
+      asserts.assertExists(prices['bitcoin']);
+    });
+
+    it('lists real coins from the CoinGecko API', async () => {
+      const client = new CoinGecko({
+        auth: {
+          type: 'CUSTOM',
+          environment: 'demo',
+          apiKey: credentials.apiKey!,
+        },
+      });
+      const coins = await client.listCoins();
+      asserts.assertEquals(Array.isArray(coins), true);
+    });
+
+    it('fetches real market data from the CoinGecko API', async () => {
+      const client = new CoinGecko({
+        auth: {
+          type: 'CUSTOM',
+          environment: 'demo',
+          apiKey: credentials.apiKey!,
+        },
+      });
+      const markets = await client.getMarkets({ vsCurrency: 'usd' });
+      asserts.assertEquals(Array.isArray(markets), true);
+    });
+  },
 });

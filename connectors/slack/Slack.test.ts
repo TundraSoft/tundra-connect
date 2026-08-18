@@ -531,3 +531,108 @@ describe('Slack', () => {
     asserts.assertEquals(error.code, 'UNKNOWN_ERROR');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Live tests — exercise the real Slack Web API against a live workspace.
+// Skipped entirely unless CONNECTOR_SLACK_BOT_TOKEN/CONNECTOR_SLACK_CHANNEL_ID
+// are both set (via env or a `.env` file — see `envArgs`), which is never
+// the case in CI/sandboxed environments, so these never run unattended.
+// ---------------------------------------------------------------------------
+import { envArgs } from '@utils';
+
+const env = envArgs();
+const credentials = {
+  botToken: env.get('CONNECTOR_SLACK_BOT_TOKEN'),
+  channelId: env.get('CONNECTOR_SLACK_CHANNEL_ID'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+// Slack has no sandbox/test-mode token — `postMessage` always delivers a
+// real, visible message to real channel members, even though it's deleted
+// moments later. Requiring this on top of `liveTestsEnabled` means having
+// valid credentials alone is never enough to trigger a visible effect on an
+// unattended schedule.
+const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
+
+describe({
+  name: 'Slack — live (read-only)',
+  // Deno only: Bun/Node each get their own connect-wide live-test job (see
+  // the repo's CI matrix), so this suite only registers on Deno — it must
+  // not double-run the same live assertions three times.
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('lists real conversations visible to the configured bot token', async () => {
+      const client = new Slack({
+        auth: { type: 'BEARER', token: credentials.botToken! },
+      });
+      const { channels } = await client.listConversations({ limit: 5 });
+      asserts.assertExists(channels);
+    });
+
+    it('fetches real history for the configured channel', async () => {
+      const client = new Slack({
+        auth: { type: 'BEARER', token: credentials.botToken! },
+      });
+      const { messages } = await client.getConversationHistory({
+        channel: credentials.channelId!,
+        limit: 5,
+      });
+      asserts.assertExists(messages);
+    });
+
+    it("looks up real info for the most recent message's author (skips if the channel has no messages yet)", async () => {
+      const client = new Slack({
+        auth: { type: 'BEARER', token: credentials.botToken! },
+      });
+      const { messages } = await client.getConversationHistory({
+        channel: credentials.channelId!,
+        limit: 1,
+      });
+      const authorId = messages[0]?.user;
+      if (!authorId) {
+        // Nothing user-authored in the configured channel yet — there's no
+        // user id to look up, which is itself a valid, safe outcome.
+        return;
+      }
+      const { user } = await client.getUserInfo(authorId);
+      asserts.assertExists(user);
+    });
+  },
+});
+
+// This is the "genuine create+cleanup pair" pattern (the bot can delete its
+// own message), but unlike a fully self-contained resource (e.g. a
+// throwaway S3 object), the message IS still visible/delivered to real
+// channel members for the brief window before `deleteMessage` removes it —
+// so this needs the same explicit opt-in as any other visible side effect,
+// not just valid credentials. Gated behind `visibleEffectsAllowed` on top
+// of `liveTestsEnabled`, so it never fires unattended on a schedule even
+// with full credentials configured.
+describe({
+  name: 'Slack — live (visible effect: postMessage + deleteMessage)',
+  ignore: !liveTestsEnabled || !visibleEffectsAllowed,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('posts a real message to the configured channel, then deletes it', async () => {
+      const client = new Slack({
+        auth: { type: 'BEARER', token: credentials.botToken! },
+      });
+      const posted = await client.postMessage({
+        channel: credentials.channelId!,
+        text: `[tundra-connect live test — ${new Date().toISOString()}]`,
+      });
+      try {
+        asserts.assertExists(posted.ts);
+      } finally {
+        // Runs even if the assertion above threw, so a failed assertion
+        // never leaves the synthetic message lingering in a real channel.
+        await client.deleteMessage({
+          channel: posted.channel,
+          ts: posted.ts,
+        });
+      }
+    });
+  },
+});

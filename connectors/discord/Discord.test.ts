@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { Discord } from './Discord.ts';
 import { DiscordError } from './errors/mod.ts';
 
@@ -571,4 +572,41 @@ describe('Discord', () => {
       );
     });
   });
+});
+
+// ---------------------------------------------------------------------------
+// Live test — exercises the real Discord bot API. Skipped entirely unless
+// CONNECTOR_DISCORD_BOT_TOKEN/CONNECTOR_DISCORD_CHANNEL_ID are both set (via
+// env or a `.env` file — see `envArgs`) AND LIVE_TEST_ALLOW_VISIBLE_EFFECTS
+// is set. There is no read method or delete-message method on this
+// connect to verify against or clean up after, so this posts a real,
+// obviously-synthetic message a human could see in the channel.
+// ---------------------------------------------------------------------------
+const env = envArgs();
+const credentials = {
+  botToken: env.get('CONNECTOR_DISCORD_BOT_TOKEN'),
+  channelId: env.get('CONNECTOR_DISCORD_CHANNEL_ID'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
+
+// Sends a real, visible message — gated behind LIVE_TEST_ALLOW_VISIBLE_EFFECTS
+// so it never fires on the unattended monthly schedule.
+describe({
+  name: 'Discord — live',
+  ignore: !liveTestsEnabled || !visibleEffectsAllowed,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('sends a real channel message via the bot API', async () => {
+      const client = new Discord({ botToken: credentials.botToken! });
+
+      const message = await client.sendChannelMessage(
+        credentials.channelId!,
+        { content: `[tundra-connect live test — ${new Date().toISOString()}]` },
+      );
+
+      asserts.assertExists(message.id);
+    });
+  },
 });

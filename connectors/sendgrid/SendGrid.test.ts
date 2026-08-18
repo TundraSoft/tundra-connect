@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { GuardianError } from '@guardian';
 import { SendGrid } from './SendGrid.ts';
 import { SendGridError } from './errors/mod.ts';
@@ -313,4 +314,74 @@ describe('SendGrid', () => {
       'unknown error',
     );
   });
+});
+
+// ---------------------------------------------------------------------------
+// Live test — exercises the real SendGrid v3 API. Skipped entirely unless
+// CONNECTOR_SENDGRID_API_KEY is set (via env or a `.env` file — see
+// `envArgs`), which is never the case in CI/sandboxed environments, so this
+// never runs unattended.
+//
+// `sendMail` is exercised with `mail_settings.sandbox_mode.enable: true`
+// (confirmed field path/casing — snake_case, per SendGrid.ts's own
+// `sendMail` doc and the mock coverage above) — SendGrid validates the full
+// request against this exact field, but never actually delivers it, so
+// this round-trips real auth/schema/request handling without sending mail
+// to anyone. Nothing is created or left behind, so there's nothing to
+// clean up.
+// ---------------------------------------------------------------------------
+
+const env = envArgs();
+const credentials = {
+  apiKey: env.get('CONNECTOR_SENDGRID_API_KEY'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'SendGrid — live',
+  // Deno only: Bun/Node each get their own connect-wide live-test job
+  // (see the repo's CI matrix), so this suite only registers on Deno — it
+  // must not double-run the same live assertions three times.
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('validates a real sandbox-mode send against the SendGrid API (delivers nothing)', async () => {
+      const client = new SendGrid({
+        auth: {
+          type: 'BEARER',
+          token: credentials.apiKey!,
+          prefix: 'Bearer',
+        },
+      });
+
+      const result = await client.sendMail({
+        personalizations: [{ to: [{ email: 'dest@example.com' }] }],
+        from: { email: 'sender@example.com' },
+        subject: 'tundra-connect live test',
+        content: [{ type: 'text/plain', value: 'sandbox-mode live test' }],
+        mail_settings: { sandbox_mode: { enable: true } },
+      });
+
+      // Sandbox mode never actually sends, so whether SendGrid attaches an
+      // X-Message-Id header for it is not a documented guarantee — only
+      // assert on its type when present, not its presence.
+      if (result.messageId !== undefined) {
+        asserts.assertEquals(typeof result.messageId, 'string');
+      }
+    });
+
+    it('lists the configured API key scopes against the live SendGrid API', async () => {
+      const client = new SendGrid({
+        auth: {
+          type: 'BEARER',
+          token: credentials.apiKey!,
+          prefix: 'Bearer',
+        },
+      });
+
+      const result = await client.getScopes();
+      asserts.assertEquals(Array.isArray(result.scopes), true);
+    });
+  },
 });

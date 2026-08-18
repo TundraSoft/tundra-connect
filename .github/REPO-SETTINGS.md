@@ -26,8 +26,9 @@ workflows: a missing or renamed check can block that PR from merging.
 ## Labels
 
 At minimum: `bug`, `enhancement`, `documentation`, `dependencies`, `infra`,
-`multi-connector`, `ci-health`, plus one `connector: <connect>` label per
-connect (generated — see [labeler.yml](labeler.yml)).
+`multi-connector`, `ci-health`, `live-test-failure`, plus one
+`connector: <connect>` label per connect (generated — see
+[labeler.yml](labeler.yml)).
 
 Create the matching `connector: <connect>` label in GitHub whenever
 `workspace:sync` adds a new connect to [labeler.yml](labeler.yml).
@@ -40,6 +41,13 @@ Create the matching `connector: <connect>` label in GitHub whenever
 - JSR publishing uses tokenless OIDC (`id-token: write`) — no publish token
   needed once the JSR package is linked to this repo.
 - `SONAR_TOKEN` / `CODECOV_TOKEN` if SonarQube/Codecov reporting is enabled.
+- `CONNECTOR_<NAME>_<FIELD>` — real (or sandbox) vendor credentials for
+  `workflows/live-tests.yml`'s monthly live-vendor test run, same names as
+  `.env.sample` (e.g. `CONNECTOR_COINGECKO_API_KEY`). Optional and
+  independent per connector — set only the ones you have credentials for;
+  a connector with none configured simply skips its live tests, same as
+  locally. See `.env.sample` for the full current list and
+  `CONVENTIONS.md`'s "Tests" section for how they're consumed.
 
 ## Security settings
 

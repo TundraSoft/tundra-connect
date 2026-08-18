@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { GuardianError } from '@guardian';
 import { Sentry } from './Sentry.ts';
 import { SentryError } from './errors/mod.ts';
@@ -470,4 +471,54 @@ describe('Sentry', () => {
       false,
     );
   });
+});
+
+// =============================================================================
+// Live tests — run only when real Sentry credentials are present in the
+// environment. Skipped (not failed) otherwise, and on Bun/Node regardless of
+// credentials — this suite is Deno-only.
+// =============================================================================
+
+const env = envArgs();
+const credentials = {
+  token: env.get('CONNECTOR_SENTRY_TOKEN'),
+  organization: env.get('CONNECTOR_SENTRY_ORGANIZATION'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'Sentry — live',
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('lists real projects, then real issues for the first project found', async () => {
+      const client = new Sentry({
+        auth: { type: 'BEARER', token: credentials.token! },
+        organization: credentials.organization!,
+      });
+
+      const projectsPage = await client.listProjects();
+      asserts.assertEquals(Array.isArray(projectsPage.projects), true);
+
+      const firstProject = projectsPage.projects[0];
+      if (!firstProject) {
+        // Nothing further to check against an org with zero projects —
+        // listIssues needs at least one project to scope to, and this
+        // test can't safely assume one exists.
+        return;
+      }
+
+      const issuesPage = await client.listIssues({
+        project: [firstProject.slug],
+      });
+      asserts.assertEquals(Array.isArray(issuesPage.issues), true);
+
+      // updateIssue, createRelease, getIssue, and listIssueEvents are
+      // deliberately NOT exercised here: updateIssue/createRelease mutate
+      // real triage state on a real org with no undo, and
+      // getIssue/listIssueEvents need a pre-existing disposable issue id
+      // this test can't safely assume exists.
+    });
+  },
 });

@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { Telegram } from './Telegram.ts';
 import { TelegramError } from './errors/mod.ts';
 
@@ -465,4 +466,58 @@ describe('Telegram', () => {
       );
     });
   });
+});
+
+// ---------------------------------------------------------------------------
+// Live test — exercises the real Telegram Bot API. Skipped entirely unless
+// CONNECTOR_TELEGRAM_BOT_TOKEN/CONNECTOR_TELEGRAM_CHAT_ID are both set (via
+// env or a `.env` file — see `envArgs`). `getMe` is a read-only identity
+// check with no visible side effect, so it runs on credentials alone;
+// `sendMessage` (there is no delete-message method on this connect) posts
+// a real, visible message and additionally requires
+// LIVE_TEST_ALLOW_VISIBLE_EFFECTS.
+// ---------------------------------------------------------------------------
+const env = envArgs();
+const credentials = {
+  botToken: env.get('CONNECTOR_TELEGRAM_BOT_TOKEN'),
+  chatId: env.get('CONNECTOR_TELEGRAM_CHAT_ID'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
+
+describe({
+  name: 'Telegram — live (getMe)',
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('fetches the real bot identity', async () => {
+      const client = new Telegram({ botToken: credentials.botToken! });
+
+      const me = await client.getMe();
+
+      asserts.assertEquals(me.is_bot, true);
+    });
+  },
+});
+
+// Sends a real, visible message — gated behind LIVE_TEST_ALLOW_VISIBLE_EFFECTS
+// so it never fires on the unattended monthly schedule.
+describe({
+  name: 'Telegram — live (sendMessage)',
+  ignore: !liveTestsEnabled || !visibleEffectsAllowed,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('sends a real message to the configured chat', async () => {
+      const client = new Telegram({ botToken: credentials.botToken! });
+
+      const message = await client.sendMessage({
+        chat_id: credentials.chatId!,
+        text: `[tundra-connect live test — ${new Date().toISOString()}]`,
+      });
+
+      asserts.assertExists(message.message_id);
+    });
+  },
 });

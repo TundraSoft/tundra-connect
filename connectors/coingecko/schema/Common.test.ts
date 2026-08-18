@@ -24,10 +24,15 @@ describe('CoinGecko.schema.Common', () => {
 
   it('rejects invalid common values', () => {
     asserts.assertExists(coinIdGuard.safeParse('')[0]);
-    asserts.assertExists(coinSymbolGuard.safeParse('')[0]);
     asserts.assertExists(coinNameGuard.safeParse('')[0]);
     asserts.assertExists(
       RoiSchemaObject.safeParse({ times: 'a lot', currency: 'usd' })[0],
     );
+  });
+
+  it('allows an empty coin symbol', () => {
+    // CoinGecko's real /coins/list response includes a small number of
+    // listings with an empty symbol (e.g. `basket-2`) — see coinSymbolGuard.
+    asserts.assertEquals(coinSymbolGuard.safeParse('')[0], null);
   });
 });

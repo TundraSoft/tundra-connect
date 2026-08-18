@@ -1,5 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { Stripe } from './Stripe.ts';
 import { StripeError } from './errors/mod.ts';
 
@@ -612,4 +613,59 @@ describe('Stripe', () => {
       asserts.assertEquals(intent.id, validPaymentIntent.id);
     });
   });
+});
+
+// ---------------------------------------------------------------------------
+// Live test — exercises the real Stripe API in test mode. Skipped entirely
+// unless CONNECTOR_STRIPE_SECRET_KEY is set (via env or a `.env` file — see
+// `envArgs`) to a real `sk_test_...` key, which is never the case in
+// CI/sandboxed environments, so this never runs unattended.
+//
+// This connect exposes no cleanup method for a PaymentIntent (there is no
+// "delete" endpoint here) — the created PaymentIntent is intentionally left
+// behind. It's harmless: the amount is never captured/charged, and it's
+// only ever visible in the account's own Stripe *test-mode* Dashboard
+// (`livemode: false`, asserted below), never live data and never seen by a
+// third party.
+// ---------------------------------------------------------------------------
+
+const env = envArgs();
+const credentials = {
+  secretKey: env.get('CONNECTOR_STRIPE_SECRET_KEY'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'Stripe — live',
+  // Deno only: Bun/Node each get their own connect-wide live-test job
+  // (see the repo's CI matrix), so this suite only registers on Deno — it
+  // must not double-run the same live assertions three times.
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('creates a real test-mode PaymentIntent against the Stripe API', async () => {
+      const client = new Stripe({
+        auth: {
+          type: 'BASIC',
+          username: credentials.secretKey!,
+          password: '',
+        },
+      });
+
+      const intent = await client.createPaymentIntent({
+        amount: 100,
+        currency: 'usd',
+      });
+
+      asserts.assertEquals(intent.object, 'payment_intent');
+      asserts.assertEquals(intent.amount, 100);
+      asserts.assertEquals(intent.currency, 'usd');
+      // Surfaces a clear failure (rather than silently passing) if the
+      // configured key was accidentally a live key instead of test-mode —
+      // note this only flags it after the PaymentIntent already exists,
+      // it can't prevent the create call itself.
+      asserts.assertEquals(intent.livemode, false);
+    });
+  },
 });

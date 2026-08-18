@@ -822,3 +822,117 @@ describe('Twilio', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Live tests — exercise the real Twilio REST API against a live account.
+// Skipped entirely unless CONNECTOR_TWILIO_ACCOUNT_SID/
+// CONNECTOR_TWILIO_AUTH_TOKEN/CONNECTOR_TWILIO_FROM_NUMBER/
+// CONNECTOR_TWILIO_TO_NUMBER are all set (via env or a `.env` file — see
+// `envArgs`), which is never the case in CI/sandboxed environments, so
+// these never run unattended.
+// ---------------------------------------------------------------------------
+import { envArgs } from '@utils';
+
+const env = envArgs();
+const credentials = {
+  accountSid: env.get('CONNECTOR_TWILIO_ACCOUNT_SID'),
+  authToken: env.get('CONNECTOR_TWILIO_AUTH_TOKEN'),
+  fromNumber: env.get('CONNECTOR_TWILIO_FROM_NUMBER'),
+  toNumber: env.get('CONNECTOR_TWILIO_TO_NUMBER'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
+
+describe({
+  name: 'Twilio — live (read-only)',
+  // Deno only: Bun/Node each get their own connect-wide live-test job (see
+  // the repo's CI matrix), so this suite only registers on Deno — it must
+  // not double-run the same live assertions three times.
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('lists real calls from the configured Twilio account (an empty page is still a valid result)', async () => {
+      const client = new Twilio({
+        accountSid: credentials.accountSid!,
+        authToken: credentials.authToken!,
+      });
+      const page = await client.listCalls({ pageSize: 5 });
+      asserts.assertExists(page.calls);
+    });
+
+    it('fetches a real call by SID when one exists (skips otherwise)', async () => {
+      const client = new Twilio({
+        accountSid: credentials.accountSid!,
+        authToken: credentials.authToken!,
+      });
+      const page = await client.listCalls({ pageSize: 1 });
+      const existing = page.calls[0];
+      if (!existing) {
+        // No calls exist yet on this account — nothing to fetch, which is
+        // itself a valid, safe outcome.
+        return;
+      }
+      const call = await client.getCall(existing.sid);
+      asserts.assertEquals(call.sid, existing.sid);
+    });
+  },
+});
+
+// Twilio has no separate sandbox host — test credentials hit the same API
+// and are distinguished only by using Twilio's documented "magic" test
+// phone numbers, which simulate delivery with zero real cost/delivery.
+// Verified live against Twilio's own docs
+// (https://www.twilio.com/docs/iam/test-credentials) as of 2026-08:
+//   - `+15005550006` is the only "From" number that passes validation with
+//     no error, for both SMS and Voice, when authenticated with a Twilio
+//     *Test* Account SID/Auth Token pair (a separate credential pair Twilio
+//     issues alongside live credentials — real credentials do not get this
+//     treatment). Any other "From" fails with error 21606 (SMS) under test
+//     credentials.
+//   - Under test credentials, any syntactically-valid E.164 "To" number is
+//     accepted without an actual SMS/call ever being placed; specific "To"
+//     values (e.g. `+15005550001`) instead simulate specific documented
+//     failures for negative testing.
+// To run this block without incurring a real SMS/call: set
+// CONNECTOR_TWILIO_ACCOUNT_SID/CONNECTOR_TWILIO_AUTH_TOKEN to your Twilio
+// *Test* credentials (not your live ones) and CONNECTOR_TWILIO_FROM_NUMBER
+// to `+15005550006`.
+//
+// Even with Twilio's documented test credentials/magic numbers, this is
+// gated behind LIVE_TEST_ALLOW_VISIBLE_EFFECTS since the connect can't
+// verify which number type — magic/test or real/live — is actually
+// configured.
+describe({
+  name: 'Twilio — live (visible effect: sendMessage / createCall)',
+  ignore: !liveTestsEnabled || !visibleEffectsAllowed,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('sends a real (or, with test credentials + magic numbers, simulated) SMS', async () => {
+      const client = new Twilio({
+        accountSid: credentials.accountSid!,
+        authToken: credentials.authToken!,
+      });
+      const message = await client.sendMessage({
+        to: credentials.toNumber!,
+        from: credentials.fromNumber!,
+        body: `[tundra-connect live test — ${new Date().toISOString()}]`,
+      });
+      asserts.assertExists(message.sid);
+    });
+
+    it('creates a real (or, with test credentials + magic numbers, simulated) call', async () => {
+      const client = new Twilio({
+        accountSid: credentials.accountSid!,
+        authToken: credentials.authToken!,
+      });
+      const call = await client.createCall({
+        to: credentials.toNumber!,
+        from: credentials.fromNumber!,
+        url: 'http://demo.twilio.com/docs/voice.xml',
+      });
+      asserts.assertExists(call.sid);
+    });
+  },
+});

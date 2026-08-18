@@ -786,3 +786,71 @@ describe('AzureBlob', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Live test — exercises a real Azure Blob Storage container over the
+// network. Skipped entirely unless CONNECTOR_AZURE_BLOB_ACCOUNT/
+// CONNECTOR_AZURE_BLOB_ACCOUNT_KEY/CONNECTOR_AZURE_BLOB_TEST_CONTAINER are
+// all set (via env or a `.env` file — see `envArgs`), which is never the
+// case in CI/sandboxed environments, so this never runs unattended.
+//
+// This is the "mutating operation, self-cleaning, but needs a
+// pre-existing external resource" pattern: unlike a resource this suite
+// could safely create-then-delete itself (e.g. a throwaway blob), a
+// *container* is provisioned out-of-band and just referenced by name here
+// — creating/deleting a real container on every test run is unsafe
+// (propagation delays, accidental collisions with other containers, etc).
+// Only the blob this test itself creates is cleaned up, in a `finally`, so
+// nothing lingers in the container even if the putObject/getObject call or
+// the assertion in between throws.
+// ---------------------------------------------------------------------------
+import { envArgs } from '@utils';
+
+const env = envArgs();
+const credentials = {
+  account: env.get('CONNECTOR_AZURE_BLOB_ACCOUNT'),
+  accountKey: env.get('CONNECTOR_AZURE_BLOB_ACCOUNT_KEY'),
+  testContainer: env.get('CONNECTOR_AZURE_BLOB_TEST_CONTAINER'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: 'AzureBlob — live',
+  // Deno only: Bun/Node each get their own connect-wide live-test job
+  // (see the repo's CI matrix), so this suite only registers on Deno —
+  // it must not double-run the same live assertions three times.
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('puts and gets a real blob against the live container, then cleans up', async () => {
+      const client = new AzureBlob({
+        auth: {
+          type: 'CUSTOM',
+          account: credentials.account!,
+          accountKey: credentials.accountKey!,
+        },
+      });
+      const key = `tundra-connect-live-test-${Date.now()}.txt`;
+      try {
+        await client.putObject({
+          bucket: credentials.testContainer!,
+          key,
+          body: new TextEncoder().encode('live test'),
+        });
+        const object = await client.getObject({
+          bucket: credentials.testContainer!,
+          key,
+        });
+        asserts.assertEquals(await object.body.text(), 'live test');
+      } finally {
+        // Runs even if putObject/getObject/the assertion above threw, so a
+        // failed assertion never leaves a stray blob in the real container.
+        await client.deleteObject({
+          bucket: credentials.testContainer!,
+          key,
+        });
+      }
+    });
+  },
+});

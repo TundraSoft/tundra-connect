@@ -636,6 +636,7 @@ export class ${className} extends RESTler<${className}Options> {
 function genConnectClassTest(name: string, className: string): string {
   return `import * as asserts from '@asserts';
 import { describe, it } from '@test';
+import { envArgs } from '@utils';
 import { ${className} } from './${className}.ts';
 
 class Mock${className} extends ${className} {
@@ -683,6 +684,30 @@ describe('${className}', () => {
     });
     asserts.assertEquals(client.vendor, '${className}');
   });
+});
+
+// TODO: fill in this connect's real credential fields (see CONVENTIONS.md's
+// "Tests" section) and at least one real method call once endpoints exist.
+// Add the matching CONNECTOR_${name.toUpperCase().replace(/-/g, '_')}_* vars
+// to .env.sample once the field names below are real.
+const env = envArgs();
+const credentials = {
+  // TODO: e.g. apiKey: env.get('CONNECTOR_${
+    name.toUpperCase().replace(/-/g, '_')
+  }_API_KEY'),
+};
+const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe({
+  name: '${className} — live',
+  ignore: !liveTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('TODO: replace with a real call against the vendor', () => {
+      asserts.assertEquals(liveTestsEnabled, true);
+    });
+  },
 });
 `;
 }
@@ -985,6 +1010,7 @@ vendor API it wraps.
 ![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
 ![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
 ![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
+![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
 
 ## Overview
 
