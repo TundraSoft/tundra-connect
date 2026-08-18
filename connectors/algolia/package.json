@@ -1,0 +1,17 @@
+{
+  "name": "@tundraconnect/algolia",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Algolia Search REST API client for search, indexing, and index browsing",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@tundralibs/utils": "npm:@jsr/tundralibs__utils@^1.0.5"
+  }
+}

@@ -12,6 +12,9 @@ documentation:
   - changed-files:
       - any-glob-to-any-file: ['**/README.md', '**/CHANGELOG.md']
 
+'connector: algolia':
+  - changed-files:
+      - any-glob-to-any-file: connectors/algolia/**
 'connector: azure-blob':
   - changed-files:
       - any-glob-to-any-file: connectors/azure-blob/**
@@ -45,6 +48,9 @@ documentation:
 'connector: sendgrid':
   - changed-files:
       - any-glob-to-any-file: connectors/sendgrid/**
+'connector: sentry':
+  - changed-files:
+      - any-glob-to-any-file: connectors/sentry/**
 'connector: slack':
   - changed-files:
       - any-glob-to-any-file: connectors/slack/**
@@ -57,3 +63,6 @@ documentation:
 'connector: twilio':
   - changed-files:
       - any-glob-to-any-file: connectors/twilio/**
+'connector: upstash-redis':
+  - changed-files:
+      - any-glob-to-any-file: connectors/upstash-redis/**

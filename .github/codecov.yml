@@ -13,6 +13,10 @@ coverage:
 
 component_management:
   individual_components:
+      - component_id: algolia
+        name: algolia
+        paths:
+          - connectors/algolia/**
       - component_id: azure-blob
         name: azure-blob
         paths:
@@ -57,6 +61,10 @@ component_management:
         name: sendgrid
         paths:
           - connectors/sendgrid/**
+      - component_id: sentry
+        name: sentry
+        paths:
+          - connectors/sentry/**
       - component_id: slack
         name: slack
         paths:
@@ -73,6 +81,10 @@ component_management:
         name: twilio
         paths:
           - connectors/twilio/**
+      - component_id: upstash-redis
+        name: upstash-redis
+        paths:
+          - connectors/upstash-redis/**
 
 ignore:
   - '**/*.test.ts'

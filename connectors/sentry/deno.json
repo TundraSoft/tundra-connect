@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/sentry",
+  "version": "0.0.0",
+  "description": "Sentry organization/project REST API client for issues, projects, and releases",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.0.5"
+  }
+}

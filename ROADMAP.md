@@ -51,6 +51,23 @@ Popular processors developers reach for when shipping an app fast:
   or Cloudflare Workers. Scope it to Deno/Bun/Node only and call that out
   explicitly in its README.
 
+## Observability
+
+- **Sentry** — implemented, see the [`sentry`](connectors/sentry/README.md)
+  connect (issues/releases via Sentry's organization REST API, not the
+  DSN-based event-ingestion protocol — see its docs for why)
+
+## Search
+
+- **Algolia** — implemented, see the [`algolia`](connectors/algolia/README.md)
+  connect
+
+## Data & caching
+
+- **Upstash Redis** — implemented, see the
+  [`upstash-redis`](connectors/upstash-redis/README.md) connect (REST-based
+  Redis, Web-API-only — no TCP client needed)
+
 ## Object storage
 
 - **DigitalOcean Spaces** — S3-API-compatible; supported today via the

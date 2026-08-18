@@ -45,6 +45,18 @@
     }
   ],
   "packages": {
+    "connectors/algolia": {
+      "release-type": "node",
+      "component": "algolia",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/azure-blob": {
       "release-type": "node",
       "component": "azure-blob",
@@ -177,6 +189,18 @@
         }
       ]
     },
+    "connectors/sentry": {
+      "release-type": "node",
+      "component": "sentry",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/slack": {
       "release-type": "node",
       "component": "slack",
@@ -216,6 +240,18 @@
     "connectors/twilio": {
       "release-type": "node",
       "component": "twilio",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "connectors/upstash-redis": {
+      "release-type": "node",
+      "component": "upstash-redis",
       "bump-minor-pre-major": true,
       "extra-files": [
         {

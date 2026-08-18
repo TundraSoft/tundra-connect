@@ -30,6 +30,13 @@ layout, error, schema, and naming conventions every connect must follow.
 deno task workspace:add <connect-name>
 ```
 
+`<connect-name>` is always lowercased for the directory/package name. For the
+display/class name: type it with the exact casing you want (`add PayPal`,
+`add GCS`) to preserve it verbatim, or type it in the traditional
+all-lowercase, hyphen-separated style (`add azure-blob`) to have each segment
+auto-capitalized (`AzureBlob`). Got the casing wrong either way? Hand-edit
+that entry, then run `deno task workspace:sync`.
+
 This scaffolds a full starting skeleton under `connectors/<connect-name>/`,
 matching CONVENTIONS.md's "Connect (connector) layout" — `deno.json` +
 `package.json` (with the `.`/`./schemas`/`./errors` `exports` map already

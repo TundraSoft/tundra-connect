@@ -16,6 +16,15 @@
  *   deno run --allow-read --allow-write --allow-run=deno .github/scripts/workspace.ts add <name>
  *   deno run --allow-read --allow-write .github/scripts/workspace.ts remove <name>
  *   deno run --allow-read --allow-write .github/scripts/workspace.ts sync [--check]
+ *
+ * `<name>` for `add` is always lowercased for the directory/package name.
+ * For the display/class name: type it with the exact casing you want
+ * (`add PayPal`, `add GCS`) to preserve it verbatim, or type it in the
+ * traditional all-lowercase, hyphen-separated style (`add azure-blob`) to
+ * have each segment auto-capitalized (`AzureBlob`) — see
+ * `deriveDisplayName`'s doc comment. Got the casing wrong either way?
+ * Hand-edit `.github/workspace-meta.json`, then run `deno task
+ * workspace:sync`.
  */
 
 import { fromFileUrl } from 'jsr:@std/path@^1.1.6';
@@ -23,7 +32,7 @@ import { fromFileUrl } from 'jsr:@std/path@^1.1.6';
 const ROOT = fromFileUrl(new URL('../../', import.meta.url));
 const CONNECTORS_DIR = 'connectors';
 const SCOPE = '@tundraconnect';
-const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
+const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9-]*$/;
 
 type WorkspaceMeta = Record<string, string>;
 
@@ -47,8 +56,24 @@ async function readText(file: string): Promise<string> {
   }
 }
 
-function toDisplayName(dir: string): string {
-  return dir
+/**
+ * Derives the display/class name `add` records for a connect from the name
+ * typed on the command line.
+ *
+ * If the typed name has any uppercase letter, the caller has spelled out
+ * exactly the casing they want (`PayPal`, `GCS`) — preserve it verbatim,
+ * only stripping `-`/`_` separators (illegal in a TS class identifier; the
+ * lowercased directory name keeps them). Otherwise the name was typed in
+ * the traditional all-lowercase, hyphen-separated style (`azure-blob`,
+ * `upstash-redis`) — auto-capitalize each segment, same as every existing
+ * connect. Either way, hand-edit `.github/workspace-meta.json` afterward
+ * and re-run `deno task workspace:sync` if the result isn't quite right.
+ */
+function deriveDisplayName(rawName: string): string {
+  if (/[A-Z]/.test(rawName)) {
+    return rawName.replace(/[-_]/g, '');
+  }
+  return rawName
     .split(/[-_]/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join('');
@@ -1018,9 +1043,8 @@ MIT
 // Commands
 // ---------------------------------------------------------------------------
 
-async function scaffold(name: string): Promise<void> {
+async function scaffold(name: string, className: string): Promise<void> {
   const dir = path(`${CONNECTORS_DIR}/${name}`);
-  const className = toDisplayName(name);
 
   await Deno.mkdir(dir, { recursive: true });
   await Deno.mkdir(`${dir}/docs`, { recursive: true });
@@ -1102,13 +1126,18 @@ async function scaffold(name: string): Promise<void> {
   }
 }
 
-async function add(name: string): Promise<void> {
-  if (!NAME_PATTERN.test(name)) {
+async function add(rawName: string): Promise<void> {
+  if (!NAME_PATTERN.test(rawName)) {
     console.error(
-      `Invalid connect name '${name}' — must match ${NAME_PATTERN}`,
+      `Invalid connect name '${rawName}' — must match ${NAME_PATTERN}`,
     );
     Deno.exit(1);
   }
+  // The typed name's lowercased form is the directory and package name;
+  // its display/class name is derived per deriveDisplayName's doc comment
+  // — see also the file-header usage note.
+  const displayName = deriveDisplayName(rawName);
+  const name = rawName.toLowerCase();
   const meta = await loadMeta();
   if (meta[name]) {
     console.error(`Connect '${name}' already exists.`);
@@ -1122,14 +1151,17 @@ async function add(name: string): Promise<void> {
     );
     Deno.exit(1);
   }
-  meta[name] = toDisplayName(name);
-  await scaffold(name);
+  meta[name] = displayName;
+  await scaffold(name, displayName);
   await saveMeta(meta);
   await applyGenerated(meta);
-  console.log(`Added connect '${name}' (${SCOPE}/${name}).`);
+  console.log(
+    `Added connect '${name}' (${SCOPE}/${name}, display name '${displayName}').`,
+  );
 }
 
-async function remove(name: string): Promise<void> {
+async function remove(rawName: string): Promise<void> {
+  const name = rawName.toLowerCase();
   const meta = await loadMeta();
   if (!meta[name]) {
     console.error(`Connect '${name}' is not registered.`);

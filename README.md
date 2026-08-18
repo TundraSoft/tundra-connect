@@ -15,6 +15,7 @@ structure and [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 
 ## 📦 Connects
 
+- **[Algolia](./connectors/algolia/README.md)** — [`@tundraconnect/algolia`](https://jsr.io/@tundraconnect/algolia) — Algolia Search REST API client for search, indexing, and index browsing
 - **[AzureBlob](./connectors/azure-blob/README.md)** — [`@tundraconnect/azure-blob`](https://jsr.io/@tundraconnect/azure-blob) — Azure Blob Storage REST API client with Shared Key (HMAC-SHA256) request signing
 - **[CoinGecko](./connectors/coingecko/README.md)** — [`@tundraconnect/coingecko`](https://jsr.io/@tundraconnect/coingecko) — CoinGecko API client for cryptocurrency price, market, and coin-list data
 - **[Discord](./connectors/discord/README.md)** — [`@tundraconnect/discord`](https://jsr.io/@tundraconnect/discord) — Discord REST API client for sending channel messages via webhooks or a bot token
@@ -26,10 +27,12 @@ structure and [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 - **[Razorpay](./connectors/razorpay/README.md)** — [`@tundraconnect/razorpay`](https://jsr.io/@tundraconnect/razorpay) — Typed client for the Razorpay REST API — Orders, Payments, and Payment Links.
 - **[S3](./connectors/s3/README.md)** — [`@tundraconnect/s3`](https://jsr.io/@tundraconnect/s3) — AWS S3 (and S3-compatible: R2, MinIO) object storage client with SigV4 request signing
 - **[SendGrid](./connectors/sendgrid/README.md)** — [`@tundraconnect/sendgrid`](https://jsr.io/@tundraconnect/sendgrid) — Twilio SendGrid API client for transactional email
+- **[Sentry](./connectors/sentry/README.md)** — [`@tundraconnect/sentry`](https://jsr.io/@tundraconnect/sentry) — Sentry organization/project REST API client for issues, projects, and releases
 - **[Slack](./connectors/slack/README.md)** — [`@tundraconnect/slack`](https://jsr.io/@tundraconnect/slack) — Slack Web API client for messaging, conversations, and users
 - **[Stripe](./connectors/stripe/README.md)** — [`@tundraconnect/stripe`](https://jsr.io/@tundraconnect/stripe) — Stripe REST API client for PaymentIntents and Customers
 - **[Telegram](./connectors/telegram/README.md)** — [`@tundraconnect/telegram`](https://jsr.io/@tundraconnect/telegram) — Telegram Bot API client for sending messages via bot HTTPS API
 - **[Twilio](./connectors/twilio/README.md)** — [`@tundraconnect/twilio`](https://jsr.io/@tundraconnect/twilio) — Twilio REST API client for sending SMS/MMS messages and placing/managing voice calls
+- **[UpstashRedis](./connectors/upstash-redis/README.md)** — [`@tundraconnect/upstash-redis`](https://jsr.io/@tundraconnect/upstash-redis) — Typed client for the Upstash Redis REST API — GET/SET/DEL/EXPIRE/INCR/hash/list commands plus pipelining.
 
 <!-- workspace:connectors:end -->
 

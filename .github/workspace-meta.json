@@ -1,4 +1,5 @@
 {
+  "algolia": "Algolia",
   "azure-blob": "AzureBlob",
   "coingecko": "CoinGecko",
   "discord": "Discord",
@@ -10,8 +11,10 @@
   "razorpay": "Razorpay",
   "s3": "S3",
   "sendgrid": "SendGrid",
+  "sentry": "Sentry",
   "slack": "Slack",
   "stripe": "Stripe",
   "telegram": "Telegram",
-  "twilio": "Twilio"
+  "twilio": "Twilio",
+  "upstash-redis": "UpstashRedis"
 }

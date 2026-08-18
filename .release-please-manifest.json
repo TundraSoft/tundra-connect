@@ -1,4 +1,5 @@
 {
+  "connectors/algolia": "0.0.0",
   "connectors/azure-blob": "0.0.0",
   "connectors/coingecko": "0.0.0",
   "connectors/discord": "0.0.0",
@@ -10,8 +11,10 @@
   "connectors/razorpay": "0.0.0",
   "connectors/s3": "0.0.0",
   "connectors/sendgrid": "0.0.0",
+  "connectors/sentry": "0.0.0",
   "connectors/slack": "0.0.0",
   "connectors/stripe": "0.0.0",
   "connectors/telegram": "0.0.0",
-  "connectors/twilio": "0.0.0"
+  "connectors/twilio": "0.0.0",
+  "connectors/upstash-redis": "0.0.0"
 }

@@ -10,6 +10,7 @@ body:
       label: Connect
       description: Which connect is this for? Choose "new connector" to propose a new vendor integration.
       options:
+        - Algolia
         - AzureBlob
         - CoinGecko
         - Discord
@@ -21,10 +22,12 @@ body:
         - Razorpay
         - S3
         - SendGrid
+        - Sentry
         - Slack
         - Stripe
         - Telegram
         - Twilio
+        - UpstashRedis
         - new connector
     validations:
       required: true
