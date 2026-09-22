@@ -88,6 +88,41 @@ class MockDodo extends DodoPayments {
   }
 }
 
+/** Serves a queued sequence of bodies, recording every request URL. */
+class PagingMockDodo extends DodoPayments {
+  public urls: string[] = [];
+  private pages: unknown[] = [];
+
+  /** Serves `first` once, then fails every later page with `status`. */
+  setThenFail(first: unknown, status: number, body: unknown): void {
+    let call = 0;
+    this._fetch = (input) => {
+      this.urls.push(String(input));
+      const failing = ++call > 1;
+      return Promise.resolve(
+        new Response(JSON.stringify(failing ? body : first), {
+          status: failing ? status : 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    };
+  }
+
+  setPages(pages: unknown[]): void {
+    this.pages = [...pages];
+    this._fetch = (input) => {
+      this.urls.push(String(input));
+      const body = this.pages.shift() ?? { items: [] };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    };
+  }
+}
+
 function client(body: unknown = PAYMENT, status = 200): MockDodo {
   const c = new MockDodo({ auth: AUTH });
   c.setResponse(body, status);
@@ -496,6 +531,189 @@ describe('DodoPayments — error mapping', () => {
       DodoPaymentsError,
     );
     asserts.assert(!JSON.stringify(err.toJSON()).includes('dodo-key'));
+  });
+});
+
+describe('DodoPayments — getCustomer', () => {
+  const CUSTOMER_RECORD = {
+    customer_id: 'cus_1',
+    business_id: 'biz_1',
+    email: 'buyer@example.com',
+    name: 'Ada',
+    created_at: '2026-01-01T00:00:00Z',
+  };
+
+  it('GETs the customer record by id', async () => {
+    const c = client(CUSTOMER_RECORD);
+    const customer = await c.getCustomer('cus_1');
+    asserts.assertEquals(c.request!.method, 'GET');
+    asserts.assert(c.request!.url.endsWith('/customers/cus_1'));
+    asserts.assertEquals(customer.email, 'buyer@example.com');
+    asserts.assertEquals(customer.created_at, '2026-01-01T00:00:00Z');
+  });
+
+  it('surfaces the blocklist fields the single-customer route resolves', async () => {
+    const c = client({
+      ...CUSTOMER_RECORD,
+      blocked_at: '2026-02-01T00:00:00Z',
+      blocklist_entry_id: 'blk_1',
+    });
+    const customer = await c.getCustomer('cus_1');
+    asserts.assertEquals(customer.blocked_at, '2026-02-01T00:00:00Z');
+  });
+
+  it('url-encodes the customer id', async () => {
+    const c = client(CUSTOMER_RECORD);
+    await c.getCustomer('cus/../admin');
+    asserts.assert(c.request!.url.includes('cus%2F..%2Fadmin'));
+  });
+
+  it('rejects a blank customer id without sending a request', async () => {
+    const c = client(CUSTOMER_RECORD);
+    const err = await asserts.assertRejects(
+      () => c.getCustomer('  '),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('maps a 404 to NOT_FOUND', async () => {
+    const c = client({ code: 'NOT_FOUND', message: 'no such customer' }, 404);
+    const err = await asserts.assertRejects(
+      () => c.getCustomer('cus_missing'),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'NOT_FOUND');
+  });
+});
+
+describe('DodoPayments — auto-paging', () => {
+  const item = (id: string) => ({
+    payment_id: id,
+    brand_id: 'brd_1',
+    total_amount: 100,
+    currency: 'USD',
+    customer: CUSTOMER,
+    created_at: '2026-01-01T00:00:00Z',
+    digital_products_delivered: true,
+    metadata: {},
+    status: 'succeeded',
+  });
+
+  function pager(): PagingMockDodo {
+    return new PagingMockDodo({ auth: AUTH });
+  }
+
+  it('walks every page and yields items in order', async () => {
+    const c = pager();
+    c.setPages([
+      { items: [item('pay_1'), item('pay_2')] },
+      { items: [item('pay_3')] },
+      { items: [] },
+    ]);
+    const seen: string[] = [];
+    for await (
+      const p of c.listAllPayments({ customerId: 'cus_1', pageSize: 2 })
+    ) {
+      seen.push(p.payment_id);
+    }
+    asserts.assertEquals(seen, ['pay_1', 'pay_2', 'pay_3']);
+  });
+
+  it('omits page_number on the first request, then sends 2, 3 — matching the vendor SDK', async () => {
+    const c = pager();
+    c.setPages([
+      { items: [item('pay_1')] },
+      { items: [item('pay_2')] },
+      { items: [] },
+    ]);
+    await Array.fromAsync(c.listAllPayments({ pageSize: 1 }));
+    asserts.assertEquals(c.urls.length, 3);
+    asserts.assert(!c.urls[0]!.includes('page_number'), c.urls[0]);
+    asserts.assert(c.urls[1]!.includes('page_number=2'), c.urls[1]);
+    asserts.assert(c.urls[2]!.includes('page_number=3'), c.urls[2]);
+  });
+
+  it('carries the filters through to every page', async () => {
+    const c = pager();
+    c.setPages([{ items: [item('pay_1')] }, { items: [] }]);
+    await Array.fromAsync(
+      c.listAllPayments({
+        customerId: 'cus_1',
+        status: 'succeeded',
+        pageSize: 1,
+      }),
+    );
+    for (const url of c.urls) {
+      asserts.assert(url.includes('customer_id=cus_1'), url);
+      asserts.assert(url.includes('status=succeeded'), url);
+    }
+  });
+
+  it('stops on an EMPTY page, not a short one — surviving a clamped page_size', async () => {
+    const c = pager();
+    // Asked for 100; the vendor clamps to 2. A short-page check would stop
+    // after page one and silently truncate the history.
+    c.setPages([
+      { items: [item('pay_1'), item('pay_2')] },
+      { items: [item('pay_3'), item('pay_4')] },
+      { items: [] },
+    ]);
+    const seen = await Array.fromAsync(c.listAllPayments({ pageSize: 100 }));
+    asserts.assertEquals(seen.length, 4);
+  });
+
+  it('yields nothing for a customer with no payments', async () => {
+    const c = pager();
+    c.setPages([{ items: [] }]);
+    asserts.assertEquals(
+      await Array.fromAsync(c.listAllPayments({ customerId: 'cus_none' })),
+      [],
+    );
+  });
+
+  it('honours maxPages so a page_number-ignoring endpoint cannot spin forever', async () => {
+    const c = pager();
+    // Every request returns the same full page — this never terminates on
+    // its own, which is exactly what the safety valve exists for.
+    c.setPages(Array.from({ length: 50 }, () => ({ items: [item('pay_x')] })));
+    const seen = await Array.fromAsync(
+      c.listAllPayments({ pageSize: 1, maxPages: 3 }),
+    );
+    asserts.assertEquals(seen.length, 3);
+    asserts.assertEquals(c.urls.length, 3);
+  });
+
+  it('walks subscriptions the same way', async () => {
+    const c = pager();
+    c.setPages([
+      { items: [SUBSCRIPTION] },
+      { items: [{ ...SUBSCRIPTION, subscription_id: 'sub_2' }] },
+      { items: [] },
+    ]);
+    const seen = await Array.fromAsync(
+      c.listAllSubscriptions({ customerId: 'cus_1', pageSize: 1 }),
+    );
+    asserts.assertEquals(seen.map((s) => s.subscription_id), [
+      'sub_1',
+      'sub_2',
+    ]);
+  });
+
+  it('propagates a vendor failure from a later page', async () => {
+    const c = pager();
+    c.setThenFail({ items: [item('pay_1')] }, 429, {
+      code: 'RATE_LIMITED',
+      message: 'slow down',
+    });
+    const iterator = c.listAllPayments({ pageSize: 1 });
+    asserts.assertEquals((await iterator.next()).value?.payment_id, 'pay_1');
+    const err = await asserts.assertRejects(
+      () => iterator.next(),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
   });
 });
 

@@ -105,6 +105,120 @@ single customer's order history.
 Returns the `items` array directly. List records are **lighter** than
 `getPayment`'s: no refunds, disputes or product cart.
 
+### `listAllPayments(options?)`
+
+Auto-paging counterpart to `listPayments` — an `AsyncGenerator` that walks
+every page.
+
+```ts
+for await (const p of client.listAllPayments({ customerId })) {
+  console.log(p.payment_id, p.status);
+}
+
+const all = await Array.fromAsync(client.listAllPayments({ customerId }));
+```
+
+Takes the same filters as `listPayments` minus `pageNumber` (it manages
+that), plus `maxPages`.
+
+| Option     | Default | Description                                  |
+| ---------- | ------- | -------------------------------------------- |
+| `pageSize` | `100`   | Requested per page; the vendor may clamp it. |
+| `maxPages` | `1000`  | Safety ceiling — see below.                  |
+
+Paging matches Dodo's own SDK exactly: the first request **omits**
+`page_number` (the vendor reads that as page one), and later requests send
+`2`, `3`, …
+
+Iteration stops on the first **empty** page, not a short one. The vendor
+may clamp `page_size` below what was asked for, and treating a clamped
+page as the last would silently truncate the history.
+
+`maxPages` exists for the one case that cannot terminate on its own: an
+endpoint that ignored `page_number` and kept returning the same full page
+would spin forever against a rate-limited, money-handling API.
+
+> Prefer `listPayments` when one page is enough — the iterator issues one
+> request per page.
+
+## Customers
+
+### `getCustomer(customerId)`
+
+`GET /customers/{customer_id}` — the full customer record.
+
+```ts
+const customer = await client.getCustomer('cus_1');
+customer.email;
+customer.created_at;
+customer.blocked_at; // set only when the merchant blocked them
+```
+
+Richer than the customer summary embedded in a payment or subscription: it
+adds `business_id`, `created_at` and the blocklist fields.
+
+> `blocked_at` is resolved **only** by this single-customer route — the
+> vendor leaves it empty on list responses, so absent means "not
+> reported", not "not blocked".
+
+Where does `customer_id` come from? `createPayment` and
+`createSubscription` return it on `.customer` even when you identified the
+customer only by email. Store it then — it is the only place it is handed
+to you.
+
+## Querying by customer
+
+Both list methods take `customerId`, and **status comes back inline** — no
+follow-up fetch per record.
+
+```ts
+const [customer, payments, subscriptions] = await Promise.all([
+  client.getCustomer(customerId),
+  client.listPayments({ customerId, pageSize: 20 }),
+  client.listSubscriptions({ customerId }),
+]);
+```
+
+Filter server-side rather than paging and discarding:
+
+```ts
+await client.listPayments({ customerId, status: 'succeeded' });
+await client.listSubscriptions({ customerId, status: 'active' });
+```
+
+Charge history for one subscription:
+
+```ts
+await client.listPayments({ subscriptionId: 'sub_1' });
+```
+
+### Two asymmetries
+
+**Payment status is optional; subscription status is not.**
+
+```ts
+p.status; // IntentStatus | null | undefined  ← handle absent
+s.status; // SubscriptionStatus              ← always present
+```
+
+Never infer success from "not failed". Absent is _unknown_, and only
+`'succeeded'` means money moved.
+
+**The list records differ in weight.** `listSubscriptions` returns the
+_full_ subscription object — identical to `getSubscription`, so no
+follow-up is ever needed. `listPayments` returns a _lighter_ record,
+dropping `refunds`, `disputes`, `product_cart`, `billing` and
+`error_code` / `error_message`. Fetch detail only for the rows that need
+it:
+
+```ts
+const failed = payments.filter((p) => p.status === 'failed');
+const detailed = await Promise.all(
+  failed.map((p) => client.getPayment(p.payment_id)),
+);
+detailed[0]?.error_message; // 'The card was declined.'
+```
+
 ## Subscriptions
 
 ### `createSubscription(request)`
@@ -124,6 +238,17 @@ checkout at `payment_link`; the subscription sits in `pending` until then.
 
 `GET /subscriptions`. Same filter style as `listPayments`
 (`customerId`, `productId`, `brandId`, `status`, date bounds, paging).
+
+### `listAllSubscriptions(options?)`
+
+Auto-paging counterpart to `listSubscriptions`. Same paging, termination
+and `maxPages` rules as `listAllPayments`.
+
+```ts
+for await (const s of client.listAllSubscriptions({ customerId })) {
+  console.log(s.subscription_id, s.status);
+}
+```
 
 ### `cancelSubscription(subscriptionId, options?)`
 

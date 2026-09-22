@@ -5,6 +5,8 @@
 // Export main client class
 export {
   type CancelSubscriptionOptions,
+  DEFAULT_MAX_PAGES,
+  DEFAULT_PAGE_SIZE,
   DodoPayments,
   type DodoPaymentsAuth,
   type DodoPaymentsMode,

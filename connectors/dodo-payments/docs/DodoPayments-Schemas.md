@@ -26,6 +26,7 @@ import {
 | `BillingAddressSchemaObject`             | Billing address.                          |
 | `CustomerRequestSchemaObject`            | The `customer` field of a create request. |
 | `CustomerDetailsSchemaObject`            | The embedded customer summary.            |
+| `CustomerSchemaObject`                   | A full customer record (`getCustomer`).   |
 | `IntentStatusSchemaObject`               | Payment status enum.                      |
 | `SubscriptionStatusSchemaObject`         | Subscription status enum.                 |
 | `TimeIntervalSchemaObject`               | Billing recurrence unit.                  |
@@ -41,6 +42,19 @@ success — see [API](DodoPayments-API.md#ispaidpaymentid).
 
 `TimeIntervalSchema` is case-sensitive and capitalized: `Day`, `Week`,
 `Month`, `Year`. `'month'` is rejected.
+
+## `CustomerSchema` vs `CustomerDetailsSchema`
+
+Two different customer shapes, and it matters which you are holding:
+
+- **`CustomerDetailsSchema`** is the summary _embedded_ in a payment or
+  subscription — `customer_id`, `email`, `name`, optional phone/metadata.
+- **`CustomerSchema`** is the full record from `getCustomer`, adding
+  `business_id`, `created_at` and the blocklist fields.
+
+`blocked_at` is resolved only by the single-customer route; the vendor
+leaves it empty on list responses, so absent means "not reported", not
+"not blocked".
 
 ## `CustomerRequestSchema`
 

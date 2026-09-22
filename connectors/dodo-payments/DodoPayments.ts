@@ -18,6 +18,8 @@ import {
   CreateSubscriptionRequestSchemaObject,
   type CreateSubscriptionResponseSchema,
   CreateSubscriptionResponseSchemaObject,
+  type CustomerSchema,
+  CustomerSchemaObject,
   ErrorResponseSchemaObject,
   type PaymentListItemSchema,
   PaymentListSchemaObject,
@@ -35,6 +37,20 @@ export const LIVE_API = 'https://live.dodopayments.com';
 
 /** Which Dodo environment a client talks to. */
 export type DodoPaymentsMode = 'test' | 'live';
+
+/** Page size the auto-paging iterators request when the caller gives none. */
+export const DEFAULT_PAGE_SIZE = 100;
+
+/**
+ * Hard ceiling on how many pages an auto-paging iterator will fetch.
+ *
+ * Termination normally comes from an empty page. This exists for the case
+ * that cannot terminate on its own: an endpoint that ignores `page_number`
+ * and keeps returning the same full page would otherwise spin forever
+ * against a rate-limited, money-handling API. Raise it per-call via
+ * `maxPages` if you genuinely have more than this.
+ */
+export const DEFAULT_MAX_PAGES = 1000;
 
 /**
  * Dodo authenticates with a plain Bearer API key, so `BEARER` is the only
@@ -319,6 +335,87 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     return page.items;
   }
 
+  /**
+   * Walk EVERY payment matching `options`, transparently fetching each
+   * page — the auto-paging counterpart to {@link listPayments}.
+   *
+   * Pages are requested exactly the way Dodo's own SDK does: the first
+   * request omits `page_number` entirely (the vendor treats that as page
+   * one) and subsequent requests send `2`, `3`, … Iteration stops on the
+   * first EMPTY page rather than on a short one, because the vendor may
+   * clamp `page_size` below what was asked for — treating a clamped page
+   * as the last one would silently truncate the history.
+   *
+   * Prefer {@link listPayments} when you only need one page: this issues
+   * one request per page and the API is rate limited.
+   *
+   * @throws {DodoPaymentsError} The same codes as {@link listPayments},
+   * raised from whichever page fails.
+   *
+   * @example
+   * ```typescript
+   * for await (const payment of client.listAllPayments({ customerId })) {
+   *   console.log(payment.payment_id, payment.status);
+   * }
+   *
+   * // Or collect them:
+   * const all = await Array.fromAsync(client.listAllPayments({ customerId }));
+   * ```
+   */
+  public async *listAllPayments(
+    options: Omit<ListPaymentsOptions, 'pageNumber'> & { maxPages?: number } =
+      {},
+  ): AsyncGenerator<PaymentListItemSchema, void, unknown> {
+    const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
+    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+    let pageNumber: number | undefined;
+    for (let fetched = 0; fetched < maxPages; fetched++) {
+      const page = await this.listPayments({
+        ...filters,
+        pageSize,
+        pageNumber,
+      });
+      if (page.length === 0) return;
+      for (const item of page) yield item;
+      pageNumber = (pageNumber ?? 1) + 1;
+    }
+  }
+
+  // ── Customers ───────────────────────────────────────────────────────────
+
+  /**
+   * Fetch one customer's record — `GET /customers/{customer_id}`.
+   *
+   * Richer than the customer summary embedded in a payment or
+   * subscription: this carries `created_at` and the blocklist fields. Use
+   * it to render a customer profile alongside their payment and
+   * subscription history.
+   *
+   * The `customer_id` comes from the create call that first saw them —
+   * `createPayment`/`createSubscription` return it on `.customer` even
+   * when the customer was specified only by email. Store it then; it is
+   * the only place it is handed to you.
+   *
+   * @throws {DodoPaymentsError} `NOT_FOUND` when no such customer exists,
+   * plus the usual vendor and validation codes.
+   *
+   * @example
+   * ```typescript
+   * const customer = await client.getCustomer('cus_1');
+   * console.log(customer.email, customer.created_at);
+   * ```
+   */
+  public async getCustomer(customerId: string): Promise<CustomerSchema> {
+    DodoPayments.__requireId(customerId, 'customerId');
+    return await this.__requestAndValidate(
+      {
+        path: `/customers/${encodeURIComponent(customerId)}`,
+        method: 'GET',
+      },
+      CustomerSchemaObject,
+    );
+  }
+
   // ── Subscriptions ───────────────────────────────────────────────────────
 
   /**
@@ -420,6 +517,42 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
       SubscriptionListSchemaObject,
     );
     return page.items;
+  }
+
+  /**
+   * Walk EVERY subscription matching `options`, transparently fetching
+   * each page — the auto-paging counterpart to
+   * {@link listSubscriptions}. Same paging and termination rules as
+   * {@link listAllPayments}.
+   *
+   * @throws {DodoPaymentsError} The same codes as
+   * {@link listSubscriptions}, raised from whichever page fails.
+   *
+   * @example
+   * ```typescript
+   * for await (const sub of client.listAllSubscriptions({ customerId })) {
+   *   console.log(sub.subscription_id, sub.status);
+   * }
+   * ```
+   */
+  public async *listAllSubscriptions(
+    options:
+      & Omit<ListSubscriptionsOptions, 'pageNumber'>
+      & { maxPages?: number } = {},
+  ): AsyncGenerator<SubscriptionSchema, void, unknown> {
+    const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
+    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+    let pageNumber: number | undefined;
+    for (let fetched = 0; fetched < maxPages; fetched++) {
+      const page = await this.listSubscriptions({
+        ...filters,
+        pageSize,
+        pageNumber,
+      });
+      if (page.length === 0) return;
+      for (const item of page) yield item;
+      pageNumber = (pageNumber ?? 1) + 1;
+    }
   }
 
   /**

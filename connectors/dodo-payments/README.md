@@ -19,11 +19,12 @@ behalf, which is why `billing.country` is required on every create call.
 This connect deliberately wraps the payment and subscription surface a
 checkout flow actually needs, not the vendor's full ~147-endpoint API.
 
-| Area          | Methods                                                                            |
-| ------------- | ---------------------------------------------------------------------------------- |
-| Payments      | `createPayment`, `getPayment`, `isPaid`, `listPayments`                            |
-| Subscriptions | `createSubscription`, `getSubscription`, `listSubscriptions`, `cancelSubscription` |
-| Webhooks      | `verifyWebhookSignature`                                                           |
+| Area          | Methods                                                                                                    |
+| ------------- | ---------------------------------------------------------------------------------------------------------- |
+| Payments      | `createPayment`, `getPayment`, `isPaid`, `listPayments`, `listAllPayments`                                 |
+| Subscriptions | `createSubscription`, `getSubscription`, `listSubscriptions`, `listAllSubscriptions`, `cancelSubscription` |
+| Customers     | `getCustomer`                                                                                              |
+| Webhooks      | `verifyWebhookSignature`                                                                                   |
 
 Two things this connect is opinionated about, both because getting them
 wrong costs real money:
@@ -56,11 +57,12 @@ console.log(created.payment_link); // send the buyer here
 
 ## Documentation
 
-| Topic                                   | Description                                |
-| --------------------------------------- | ------------------------------------------ |
-| [API](docs/DodoPayments-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/DodoPayments-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/DodoPayments-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                   | Description                                         |
+| --------------------------------------- | --------------------------------------------------- |
+| [Flows](docs/DodoPayments-Flows.md)     | End-to-end payment, subscription and customer flows |
+| [API](docs/DodoPayments-API.md)         | Client configuration and endpoint methods           |
+| [Errors](docs/DodoPayments-Errors.md)   | Error codes and diagnostic metadata                 |
+| [Schemas](docs/DodoPayments-Schemas.md) | Public Guardian schemas and inferred types          |
 
 ## Upstream
 
@@ -129,16 +131,7 @@ payment.total_amount; // 1999 === $19.99
 payment.error_message; // set when status is 'failed'
 ```
 
-### 3. Show a customer their history
-
-```ts
-const history = await client.listPayments({
-  customerId: 'cus_1',
-  pageSize: 20,
-});
-```
-
-### 4. Subscriptions
+### 3. Subscriptions
 
 ```ts
 const sub = await client.createSubscription({
@@ -168,6 +161,53 @@ ended.cancel_at_next_billing_date; // true
 > A period-end cancellation leaves `status` as `'active'` until the date
 > arrives. Read `cancel_at_next_billing_date`, not `status`, or you will
 > conclude the cancellation did not take.
+
+### 4. Show a customer what they have
+
+Both list methods take `customerId`, and status comes back inline — no
+follow-up fetch per record.
+
+```ts
+const [customer, payments, subscriptions] = await Promise.all([
+  client.getCustomer(customerId),
+  client.listPayments({ customerId, pageSize: 20 }),
+  client.listSubscriptions({ customerId }),
+]);
+
+const active = subscriptions.filter((s) => s.status === 'active');
+const paid = payments.filter((p) => p.status === 'succeeded');
+```
+
+Filter server-side instead of paging and discarding:
+
+```ts
+await client.listPayments({ customerId, status: 'succeeded' });
+await client.listSubscriptions({ customerId, status: 'active' });
+```
+
+Walk a full history with the auto-paging iterators:
+
+```ts
+for await (const p of client.listAllPayments({ customerId })) {
+  console.log(p.payment_id, p.status);
+}
+```
+
+Charge history for a single subscription:
+
+```ts
+const renewals = await client.listPayments({ subscriptionId: 'sub_1' });
+```
+
+Two things to know:
+
+- A payment's `status` is optional and nullable; a subscription's is
+  always present. Absent is _unknown_ — never infer success from "not
+  failed".
+- `listSubscriptions` returns the full subscription object, but
+  `listPayments` returns a lighter record without `refunds`, `disputes`,
+  `product_cart`, `billing` or `error_message`. Call `getPayment` for the
+  rows that need those.
 
 ### 5. Verify webhooks
 

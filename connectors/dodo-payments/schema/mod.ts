@@ -27,6 +27,7 @@ export {
   type CreateSubscriptionResponseSchema,
   CreateSubscriptionResponseSchemaObject,
 } from './CreateSubscription.ts';
+export { type CustomerSchema, CustomerSchemaObject } from './Customer.ts';
 export {
   type ErrorResponseSchema,
   ErrorResponseSchemaObject,
