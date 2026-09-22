@@ -20,10 +20,12 @@ structure and [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 - **[CoinGecko](./connectors/coingecko/README.md)** — [`@tundraconnect/coingecko`](https://jsr.io/@tundraconnect/coingecko) — CoinGecko API client for cryptocurrency price, market, and coin-list data
 - **[Discord](./connectors/discord/README.md)** — [`@tundraconnect/discord`](https://jsr.io/@tundraconnect/discord) — Discord REST API client for sending channel messages via webhooks or a bot token
 - **[GCS](./connectors/gcs/README.md)** — [`@tundraconnect/gcs`](https://jsr.io/@tundraconnect/gcs) — Google Cloud Storage JSON API client for object upload, download, listing, and metadata
+- **[Kalshi](./connectors/kalshi/README.md)** — [`@tundraconnect/kalshi`](https://jsr.io/@tundraconnect/kalshi) — Kalshi market data and RSA-PSS-authenticated trading API client
 - **[ntfy](./connectors/ntfy/README.md)** — [`@tundraconnect/ntfy`](https://jsr.io/@tundraconnect/ntfy) — ntfy.sh client for simple pub-sub push notifications
 - **[OpenExchange](./connectors/openexchange/README.md)** — [`@tundraconnect/openexchange`](https://jsr.io/@tundraconnect/openexchange) — OpenExchangeRates API client for currency exchange rates and conversions
 - **[OpenWeatherMap](./connectors/openweathermap/README.md)** — [`@tundraconnect/openweathermap`](https://jsr.io/@tundraconnect/openweathermap) — OpenWeatherMap API client for current weather conditions and 5-day/3-hour forecasts
 - **[PayPal](./connectors/paypal/README.md)** — [`@tundraconnect/paypal`](https://jsr.io/@tundraconnect/paypal) — Typed client for PayPal's REST API — Orders v2 create/get/capture and capture refunds, with automatic OAuth2 client-credentials token exchange.
+- **[Polymarket](./connectors/polymarket/README.md)** — [`@tundraconnect/polymarket`](https://jsr.io/@tundraconnect/polymarket) — Polymarket Gamma (market discovery) and CLOB (trading) API client
 - **[Razorpay](./connectors/razorpay/README.md)** — [`@tundraconnect/razorpay`](https://jsr.io/@tundraconnect/razorpay) — Typed client for the Razorpay REST API — Orders, Payments, and Payment Links.
 - **[S3](./connectors/s3/README.md)** — [`@tundraconnect/s3`](https://jsr.io/@tundraconnect/s3) — AWS S3 (and S3-compatible: R2, MinIO) object storage client with SigV4 request signing
 - **[SendGrid](./connectors/sendgrid/README.md)** — [`@tundraconnect/sendgrid`](https://jsr.io/@tundraconnect/sendgrid) — Twilio SendGrid API client for transactional email

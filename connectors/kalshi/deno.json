@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/kalshi",
+  "version": "0.0.0",
+  "description": "Kalshi market data and RSA-PSS-authenticated trading API client",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.0.5"
+  }
+}

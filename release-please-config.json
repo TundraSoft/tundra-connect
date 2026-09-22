@@ -105,6 +105,18 @@
         }
       ]
     },
+    "connectors/kalshi": {
+      "release-type": "node",
+      "component": "kalshi",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/ntfy": {
       "release-type": "node",
       "component": "ntfy",
@@ -144,6 +156,18 @@
     "connectors/paypal": {
       "release-type": "node",
       "component": "paypal",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "connectors/polymarket": {
+      "release-type": "node",
+      "component": "polymarket",
       "bump-minor-pre-major": true,
       "extra-files": [
         {

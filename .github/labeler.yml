@@ -27,6 +27,9 @@ documentation:
 'connector: gcs':
   - changed-files:
       - any-glob-to-any-file: connectors/gcs/**
+'connector: kalshi':
+  - changed-files:
+      - any-glob-to-any-file: connectors/kalshi/**
 'connector: ntfy':
   - changed-files:
       - any-glob-to-any-file: connectors/ntfy/**
@@ -39,6 +42,9 @@ documentation:
 'connector: paypal':
   - changed-files:
       - any-glob-to-any-file: connectors/paypal/**
+'connector: polymarket':
+  - changed-files:
+      - any-glob-to-any-file: connectors/polymarket/**
 'connector: razorpay':
   - changed-files:
       - any-glob-to-any-file: connectors/razorpay/**

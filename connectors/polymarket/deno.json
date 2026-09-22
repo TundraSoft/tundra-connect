@@ -1,0 +1,15 @@
+{
+  "name": "@tundraconnect/polymarket",
+  "version": "0.0.0",
+  "description": "Polymarket Gamma (market discovery) and CLOB (trading) API client",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.0.5",
+    "@noble/curves": "npm:@noble/curves@^2.3.0",
+    "@noble/hashes": "npm:@noble/hashes@^2.3.0"
+  }
+}

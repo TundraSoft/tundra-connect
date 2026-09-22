@@ -15,10 +15,12 @@ body:
         - CoinGecko
         - Discord
         - GCS
+        - Kalshi
         - ntfy
         - OpenExchange
         - OpenWeatherMap
         - PayPal
+        - Polymarket
         - Razorpay
         - S3
         - SendGrid

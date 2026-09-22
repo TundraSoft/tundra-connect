@@ -33,6 +33,10 @@ component_management:
         name: gcs
         paths:
           - connectors/gcs/**
+      - component_id: kalshi
+        name: kalshi
+        paths:
+          - connectors/kalshi/**
       - component_id: ntfy
         name: ntfy
         paths:
@@ -49,6 +53,10 @@ component_management:
         name: paypal
         paths:
           - connectors/paypal/**
+      - component_id: polymarket
+        name: polymarket
+        paths:
+          - connectors/polymarket/**
       - component_id: razorpay
         name: razorpay
         paths:
