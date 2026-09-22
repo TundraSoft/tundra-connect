@@ -18,12 +18,18 @@ documentation:
 'connector: azure-blob':
   - changed-files:
       - any-glob-to-any-file: connectors/azure-blob/**
+'connector: cloudflare-email':
+  - changed-files:
+      - any-glob-to-any-file: connectors/cloudflare-email/**
 'connector: coingecko':
   - changed-files:
       - any-glob-to-any-file: connectors/coingecko/**
 'connector: discord':
   - changed-files:
       - any-glob-to-any-file: connectors/discord/**
+'connector: dodo-payments':
+  - changed-files:
+      - any-glob-to-any-file: connectors/dodo-payments/**
 'connector: gcs':
   - changed-files:
       - any-glob-to-any-file: connectors/gcs/**

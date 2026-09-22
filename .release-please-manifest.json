@@ -1,8 +1,10 @@
 {
   "connectors/algolia": "0.0.0",
   "connectors/azure-blob": "0.0.0",
+  "connectors/cloudflare-email": "0.0.0",
   "connectors/coingecko": "0.0.0",
   "connectors/discord": "0.0.0",
+  "connectors/dodo-payments": "0.0.0",
   "connectors/gcs": "0.0.0",
   "connectors/kalshi": "0.0.0",
   "connectors/ntfy": "0.0.0",

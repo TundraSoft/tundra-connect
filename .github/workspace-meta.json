@@ -1,8 +1,10 @@
 {
   "algolia": "Algolia",
   "azure-blob": "AzureBlob",
+  "cloudflare-email": "CloudflareEmail",
   "coingecko": "CoinGecko",
   "discord": "Discord",
+  "dodo-payments": "DodoPayments",
   "gcs": "GCS",
   "kalshi": "Kalshi",
   "ntfy": "ntfy",

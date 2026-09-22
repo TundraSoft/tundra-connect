@@ -12,8 +12,10 @@ body:
       options:
         - Algolia
         - AzureBlob
+        - CloudflareEmail
         - CoinGecko
         - Discord
+        - DodoPayments
         - GCS
         - Kalshi
         - ntfy

@@ -21,6 +21,10 @@ component_management:
         name: azure-blob
         paths:
           - connectors/azure-blob/**
+      - component_id: cloudflare-email
+        name: cloudflare-email
+        paths:
+          - connectors/cloudflare-email/**
       - component_id: coingecko
         name: coingecko
         paths:
@@ -29,6 +33,10 @@ component_management:
         name: discord
         paths:
           - connectors/discord/**
+      - component_id: dodo-payments
+        name: dodo-payments
+        paths:
+          - connectors/dodo-payments/**
       - component_id: gcs
         name: gcs
         paths:

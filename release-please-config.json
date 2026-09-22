@@ -69,6 +69,18 @@
         }
       ]
     },
+    "connectors/cloudflare-email": {
+      "release-type": "node",
+      "component": "cloudflare-email",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/coingecko": {
       "release-type": "node",
       "component": "coingecko",
@@ -84,6 +96,18 @@
     "connectors/discord": {
       "release-type": "node",
       "component": "discord",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "connectors/dodo-payments": {
+      "release-type": "node",
+      "component": "dodo-payments",
       "bump-minor-pre-major": true,
       "extra-files": [
         {
