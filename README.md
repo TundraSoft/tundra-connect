@@ -20,7 +20,7 @@ structure and [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 - **[CloudflareEmail](./connectors/cloudflare-email/README.md)** — [`@tundraconnect/cloudflare-email`](https://jsr.io/@tundraconnect/cloudflare-email) — Cloudflare Email Sending REST API client for transactional email
 - **[CoinGecko](./connectors/coingecko/README.md)** — [`@tundraconnect/coingecko`](https://jsr.io/@tundraconnect/coingecko) — CoinGecko API client for cryptocurrency price, market, and coin-list data
 - **[Discord](./connectors/discord/README.md)** — [`@tundraconnect/discord`](https://jsr.io/@tundraconnect/discord) — Discord REST API client for sending channel messages via webhooks or a bot token
-- **[DodoPayments](./connectors/dodo-payments/README.md)** — [`@tundraconnect/dodo-payments`](https://jsr.io/@tundraconnect/dodo-payments) — TODO: Add description
+- **[DodoPayments](./connectors/dodo-payments/README.md)** — [`@tundraconnect/dodo-payments`](https://jsr.io/@tundraconnect/dodo-payments) — Dodo Payments client for payments, subscriptions, and webhook verification
 - **[GCS](./connectors/gcs/README.md)** — [`@tundraconnect/gcs`](https://jsr.io/@tundraconnect/gcs) — Google Cloud Storage JSON API client for object upload, download, listing, and metadata
 - **[Kalshi](./connectors/kalshi/README.md)** — [`@tundraconnect/kalshi`](https://jsr.io/@tundraconnect/kalshi) — Kalshi market data and RSA-PSS-authenticated trading API client
 - **[ntfy](./connectors/ntfy/README.md)** — [`@tundraconnect/ntfy`](https://jsr.io/@tundraconnect/ntfy) — ntfy.sh client for simple pub-sub push notifications
