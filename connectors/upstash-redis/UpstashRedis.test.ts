@@ -573,6 +573,24 @@ describe('UpstashRedis', () => {
 // regardless of credentials — this suite is Deno-only.
 // =============================================================================
 
+const clientFor = client;
+
+describe('UpstashRedis — rate limiting', () => {
+  it('classifies a 429 as RATE_LIMITED (not UNKNOWN_ERROR) and carries the retry hint', async () => {
+    const client = clientFor();
+    client.setResponse(JSON.stringify({ error: 'rate limited' }), 429, {
+      'content-type': 'application/json',
+      'retry-after': '5',
+    });
+    const err = await asserts.assertRejects(
+      () => client.get('k'),
+      UpstashRedisError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 5);
+  });
+});
+
 const env = envArgs();
 const credentials = {
   token: env.get('CONNECTOR_UPSTASH_REDIS_TOKEN'),

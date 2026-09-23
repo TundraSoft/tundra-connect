@@ -81,6 +81,14 @@ export const DiscordErrorCodes = {
   RESPONSE_ERROR: 'Discord API response failed schema validation.',
   SERVICE_UNAVAILABLE:
     'Discord service is currently unavailable (HTTP ${status}).',
+  WEBHOOK_INVALID_HEADERS:
+    'The interaction request is missing a required signature header: ${reason}',
+  WEBHOOK_TIMESTAMP_INVALID:
+    'The interaction timestamp is outside the allowed tolerance: ${reason}',
+  WEBHOOK_INVALID_KEY:
+    'The application Public Key is not a 64-character hex Ed25519 key.',
+  WEBHOOK_SIGNATURE_INVALID:
+    'The interaction signature does not match — treat this request as forged.',
 } as const;
 
 /** Valid Discord error code. */

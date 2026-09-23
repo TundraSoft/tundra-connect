@@ -48,6 +48,8 @@ export const RazorpayErrorCodes = {
     'The webhook request is missing a required signature header: ${reason}',
   WEBHOOK_SIGNATURE_INVALID:
     'The webhook signature does not match — treat this request as forged.',
+  RATE_LIMITED:
+    'Razorpay rate limit exceeded (HTTP ${status}) — retry after the hinted delay.',
 } as const;
 
 /** Valid Razorpay error code. */

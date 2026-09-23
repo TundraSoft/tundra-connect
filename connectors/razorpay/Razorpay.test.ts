@@ -73,6 +73,28 @@ class MockRazorpay extends Razorpay {
   private responseBody: unknown;
   private responseStatus = 200;
 
+  /** Like setResponse, but with explicit response headers — for rate-limit hints. */
+  setResponseWithHeaders(
+    body: unknown,
+    status: number,
+    headers: Record<string, string>,
+  ): void {
+    this._fetch = (input, init) => {
+      this.request = {
+        url: String(input),
+        method: init?.method,
+        headers: init?.headers as Record<string, string> | undefined,
+        body: init?.body as string | undefined,
+      };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json', ...headers },
+        }),
+      );
+    };
+  }
+
   setResponse(body: unknown, status = 200): void {
     this.responseBody = body;
     this.responseStatus = status;
@@ -768,6 +790,25 @@ describe('Razorpay — verifyWebhook', () => {
       RazorpayError,
     );
     asserts.assertEquals(err.code, 'WEBHOOK_INVALID_HEADERS');
+  });
+});
+
+describe('Razorpay — rate limiting', () => {
+  it('classifies a 429 as RATE_LIMITED (not BAD_REQUEST_ERROR) and carries the retry hint', async () => {
+    const client = new MockRazorpay({ auth: validAuth });
+    client.setResponseWithHeaders(
+      {
+        error: { code: 'BAD_REQUEST_ERROR', description: 'Too many requests' },
+      },
+      429,
+      { 'retry-after': '12' },
+    );
+    const err = await asserts.assertRejects(
+      () => client.getPayment('pay_29QQoUBi66xm2f'),
+      RazorpayError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 12);
   });
 });
 

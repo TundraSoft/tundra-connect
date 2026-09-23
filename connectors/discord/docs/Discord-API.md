@@ -111,3 +111,29 @@ not modelled). This is validated locally, before any request is sent. See
 ---
 
 [← Back to Discord](../README.md)
+
+## Webhooks
+
+### `verifyWebhook(options)`
+
+Verifies a Discord **Interactions** request (slash commands, components,
+modals) — a method on the client, not an HTTP call. Incoming _webhooks_
+this connect posts to are not signed by Discord; interactions are.
+
+**Scheme** (`X-Signature-Ed25519` + `X-Signature-Timestamp`): Ed25519 over
+`<timestamp><rawBody>` (no separator), hex signature, verified against the
+application's hex Public Key from the Developer Portal. `@tundralibs/crypt`'s
+`verifyEd25519` does the work. Discord specifies no replay window; this
+connect applies 300 s as its own policy.
+
+| Option             | Type                | Required | Description                                         |
+| ------------------ | ------------------- | -------- | --------------------------------------------------- |
+| `payload`          | `string`            | yes      | Raw body — `await req.text()`, never re-serialized. |
+| `headers`          | `Headers \| object` | yes      | Case-insensitive lookup.                            |
+| `publicKey`        | `string`            | yes      | 64-hex-char application Public Key.                 |
+| `toleranceSeconds` | `number`            | no       | Replay window. Default `300`.                       |
+| `nowMs`            | `number`            | no       | Clock override for tests.                           |
+
+**Returns:** the parsed interaction. Answer a `type: 1` PING with `{ type: 1 }` yourself, after verifying it.
+
+**Throws:** `DiscordError` with `WEBHOOK_INVALID_HEADERS`, `WEBHOOK_TIMESTAMP_INVALID`, `WEBHOOK_INVALID_KEY`, `WEBHOOK_SIGNATURE_INVALID`, `RESPONSE_ERROR`.

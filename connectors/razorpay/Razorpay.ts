@@ -605,6 +605,17 @@ export class Razorpay extends RESTler<RazorpayOptions> {
     const status = response.status;
     if (status === null || status < 400) return response.body; // let 2xx (and any non-error status) through
 
+    // Before envelope parsing: a throttled request must never be reported
+    // as BAD_REQUEST_ERROR (the previous fall-through), which tells a
+    // caller the request was its fault and never to retry.
+    if (status === 429) {
+      throw new RazorpayError('RATE_LIMITED', {
+        status,
+        retryAfterSeconds: Razorpay.__retryAfterSeconds(response.headers),
+        body: response.body,
+      });
+    }
+
     const [envelopeErr, envelope] = RazorpayErrorEnvelopeSchemaObject
       .safeParse(response.body);
     if (envelopeErr || !envelope) {

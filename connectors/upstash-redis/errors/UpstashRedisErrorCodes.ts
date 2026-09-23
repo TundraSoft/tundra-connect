@@ -34,6 +34,8 @@ export const UpstashRedisErrorCodes = {
     'UpstashRedis API response did not match the expected schema.',
   SERVICE_UNAVAILABLE:
     'UpstashRedis service is currently unavailable (HTTP ${status}).',
+  RATE_LIMITED:
+    'Upstash rate limit exceeded (HTTP ${status}) — retry after the hinted delay.',
 } as const;
 
 /** Valid UpstashRedis error code. */

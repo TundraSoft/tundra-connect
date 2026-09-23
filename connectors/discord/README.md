@@ -98,6 +98,19 @@ const message = await client.sendChannelMessage('234567890123456789', {
 console.log(message.id, message.timestamp);
 ```
 
+## Interactions
+
+```ts
+const raw = await req.text(); // text(), never json()
+const interaction = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  publicKey: DISCORD_PUBLIC_KEY,
+});
+```
+
+See [API → Webhooks](docs/Discord-API.md#webhooks).
+
 ## License
 
 MIT

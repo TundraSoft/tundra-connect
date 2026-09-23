@@ -45,4 +45,10 @@ Use `getContextValue()` to read diagnostic metadata such as `vendor`, `status`, 
 
 ## Backing off after a 429
 
-`getContextValue('retryAfterSeconds')` — seconds to wait before retrying, read from whichever header the vendor sent: `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or milliseconds). `undefined` when none was present — the value is only ever what the vendor said, never a guess. This connect has no dedicated rate-limit code yet; a 429 is classified by the vendor envelope. The hint is recorded for when one is added.
+`getContextValue('retryAfterSeconds')` — seconds to wait before retrying, read from whichever header the vendor sent: `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or milliseconds). `undefined` when none was present — the value is only ever what the vendor said, never a guess. Present on `RATE_LIMITED`.
+
+## Rate limiting
+
+| Code           | Raised when                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------ |
+| `RATE_LIMITED` | HTTP 429. Read `retryAfterSeconds` from the error context and back off; never retry immediately. |

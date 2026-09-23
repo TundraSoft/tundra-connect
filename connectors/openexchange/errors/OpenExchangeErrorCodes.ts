@@ -20,6 +20,8 @@ export const OpenExchangeErrorCodes = {
   RESPONSE_ERROR:
     'Open Exchange API response did not match the expected schema.',
   SERVICE_UNAVAILABLE: 'Open Exchange service is currently unavailable.',
+  RATE_LIMITED:
+    'OpenExchangeRates rate limit exceeded (HTTP ${status}) — retry after the hinted delay.',
 } as const;
 
 /** Valid OpenExchange error code. */

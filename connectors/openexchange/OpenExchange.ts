@@ -607,6 +607,15 @@ export class OpenExchange extends RESTler<OpenExchangeOptions> {
    * @private
    */
   private __toError(response: RESTlerResponse<unknown>): unknown {
+    // A 429 is "documented" but the vendor envelope carries no rate-limit
+    // message to switch on, so it used to fall through to RESPONSE_ERROR.
+    if (response.status === 429) {
+      throw new OpenExchangeError('RATE_LIMITED', {
+        status: response.status,
+        retryAfterSeconds: OpenExchange.__retryAfterSeconds(response.headers),
+        body: response.body,
+      });
+    }
     const documentedErrorStatus = [400, 401, 403, 404, 429].includes(
       response.status as number,
     );

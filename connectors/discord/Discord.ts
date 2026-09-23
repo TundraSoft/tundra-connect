@@ -7,6 +7,8 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { verifyEd25519 } from '@crypt';
+import { decodeHex, encodeBase64, encodeBase64Url } from '@encoding';
 import { type BaseGuardian, GuardianError } from '@guardian';
 import {
   type ChannelMessageRequestSchema,
@@ -152,6 +154,28 @@ type DiscordInternalOptions = RESTlerOptions & {
  * console.log(message.id);
  * ```
  */
+/**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Arguments to {@link Discord.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /** The RAW request body, exactly as received (`await req.text()`), never re-serialized. */
+  payload: string;
+  headers: WebhookHeadersLike;
+  /** The application's Public Key from the Developer Portal — 64 hex characters. */
+  publicKey: string;
+  /** Replay window in seconds — this connect's policy; Discord specifies none. @default 300 */
+  toleranceSeconds?: number;
+  /** Clock override, for tests. */
+  nowMs?: number;
+};
+
 export class Discord extends RESTler<DiscordInternalOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Discord';
@@ -582,6 +606,125 @@ export class Discord extends RESTler<DiscordInternalOptions> {
       }
     }
     return undefined;
+  }
+
+  /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
+  private static __webhookHeader(
+    headers: WebhookHeadersLike,
+    name: string,
+  ): string | null {
+    if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+      return headers.get(name);
+    }
+    const lower = name.toLowerCase();
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() !== lower) continue;
+      return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+    }
+    return null;
+  }
+
+  /**
+   * Verifies a Discord **Interactions** request (slash commands, message
+   * components, modals) and returns the PARSED interaction.
+   *
+   * Discord signs these with Ed25519: `X-Signature-Ed25519` is the hex
+   * signature over `<timestamp><rawBody>` (no separator), with the
+   * timestamp in `X-Signature-Timestamp`, verified against the
+   * application's hex Public Key. `@tundralibs/crypt`'s `verifyEd25519`
+   * does the work; the hex key becomes an `OKP` JWK and the hex signature
+   * base64, both via `@std/encoding`. Discord specifies no replay window;
+   * this connect applies 300 s as its own policy.
+   *
+   * Discord requires an unsigned-looking `PING` (`type: 1`) to be answered
+   * with `{ type: 1 }` when the endpoint URL is saved — verify it like any
+   * other request first, then respond; that part is the caller's.
+   *
+   * @throws {DiscordError} `WEBHOOK_INVALID_HEADERS`,
+   * `WEBHOOK_TIMESTAMP_INVALID`, `WEBHOOK_INVALID_KEY`,
+   * `WEBHOOK_SIGNATURE_INVALID`, or `RESPONSE_ERROR` when the verified
+   * payload is not JSON.
+   *
+   * @example
+   * ```typescript
+   * const raw = await req.text(); // text(), never json()
+   * const interaction = await client.verifyWebhook({
+   *   payload: raw,
+   *   headers: req.headers,
+   *   publicKey: DISCORD_PUBLIC_KEY,
+   * });
+   * if ((interaction as { type: number }).type === 1) return Response.json({ type: 1 });
+   * ```
+   */
+  public async verifyWebhook(options: VerifyWebhookOptions): Promise<unknown> {
+    const {
+      payload,
+      headers,
+      publicKey,
+      toleranceSeconds = 300,
+      nowMs = Date.now(),
+    } = options;
+    const signature = Discord.__webhookHeader(headers, 'x-signature-ed25519');
+    const timestamp = Discord.__webhookHeader(headers, 'x-signature-timestamp');
+    if (!signature || !timestamp) {
+      throw new DiscordError('WEBHOOK_INVALID_HEADERS', {
+        reason: `missing ${
+          [
+            !signature && 'X-Signature-Ed25519',
+            !timestamp && 'X-Signature-Timestamp',
+          ].filter(Boolean).join(', ')
+        }`,
+      });
+    }
+    const sentAtSec = Number(timestamp);
+    if (!Number.isFinite(sentAtSec)) {
+      throw new DiscordError('WEBHOOK_TIMESTAMP_INVALID', {
+        reason: `'${timestamp}' is not a Unix timestamp in seconds`,
+      });
+    }
+    const driftSec = Math.abs(nowMs / 1000 - sentAtSec);
+    if (driftSec > toleranceSeconds) {
+      throw new DiscordError('WEBHOOK_TIMESTAMP_INVALID', {
+        reason: `${
+          Math.round(driftSec)
+        }s drift exceeds the ${toleranceSeconds}s tolerance`,
+      });
+    }
+    if (!/^[0-9a-fA-F]{64}$/.test(publicKey.trim())) {
+      throw new DiscordError('WEBHOOK_INVALID_KEY', {});
+    }
+    if (!/^[0-9a-fA-F]{128}$/.test(signature)) {
+      throw new DiscordError('WEBHOOK_SIGNATURE_INVALID', {});
+    }
+    const jwk: JsonWebKey = {
+      kty: 'OKP',
+      crv: 'Ed25519',
+      x: encodeBase64Url(decodeHex(publicKey.trim())).replace(/=+$/, ''),
+    };
+    let ok: boolean;
+    try {
+      ok = await verifyEd25519(
+        `${timestamp}${payload}`,
+        encodeBase64(decodeHex(signature)),
+        jwk,
+      );
+    } catch (cause) {
+      throw new DiscordError(
+        'WEBHOOK_INVALID_KEY',
+        {},
+        cause instanceof Error ? cause : undefined,
+      );
+    }
+    if (!ok) throw new DiscordError('WEBHOOK_SIGNATURE_INVALID', {});
+    try {
+      return JSON.parse(payload);
+    } catch (cause) {
+      throw new DiscordError(
+        'RESPONSE_ERROR',
+        {},
+        cause instanceof Error ? cause : undefined,
+      );
+    }
   }
 
   private async __requestAndValidate<B>(

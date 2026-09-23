@@ -582,6 +582,116 @@ describe('Discord', () => {
 // connect to verify against or clean up after, so this posts a real,
 // obviously-synthetic message a human could see in the channel.
 // ---------------------------------------------------------------------------
+
+function hexOf(bytes: Uint8Array): string {
+  let o = '';
+  for (const b of bytes) o += b.toString(16).padStart(2, '0');
+  return o;
+}
+async function ed25519() {
+  const kp = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
+    'sign',
+    'verify',
+  ]) as CryptoKeyPair;
+  const publicKey = hexOf(
+    new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey)),
+  );
+  const sign = async (msg: string) =>
+    hexOf(
+      new Uint8Array(
+        await crypto.subtle.sign(
+          { name: 'Ed25519' },
+          kp.privateKey,
+          new TextEncoder().encode(msg) as unknown as BufferSource,
+        ),
+      ),
+    );
+  return { publicKey, sign };
+}
+describe('Discord — verifyWebhook (interactions, Ed25519)', () => {
+  const NOW_MS = 1_700_000_000_000;
+  const TS = String(Math.floor(NOW_MS / 1000));
+  const PAYLOAD = JSON.stringify({ type: 2, data: { name: 'deploy' } });
+  const client = () => new MockDiscord({ botToken: BOT_TOKEN });
+  const hdrs = (sig: string, ts = TS) => ({
+    'x-signature-ed25519': sig,
+    'x-signature-timestamp': ts,
+  });
+
+  it('accepts a genuine signature over timestamp+payload and returns the parsed interaction', async () => {
+    const k = await ed25519();
+    const i = await client().verifyWebhook({
+      payload: PAYLOAD,
+      headers: hdrs(await k.sign(TS + PAYLOAD)),
+      publicKey: k.publicKey,
+      nowMs: NOW_MS,
+    }) as { type: number };
+    asserts.assertEquals(i.type, 2);
+  });
+  it('rejects a tampered payload and a signature from another application', async () => {
+    const k = await ed25519();
+    const other = await ed25519();
+    const e1 = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD + ' ',
+          headers: hdrs(await k.sign(TS + PAYLOAD)),
+          publicKey: k.publicKey,
+          nowMs: NOW_MS,
+        }),
+      DiscordError,
+    );
+    asserts.assertEquals(e1.code, 'WEBHOOK_SIGNATURE_INVALID');
+    const e2 = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs(await other.sign(TS + PAYLOAD)),
+          publicKey: k.publicKey,
+          nowMs: NOW_MS,
+        }),
+      DiscordError,
+    );
+    asserts.assertEquals(e2.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('rejects a replay outside the window, a malformed key, and missing headers', async () => {
+    const k = await ed25519();
+    const e1 = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs(await k.sign(TS + PAYLOAD)),
+          publicKey: k.publicKey,
+          nowMs: NOW_MS + 301_000,
+        }),
+      DiscordError,
+    );
+    asserts.assertEquals(e1.code, 'WEBHOOK_TIMESTAMP_INVALID');
+    const e2 = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs(await k.sign(TS + PAYLOAD)),
+          publicKey: 'not-hex',
+          nowMs: NOW_MS,
+        }),
+      DiscordError,
+    );
+    asserts.assertEquals(e2.code, 'WEBHOOK_INVALID_KEY');
+    const e3 = await asserts.assertRejects(
+      () =>
+        client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: {},
+          publicKey: k.publicKey,
+          nowMs: NOW_MS,
+        }),
+      DiscordError,
+    );
+    asserts.assertEquals(e3.code, 'WEBHOOK_INVALID_HEADERS');
+  });
+});
+
 const env = envArgs();
 const credentials = {
   botToken: env.get('CONNECTOR_DISCORD_BOT_TOKEN'),

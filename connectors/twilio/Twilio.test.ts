@@ -1012,6 +1012,196 @@ describe('Twilio — verifyWebhook', () => {
   });
 });
 
+describe('Twilio — every optional field reaches the wire', () => {
+  const form = (c: MockTwilio) => c.request!.body as FormData;
+  const client = () =>
+    new MockTwilio({ accountSid: ACCOUNT_SID, authToken: 'token' });
+
+  it('sendMessage maps every optional field to its form parameter', async () => {
+    const c = client();
+    c.setResponse(validMessageResponse, 201); // wire the mock — without this the call goes to the real API
+    await c.sendMessage({
+      to: '+14155552671',
+      from: '+15017122661',
+      body: 'hi',
+      mediaUrl: ['https://example.com/a.png', 'https://example.com/b.png'],
+      contentSid: 'HX' + 'a'.repeat(32),
+      statusCallback: 'https://example.com/cb',
+      applicationSid: 'AP' + 'b'.repeat(32),
+      validityPeriod: 3600,
+      smartEncoded: true,
+      shortenUrls: false,
+      scheduleType: 'fixed',
+      sendAt: '2026-01-01T00:00:00Z',
+      contentVariables: '{"1":"a"}',
+    });
+    const f = form(c);
+    asserts.assertEquals(f.getAll('MediaUrl'), [
+      'https://example.com/a.png',
+      'https://example.com/b.png',
+    ]);
+    asserts.assertEquals(f.get('ContentSid'), 'HX' + 'a'.repeat(32));
+    asserts.assertEquals(f.get('StatusCallback'), 'https://example.com/cb');
+    asserts.assertEquals(f.get('ApplicationSid'), 'AP' + 'b'.repeat(32));
+    asserts.assertEquals(f.get('ValidityPeriod'), '3600');
+    asserts.assertEquals(f.get('SmartEncoded'), 'true');
+    asserts.assertEquals(f.get('ShortenUrls'), 'false');
+    asserts.assertEquals(f.get('ScheduleType'), 'fixed');
+    asserts.assertEquals(f.get('SendAt'), '2026-01-01T00:00:00Z');
+    asserts.assertEquals(f.get('ContentVariables'), '{"1":"a"}');
+  });
+
+  it('createCall maps every optional field to its form parameter', async () => {
+    const c = client();
+    c.setResponse(validCallResponse, 201);
+    await c.createCall({
+      to: '+14155552671',
+      from: '+15017122661',
+      url: 'https://example.com/twiml',
+      method: 'POST',
+      fallbackUrl: 'https://example.com/fb',
+      fallbackMethod: 'POST',
+      statusCallback: 'https://example.com/cb',
+      statusCallbackEvent: ['completed'],
+      statusCallbackMethod: 'POST',
+      sendDigits: '1234',
+      timeout: 30,
+      record: true,
+      recordingChannels: 'dual',
+      recordingStatusCallback: 'https://example.com/rcb',
+      recordingStatusCallbackMethod: 'POST',
+      recordingStatusCallbackEvent: ['completed'],
+      recordingConfigurationId: 'rc-1',
+      sipAuthUsername: 'user',
+      sipAuthPassword: 'pass',
+      machineDetection: 'Enable',
+      machineDetectionTimeout: 30,
+      machineDetectionSpeechThreshold: 2400,
+      machineDetectionSpeechEndThreshold: 1200,
+      machineDetectionSilenceTimeout: 5000,
+      trim: 'trim-silence',
+      callerId: 'Acme',
+      asyncAmd: true,
+      asyncAmdStatusCallback: 'https://example.com/amd',
+      asyncAmdStatusCallbackMethod: 'POST',
+      passports: 'pp',
+      byoc: 'BY' + 'c'.repeat(32),
+      callReason: 'support',
+      callToken: 'tok',
+      recordingTrack: 'both',
+      timeLimit: 3600,
+      clientNotificationUrl: 'https://example.com/n',
+    });
+    const f = form(c);
+    for (
+      const [k, v] of Object.entries({
+        Url: 'https://example.com/twiml',
+        Method: 'POST',
+        FallbackUrl: 'https://example.com/fb',
+        FallbackMethod: 'POST',
+        StatusCallback: 'https://example.com/cb',
+        StatusCallbackMethod: 'POST',
+        SendDigits: '1234',
+        Timeout: '30',
+        Record: 'true',
+        RecordingChannels: 'dual',
+        RecordingStatusCallback: 'https://example.com/rcb',
+        RecordingConfigurationId: 'rc-1',
+        SipAuthUsername: 'user',
+        SipAuthPassword: 'pass',
+        MachineDetection: 'Enable',
+        MachineDetectionTimeout: '30',
+        MachineDetectionSpeechThreshold: '2400',
+        MachineDetectionSpeechEndThreshold: '1200',
+        MachineDetectionSilenceTimeout: '5000',
+        Trim: 'trim-silence',
+        CallerId: 'Acme',
+        AsyncAmd: 'true',
+        AsyncAmdStatusCallback: 'https://example.com/amd',
+        Passports: 'pp',
+        Byoc: 'BY' + 'c'.repeat(32),
+        CallReason: 'support',
+        CallToken: 'tok',
+        RecordingTrack: 'both',
+        TimeLimit: '3600',
+        ClientNotificationUrl: 'https://example.com/n',
+      })
+    ) asserts.assertEquals(f.get(k), v, k);
+    asserts.assertEquals(f.getAll('StatusCallbackEvent'), ['completed']);
+    asserts.assertEquals(f.getAll('RecordingStatusCallbackEvent'), [
+      'completed',
+    ]);
+  });
+
+  it('updateCall maps every optional field to its form parameter', async () => {
+    const c = client();
+    c.setResponse(validCallResponse, 200);
+    await c.updateCall('CA' + '1'.repeat(32), {
+      url: 'https://example.com/twiml',
+      method: 'POST',
+      status: 'completed',
+      fallbackUrl: 'https://example.com/fb',
+      fallbackMethod: 'POST',
+      statusCallback: 'https://example.com/cb',
+      statusCallbackMethod: 'POST',
+      timeLimit: 60,
+    });
+    const f = form(c);
+    for (
+      const [k, v] of Object.entries({
+        Url: 'https://example.com/twiml',
+        Method: 'POST',
+        Status: 'completed',
+        FallbackUrl: 'https://example.com/fb',
+        FallbackMethod: 'POST',
+        StatusCallback: 'https://example.com/cb',
+        StatusCallbackMethod: 'POST',
+        TimeLimit: '60',
+      })
+    ) asserts.assertEquals(f.get(k), v, k);
+  });
+
+  it('listCalls maps every filter to its query parameter, including the < and > date forms', async () => {
+    const c = client();
+    c.setResponse(validListCallsResponse, 200);
+    await c.listCalls({
+      to: '+14155552671',
+      from: '+15017122661',
+      parentCallSid: 'CA' + 'd'.repeat(32),
+      status: 'completed',
+      startTime: '2026-01-01',
+      startTimeBefore: '2026-01-02',
+      startTimeAfter: '2025-12-31',
+      endTime: '2026-01-03',
+      endTimeBefore: '2026-01-04',
+      endTimeAfter: '2026-01-02',
+      pageSize: 50,
+      page: 1,
+      pageToken: 'tok',
+    });
+    const url = decodeURIComponent(c.request!.url);
+    for (
+      const part of [
+        'To=+14155552671',
+        'From=+15017122661',
+        'ParentCallSid=CA' + 'd'.repeat(32),
+        'Status=completed',
+        'StartTime=2026-01-01',
+        'StartTime<=2026-01-02',
+        'StartTime>=2025-12-31',
+        'EndTime=2026-01-03',
+        'EndTime<=2026-01-04',
+        'EndTime>=2026-01-02',
+        'PageSize=50',
+        'Page=1',
+        'PageToken=tok',
+      ]
+    ) {
+      asserts.assert(url.includes(part), `${part} in ${url}`);
+    }
+  });
+});
+
 const env = envArgs();
 const credentials = {
   accountSid: env.get('CONNECTOR_TWILIO_ACCOUNT_SID'),

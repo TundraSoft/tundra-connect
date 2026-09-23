@@ -740,17 +740,21 @@ export class UpstashRedis extends RESTler<UpstashRedisOptions> {
         responseError: err?.toJSON(),
       });
     }
+    if (status === 429) {
+      throw new UpstashRedisError('RATE_LIMITED', {
+        status,
+        retryAfterSeconds: UpstashRedis.__retryAfterSeconds(response.headers),
+        body: response.body,
+      });
+    }
     if (status >= 500) {
       throw new UpstashRedisError('SERVICE_UNAVAILABLE', {
         status,
         body: response.body,
       });
     }
-    // Upstash has no dedicated rate-limit code yet, so a 429 lands here —
-    // carry the backoff hint regardless so a caller can still honour it.
     throw new UpstashRedisError('UNKNOWN_ERROR', {
       status,
-      retryAfterSeconds: UpstashRedis.__retryAfterSeconds(response.headers),
       body: response.body,
     });
   }

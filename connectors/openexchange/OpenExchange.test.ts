@@ -17,6 +17,23 @@ class MockOpenExchange extends OpenExchange {
   private responseBody: unknown = latestRatesResponse;
   private responseStatus = 200;
 
+  /** Like setResponse, but with explicit response headers — for rate-limit hints. */
+  setResponseWithHeaders(
+    body: unknown,
+    status: number,
+    headers: Record<string, string>,
+  ): void {
+    this._fetch = (input, init) => {
+      this.request = { url: String(input), method: init?.method };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json', ...headers },
+        }),
+      );
+    };
+  }
+
   setResponse(body: unknown, status = 200): void {
     this.responseBody = body;
     this.responseStatus = status;
@@ -431,6 +448,25 @@ describe('OpenExchange — credential custody', () => {
       OpenExchangeError,
     );
     asserts.assert(!dumpError(err).includes('SECRET-APP-ID-MARKER'));
+  });
+});
+
+describe('OpenExchange — rate limiting', () => {
+  it('classifies a 429 as RATE_LIMITED (not RESPONSE_ERROR) and carries the retry hint', async () => {
+    const client = new MockOpenExchange({
+      auth: { type: 'CUSTOM', appId: 'test-app-id' },
+    });
+    client.setResponseWithHeaders(
+      { error: true, status: 429, message: 'rate_limited' },
+      429,
+      { 'retry-after': '30' },
+    );
+    const err = await asserts.assertRejects(
+      () => client.getStatus(),
+      OpenExchangeError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 30);
   });
 });
 
