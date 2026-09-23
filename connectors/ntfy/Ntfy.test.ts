@@ -274,6 +274,26 @@ describe('Ntfy', () => {
 // entirely unless CONNECTOR_NTFY_TEST_TOPIC is set (via env or a `.env`
 // file — see `envArgs`) AND LIVE_TEST_ALLOW_VISIBLE_EFFECTS is set.
 // ---------------------------------------------------------------------------
+/** Everything an error could surface to a log: its message plus its serialized context. */
+function dumpError(err: unknown): string {
+  const e = err as { message?: string; toJSON?: () => unknown };
+  return `${e.message ?? ''} ${JSON.stringify(e.toJSON?.() ?? String(err))}`;
+}
+
+describe('ntfy — credential custody', () => {
+  it('never leaks the Basic password from a runtime failure', async () => {
+    const client = new MockNtfy({
+      auth: { type: 'BASIC', username: 'phil', password: 'pw-SECRETMARKER' },
+    });
+    client.setResponse(JSON.stringify({ error: 'boom' }), 500);
+    const err = await asserts.assertRejects(
+      () => client.publish({ topic: 'mytopic', message: 'hi' }),
+      NtfyError,
+    );
+    asserts.assert(!dumpError(err).includes('SECRETMARKER'));
+  });
+});
+
 const env = envArgs();
 const credentials = {
   testTopic: env.get('CONNECTOR_NTFY_TEST_TOPIC'),

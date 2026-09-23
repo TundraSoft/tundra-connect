@@ -15,8 +15,10 @@ export const ORDER_STATUSES = ['created', 'attempted', 'paid'] as const;
  * {@link Razorpay.getOrder}.
  */
 export const orderIdGuard: BaseGuardian<string> = Guardian.string().pattern(
-  /^order_\S+$/,
-  "order id must match '^order_\\S+$'",
+  // Alphanumeric ONLY after the prefix — see paymentIdGuard for why `\S+`
+  // was a path-traversal vector.
+  /^order_[A-Za-z0-9]+$/,
+  "order id must match '^order_[A-Za-z0-9]+$'",
 ).describe({
   title: 'Order id',
   description: 'A Razorpay Order identifier, e.g. `order_EKwxwAgItmmXdp`.',

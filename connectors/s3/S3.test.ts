@@ -948,6 +948,33 @@ describe('S3 — canonical header/query building matches SigV4 directly', () => 
 // ---------------------------------------------------------------------------
 import { envArgs } from '@utils';
 
+/** Everything an error could surface to a log: its message plus its serialized context. */
+function dumpError(err: unknown): string {
+  const e = err as { message?: string; toJSON?: () => unknown };
+  return `${e.message ?? ''} ${JSON.stringify(e.toJSON?.() ?? String(err))}`;
+}
+
+describe('S3 — credential custody', () => {
+  it('never leaks the secret access key from a runtime failure', async () => {
+    const client = new MockS3(
+      { auth: { type: 'CUSTOM', ...CREDENTIALS } } as ConstructorParameters<
+        typeof MockS3
+      >[0],
+    );
+    client.enqueue(() =>
+      new Response('<Error><Code>InternalError</Code></Error>', {
+        status: 500,
+        headers: { 'content-type': 'application/xml' },
+      })
+    );
+    const err = await asserts.assertRejects(
+      () => client.getObject({ bucket: 'b', key: 'k' }),
+      S3Error,
+    );
+    asserts.assert(!dumpError(err).includes(CREDENTIALS.secretAccessKey));
+  });
+});
+
 const env = envArgs();
 const credentials = {
   accessKeyId: env.get('CONNECTOR_S3_ACCESS_KEY_ID'),

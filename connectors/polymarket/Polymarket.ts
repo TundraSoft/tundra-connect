@@ -449,6 +449,8 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * The CLOB's active order-signing protocol version (`1` or `2`), cached
    * for the lifetime of this instance. `force: true` refreshes the cache —
    * used after the venue reports `order_version_mismatch`.
+   *
+   * @throws {PolymarketError} `RESPONSE_ERROR` when the body fails validation, or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR` from the vendor.
    */
   public async getVersion(force = false): Promise<ProtocolVersion> {
     if (!force && this.__versionCache !== undefined) return this.__versionCache;
@@ -461,7 +463,11 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     return version;
   }
 
-  /** Minimum price tick for `tokenId` (`0.1`/`0.01`/`0.001`/`0.0001`), cached per token. */
+  /**
+   * Minimum price tick for `tokenId` (`0.1`/`0.01`/`0.001`/`0.0001`), cached per token.
+   *
+   * @throws {PolymarketError} `NOT_FOUND` for an unknown token; `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   */
   public async getTickSize(tokenId: string): Promise<number> {
     const cached = this.__tickCache.get(tokenId);
     if (cached !== undefined) return cached;
@@ -478,7 +484,11 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     return result.minimumTickSize;
   }
 
-  /** Whether `tokenId` trades on the neg-risk exchange (changes only the order's `verifyingContract`), cached per token. */
+  /**
+   * Whether `tokenId` trades on the neg-risk exchange (changes only the order's `verifyingContract`), cached per token.
+   *
+   * @throws {PolymarketError} `NOT_FOUND` for an unknown token; `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   */
   public async getNegRisk(tokenId: string): Promise<boolean> {
     const cached = this.__negRiskCache.get(tokenId);
     if (cached !== undefined) return cached;
@@ -495,7 +505,11 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     return result.negRisk;
   }
 
-  /** Connection keepalive — `GET` on the CLOB API root. Returns `false` on any failure rather than throwing. */
+  /**
+   * Connection keepalive — `GET` on the CLOB API root. Returns `false` on any failure rather than throwing.
+   *
+   * @throws Never — every failure, vendor or transport, resolves to `false`. Documented explicitly so the absence of a throw is visibly deliberate.
+   */
   public async keepalive(): Promise<boolean> {
     try {
       const response = await this._makeRequest(
@@ -921,6 +935,8 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * });
    * console.log(result.slippage);
    * ```
+   *
+   * @throws {PolymarketError} Whatever the dispatched action throws — see {@link submitOrder} for BUY/SELL and {@link split}/{@link merge}/{@link redeem} for the collateral actions; plus `REQUEST_VALIDATION_ERROR` for an unrecognized `action`.
    */
   public async order(request: OrderRequest): Promise<OrderResult> {
     switch (request.action) {

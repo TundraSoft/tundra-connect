@@ -378,6 +378,8 @@ export class Kalshi extends RESTler<KalshiOptions> {
    * {@link Orderbook}'s doc comment for why.
    *
    * @param depth - `0` (default) or negative returns every level; `1-100` caps it.
+   *
+   * @throws {KalshiError} `NOT_FOUND` when no market has that ticker; `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
    */
   public async getOrderbook(
     ticker: string,
@@ -395,7 +397,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     );
   }
 
-  /** Fetch the public trade tape (market-wide, not account-specific — see {@link Kalshi.getFills} for your own executions). */
+  /**
+   * Fetch the public trade tape (market-wide, not account-specific — see {@link Kalshi.getFills} for your own executions).
+   *
+   * @throws {KalshiError} `RESPONSE_ERROR` when the body fails validation, or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR` from the vendor.
+   */
   public async getTrades(options: GetTradesOptions = {}): Promise<TradesPage> {
     const query: Record<string, string> = {};
     if (options.ticker) query.ticker = options.ticker;
@@ -409,7 +415,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     );
   }
 
-  /** Fetch one page of events. */
+  /**
+   * Fetch one page of events.
+   *
+   * @throws {KalshiError} `RESPONSE_ERROR` when the body fails validation, or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR` from the vendor.
+   */
   public async getEvents(options: GetEventsOptions = {}): Promise<EventsPage> {
     const query: Record<string, string> = {};
     if (options.seriesTicker) query.series_ticker = options.seriesTicker;
@@ -431,6 +441,8 @@ export class Kalshi extends RESTler<KalshiOptions> {
    * Fetch one event by its exact ticker.
    *
    * @returns The event, or `null` when no event has that ticker.
+   *
+   * @throws {KalshiError} `RESPONSE_ERROR` when the body fails validation, or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`. A `NOT_FOUND` is NOT thrown — it resolves to `null` instead.
    */
   public async getEvent(
     eventTicker: string,
@@ -455,7 +467,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     }
   }
 
-  /** Fetch every series matching the given filters. */
+  /**
+   * Fetch every series matching the given filters.
+   *
+   * @throws {KalshiError} `RESPONSE_ERROR` when the body fails validation, or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR` from the vendor.
+   */
   public async getSeriesList(
     options: { category?: string; tags?: string; includeVolume?: boolean } = {},
   ): Promise<SeriesListResponse> {
@@ -475,6 +491,8 @@ export class Kalshi extends RESTler<KalshiOptions> {
    * Fetch one series by its exact ticker.
    *
    * @returns The series, or `null` when no series has that ticker.
+   *
+   * @throws {KalshiError} `RESPONSE_ERROR` when the body fails validation, or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`. A `NOT_FOUND` is NOT thrown — it resolves to `null` instead.
    */
   public async getSeries(
     seriesTicker: string,
@@ -499,7 +517,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     }
   }
 
-  /** Whether the exchange is currently open for trading / accepting state changes. */
+  /**
+   * Whether the exchange is currently open for trading / accepting state changes.
+   *
+   * @throws {KalshiError} `RESPONSE_ERROR` when the body fails validation, or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR` from the vendor.
+   */
   public async getExchangeStatus(): Promise<ExchangeStatus> {
     return await this.__requestAndValidate(
       { path: `${API_PREFIX}/exchange/status`, method: 'GET' },
@@ -509,7 +531,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
 
   // ── Portfolio (authenticated, RSA-PSS-signed) ───────────────────────────
 
-  /** Available balance and portfolio value. Read-only auth proof — a good first call to verify credentials. */
+  /**
+   * Available balance and portfolio value. Read-only auth proof — a good first call to verify credentials.
+   *
+   * @throws {KalshiError} `CONFIG_MISSING_PRIVATE_KEY` when no credentials are configured; `AUTH_FAILED` when the venue rejects the signature; `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   */
   public async getBalance(): Promise<Balance> {
     this.__requireCredentials();
     return await this.__requestAndValidate(
@@ -522,7 +548,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     );
   }
 
-  /** Current positions (market- and event-level). */
+  /**
+   * Current positions (market- and event-level).
+   *
+   * @throws {KalshiError} `CONFIG_MISSING_PRIVATE_KEY` when no credentials are configured; `AUTH_FAILED` when the venue rejects the signature; `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   */
   public async getPositions(
     options: GetPositionsOptions = {},
   ): Promise<PositionsPage> {
@@ -544,7 +574,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     );
   }
 
-  /** Your own executions, newest first. */
+  /**
+   * Your own executions, newest first.
+   *
+   * @throws {KalshiError} `CONFIG_MISSING_PRIVATE_KEY` when no credentials are configured; `AUTH_FAILED` when the venue rejects the signature; `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   */
   public async getFills(options: GetFillsOptions = {}): Promise<FillsPage> {
     this.__requireCredentials();
     const query: Record<string, string> = {};
@@ -565,7 +599,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     );
   }
 
-  /** Orders on the venue — for restart reconciliation, or checking on a resting order. */
+  /**
+   * Orders on the venue — for restart reconciliation, or checking on a resting order.
+   *
+   * @throws {KalshiError} `CONFIG_MISSING_PRIVATE_KEY` when no credentials are configured; `AUTH_FAILED` when the venue rejects the signature; `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   */
   public async getOrders(options: GetOrdersOptions = {}): Promise<OrdersPage> {
     this.__requireCredentials();
     const query: Record<string, string> = {};
@@ -587,7 +625,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     );
   }
 
-  /** One order by id (the richer list-shape row — see {@link Order}). */
+  /**
+   * One order by id (the richer list-shape row — see {@link Order}).
+   *
+   * @throws {KalshiError} `CONFIG_MISSING_PRIVATE_KEY` when no credentials are configured; `NOT_FOUND` when no order has that id; `AUTH_FAILED`; `RESPONSE_ERROR`; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   */
   public async getOrder(orderId: string): Promise<Order> {
     this.__requireCredentials();
     return await this.__requestAndValidate(

@@ -105,9 +105,7 @@ export class OpenExchange extends RESTler<OpenExchangeOptions> {
       baseCurrency: 'USD', // Default base currency
     });
     if (!this.hasOption('auth')) {
-      throw new OpenExchangeError('CONFIG_INVALID_APP_ID', {
-        appId: undefined,
-      });
+      throw new OpenExchangeError('CONFIG_INVALID_APP_ID', {});
     }
     this._responseHandler = (response) => this.__toError(response);
   }
@@ -455,9 +453,9 @@ export class OpenExchange extends RESTler<OpenExchangeOptions> {
           !auth || auth.type !== 'CUSTOM' ||
           typeof auth.appId !== 'string' || auth.appId.trim() === ''
         ) {
-          throw new OpenExchangeError('CONFIG_INVALID_APP_ID', {
-            appId: auth?.appId,
-          });
+          // Deliberately NOT echoing the supplied app id: it is the API
+          // credential, and error context gets logged.
+          throw new OpenExchangeError('CONFIG_INVALID_APP_ID', {});
         }
         value = {
           type: 'CUSTOM',

@@ -398,6 +398,42 @@ describe('OpenExchange', () => {
   });
 });
 
+/** Everything an error could surface to a log: its message plus its serialized context. */
+function dumpError(err: unknown): string {
+  const e = err as { message?: string; toJSON?: () => unknown };
+  return `${e.message ?? ''} ${JSON.stringify(e.toJSON?.() ?? String(err))}`;
+}
+
+describe('OpenExchange — credential custody', () => {
+  it('does not echo a rejected app id into the config error', () => {
+    // Regression: the config error used to carry `{ appId }` — the API
+    // credential — in its logged context. A non-string trips the guard.
+    const err = asserts.assertThrows(
+      () =>
+        new MockOpenExchange(
+          { auth: { type: 'CUSTOM', appId: 987654321 } } as unknown as {
+            auth: { type: 'CUSTOM'; appId: string };
+          },
+        ),
+      OpenExchangeError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_APP_ID');
+    asserts.assert(!dumpError(err).includes('987654321'));
+  });
+
+  it('never leaks the app id from a runtime failure, even though it travels in the query string', async () => {
+    const client = new MockOpenExchange({
+      auth: { type: 'CUSTOM', appId: 'SECRET-APP-ID-MARKER' },
+    });
+    client.setResponse({ error: true, message: 'boom' }, 500);
+    const err = await asserts.assertRejects(
+      () => client.getStatus(),
+      OpenExchangeError,
+    );
+    asserts.assert(!dumpError(err).includes('SECRET-APP-ID-MARKER'));
+  });
+});
+
 const env = envArgs();
 const credentials = {
   appId: env.get('CONNECTOR_OPENEXCHANGE_APP_ID'),

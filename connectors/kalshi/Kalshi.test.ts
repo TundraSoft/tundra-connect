@@ -666,6 +666,263 @@ describe('Kalshi — error mapping', () => {
 // Live tests are a `describe` block appended to this file, gated on real
 // Kalshi credentials being present — see CONVENTIONS.md's "Tests" section.
 // Add the matching CONNECTOR_KALSHI_* vars to .env.sample once verified.
+
+describe('Kalshi — query filters and rethrow paths', () => {
+  // Every optional filter branch in one call per list method, so the
+  // wire mapping (camelCase option -> snake_case param) is pinned.
+  const has = (client: MockKalshi, ...parts: string[]) => {
+    const url = client.lastRequest!.url;
+    for (const part of parts) {
+      asserts.assert(url.includes(part), `${part} in ${url}`);
+    }
+  };
+
+  it('getMarkets maps every filter to its query param', async () => {
+    const client = authedClient();
+    client.setResponse({ markets: [] });
+    await client.getMarkets({
+      seriesTicker: 'S',
+      eventTicker: 'E',
+      status: 'open',
+      tickers: ['A', 'B'],
+      cursor: 'c1',
+      limit: 5,
+      minCloseTs: 1,
+      maxCloseTs: 2,
+    });
+    has(
+      client,
+      'series_ticker=S',
+      'event_ticker=E',
+      'status=open',
+      'tickers=A',
+      'cursor=c1',
+      'limit=5',
+      'min_close_ts=1',
+      'max_close_ts=2',
+    );
+  });
+
+  it('getMarkets accepts a single ticker string as the tickers filter', async () => {
+    const client = authedClient();
+    client.setResponse({ markets: [] });
+    await client.getMarkets({ tickers: 'ONLY' });
+    has(client, 'tickers=ONLY');
+  });
+
+  it('getOrderbook omits depth when none is given', async () => {
+    const client = authedClient();
+    client.setResponse({ orderbook_fp: { yes_dollars: [], no_dollars: [] } });
+    await client.getOrderbook('T');
+    asserts.assertEquals(client.lastRequest!.url.includes('depth='), false);
+  });
+
+  it('getTrades maps every filter', async () => {
+    const client = authedClient();
+    client.setResponse({ trades: [] });
+    await client.getTrades({
+      ticker: 'T',
+      cursor: 'c',
+      limit: 3,
+      minTs: 10,
+      maxTs: 20,
+    });
+    has(client, 'ticker=T', 'cursor=c', 'limit=3', 'min_ts=10', 'max_ts=20');
+  });
+
+  it('getEvents maps every filter', async () => {
+    const client = authedClient();
+    client.setResponse({ events: [] });
+    await client.getEvents({
+      seriesTicker: 'S',
+      status: 'open',
+      tickers: ['E1', 'E2'],
+      cursor: 'c',
+      limit: 4,
+      withNestedMarkets: true,
+    });
+    has(
+      client,
+      'series_ticker=S',
+      'status=open',
+      'tickers=E1',
+      'cursor=c',
+      'limit=4',
+      'with_nested_markets=true',
+    );
+  });
+
+  it('getEvent forwards withNestedMarkets', async () => {
+    const client = authedClient();
+    client.setResponse({ event: { event_ticker: 'E', title: 'T' } });
+    await client.getEvent('E', true);
+    has(client, 'with_nested_markets=true');
+  });
+
+  it('getSeriesList maps every filter', async () => {
+    const client = authedClient();
+    client.setResponse({ series: [] });
+    await client.getSeriesList({
+      category: 'Fin',
+      tags: 'btc',
+      includeVolume: true,
+    });
+    has(client, 'category=Fin', 'tags=btc', 'include_volume=true');
+  });
+
+  it('getSeries forwards includeVolume', async () => {
+    const client = authedClient();
+    client.setResponse({ series: { ticker: 'K', title: 'T' } });
+    await client.getSeries('K', false);
+    has(client, 'include_volume=false');
+  });
+
+  it('getPositions maps every filter', async () => {
+    const client = authedClient();
+    client.setResponse({ market_positions: [] });
+    await client.getPositions({
+      ticker: 'T',
+      eventTicker: 'E',
+      cursor: 'c',
+      limit: 2,
+      countFilter: 'position',
+    });
+    has(
+      client,
+      'ticker=T',
+      'event_ticker=E',
+      'cursor=c',
+      'limit=2',
+      'count_filter=position',
+    );
+  });
+
+  it('getFills maps every filter', async () => {
+    const client = authedClient();
+    client.setResponse({ fills: [] });
+    await client.getFills({
+      ticker: 'T',
+      orderId: 'o1',
+      cursor: 'c',
+      limit: 2,
+      minTs: 1,
+      maxTs: 9,
+    });
+    has(
+      client,
+      'ticker=T',
+      'order_id=o1',
+      'cursor=c',
+      'limit=2',
+      'min_ts=1',
+      'max_ts=9',
+    );
+  });
+
+  it('getOrders maps every filter', async () => {
+    const client = authedClient();
+    client.setResponse({ orders: [] });
+    await client.getOrders({
+      ticker: 'T',
+      eventTicker: 'E',
+      status: 'resting',
+      cursor: 'c',
+      limit: 2,
+      minTs: 1,
+      maxTs: 9,
+    });
+    has(
+      client,
+      'ticker=T',
+      'event_ticker=E',
+      'status=resting',
+      'cursor=c',
+      'limit=2',
+      'min_ts=1',
+      'max_ts=9',
+    );
+  });
+
+  // The null-on-404 lookups must rethrow anything that is NOT a 404 —
+  // swallowing a 5xx into `null` would read as "does not exist".
+  for (
+    const [name, call] of [
+      ['getMarket', (c: MockKalshi) => c.getMarket('T')],
+      ['getEvent', (c: MockKalshi) => c.getEvent('E')],
+      ['getSeries', (c: MockKalshi) => c.getSeries('K')],
+    ] as const
+  ) {
+    it(`${name} rethrows a non-404 failure instead of resolving null`, async () => {
+      const client = authedClient();
+      client.setResponse({ error: 'boom' }, 500);
+      const err = await asserts.assertRejects(() => call(client), KalshiError);
+      asserts.assertEquals(err.code, 'SERVICE_UNAVAILABLE');
+    });
+  }
+
+  it('amendOrder forwards clientOrderId and updatedClientOrderId', async () => {
+    const client = authedClient();
+    client.setResponse({ order_id: 'o1', remaining_count: '2.00', ts_ms: 2 });
+    await client.amendOrder('o1', {
+      ticker: 'T',
+      side: 'BUY',
+      price: 0.4,
+      count: 1,
+      clientOrderId: 'c1',
+      updatedClientOrderId: 'c2',
+    });
+    const body = JSON.parse(client.lastRequest!.body!);
+    asserts.assertEquals(body.client_order_id, 'c1');
+    asserts.assertEquals(body.updated_client_order_id, 'c2');
+  });
+
+  it('amendOrder remaps a vendor 400 to ORDER_REJECTED', async () => {
+    const client = authedClient();
+    client.setResponse(
+      { error: { code: 'bad', message: 'price off tick' } },
+      400,
+    );
+    const err = await asserts.assertRejects(
+      () =>
+        client.amendOrder('o1', {
+          ticker: 'T',
+          side: 'BUY',
+          price: 0.4,
+          count: 1,
+        }),
+      KalshiError,
+    );
+    asserts.assertEquals(err.code, 'ORDER_REJECTED');
+    asserts.assertEquals(err.getContextValue('detail'), 'price off tick');
+  });
+
+  it('submitOrders remaps a whole-batch vendor 400 to ORDER_REJECTED', async () => {
+    const client = authedClient();
+    client.setResponse(
+      { error: { code: 'bad', message: 'batch refused' } },
+      400,
+    );
+    const err = await asserts.assertRejects(
+      () =>
+        client.submitOrders([{
+          ticker: 'T',
+          side: 'BUY',
+          price: 0.4,
+          count: 1,
+          orderType: 'GTC',
+        }]),
+      KalshiError,
+    );
+    asserts.assertEquals(err.code, 'ORDER_REJECTED');
+  });
+
+  it('cancelOrders returns [] for an empty input without any request', async () => {
+    const client = authedClient();
+    asserts.assertEquals(await client.cancelOrders([]), []);
+    asserts.assertEquals(client.requests.length, 0);
+  });
+});
+
 const env = envArgs();
 const credentials = {
   accessKey: env.get('CONNECTOR_KALSHI_ACCESS_KEY'),

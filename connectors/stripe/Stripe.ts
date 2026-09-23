@@ -319,7 +319,7 @@ export class Stripe extends RESTler<StripeOptions> {
 
     return await this.__requestAndValidate(
       {
-        path: `/payment_intents/${parsedId}`,
+        path: `/payment_intents/${encodeURIComponent(parsedId)}`,
         method: 'GET',
       },
       PaymentIntentSchemaObject,

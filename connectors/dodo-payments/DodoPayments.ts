@@ -310,6 +310,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *   pageSize: 20,
    * });
    * ```
+   *
+   * @throws {DodoPaymentsError} `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE` or `UNKNOWN_ERROR` from the vendor; `RESPONSE_ERROR` when the page fails validation.
    */
   public async listPayments(
     options: ListPaymentsOptions = {},
@@ -495,6 +497,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *   status: 'active',
    * });
    * ```
+   *
+   * @throws {DodoPaymentsError} `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE` or `UNKNOWN_ERROR` from the vendor; `RESPONSE_ERROR` when the page fails validation.
    */
   public async listSubscriptions(
     options: ListSubscriptionsOptions = {},

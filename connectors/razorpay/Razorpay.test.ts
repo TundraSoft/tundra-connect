@@ -640,6 +640,53 @@ describe('Razorpay', () => {
 // regardless of credentials — this suite is Deno-only.
 // =============================================================================
 
+describe('Razorpay — path safety', () => {
+  // Regression for a real traversal: the id guards used `\S+`, which
+  // matched `/` and `.`, so `getPayment('pay_../../../orders')` passed
+  // validation and the request went to `/v1/orders` — the merchant's whole
+  // order book, with their Basic auth attached.
+  const traversals = [
+    'pay_../../../orders',
+    'pay_x/y',
+    'pay_x?count=100',
+    'pay_x#frag',
+    'pay_..',
+  ];
+
+  for (const id of traversals) {
+    it(`rejects ${JSON.stringify(id)} before any request is sent`, async () => {
+      const client = new MockRazorpay({ auth: validAuth });
+      client.setResponse(validPayment, 200);
+      await asserts.assertRejects(() => client.getPayment(id), RazorpayError);
+      asserts.assertEquals(client.request, undefined);
+    });
+  }
+
+  it('rejects an order id that escapes its segment', async () => {
+    const client = new MockRazorpay({ auth: validAuth });
+    client.setResponse(validOrder, 200);
+    await asserts.assertRejects(
+      () => client.getOrder('order_../../../payments'),
+      RazorpayError,
+    );
+    asserts.assertEquals(client.request, undefined);
+  });
+
+  it('still accepts the documented alphanumeric id shapes verbatim on the wire', async () => {
+    const client = new MockRazorpay({ auth: validAuth });
+    client.setResponse(validPayment, 200);
+    await client.getPayment('pay_29QQoUBi66xm2f');
+    asserts.assert(
+      client.request!.url.endsWith('/v1/payments/pay_29QQoUBi66xm2f'),
+    );
+    client.setResponse(validOrder, 200);
+    await client.getOrder('order_EKwxwAgItmmXdp');
+    asserts.assert(
+      client.request!.url.endsWith('/v1/orders/order_EKwxwAgItmmXdp'),
+    );
+  });
+});
+
 const env = envArgs();
 const credentials = {
   keyId: env.get('CONNECTOR_RAZORPAY_KEY_ID'),

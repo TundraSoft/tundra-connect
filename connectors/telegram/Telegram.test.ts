@@ -477,6 +477,36 @@ describe('Telegram', () => {
 // a real, visible message and additionally requires
 // LIVE_TEST_ALLOW_VISIBLE_EFFECTS.
 // ---------------------------------------------------------------------------
+/** Everything an error could surface to a log: its message plus its serialized context. */
+function dumpError(err: unknown): string {
+  const e = err as { message?: string; toJSON?: () => unknown };
+  return `${e.message ?? ''} ${JSON.stringify(e.toJSON?.() ?? String(err))}`;
+}
+
+describe('Telegram — credential custody', () => {
+  it('does not echo a rejected bot token into the config error', () => {
+    // Regression: both CONFIG_INVALID_BOT_TOKEN sites used to carry the
+    // supplied token in context. "Invalid" includes a real token with a
+    // stray newline from an env file, so this is a genuine credential.
+    const err = asserts.assertThrows(
+      () => new MockTelegram({ botToken: 'not-a-token-SECRETMARKER' }),
+      TelegramError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_BOT_TOKEN');
+    asserts.assert(!dumpError(err).includes('SECRETMARKER'));
+  });
+
+  it('never leaks the bot token from a runtime failure, even though it is embedded in the URL path', async () => {
+    const client = new MockTelegram({ botToken: TEST_TOKEN });
+    client.setResponse(JSON.stringify({ ok: false, description: 'boom' }), 500);
+    const err = await asserts.assertRejects(
+      () => client.getMe(),
+      TelegramError,
+    );
+    asserts.assert(!dumpError(err).includes(TEST_TOKEN));
+  });
+});
+
 const env = envArgs();
 const credentials = {
   botToken: env.get('CONNECTOR_TELEGRAM_BOT_TOKEN'),

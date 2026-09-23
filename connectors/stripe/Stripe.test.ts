@@ -629,6 +629,38 @@ describe('Stripe', () => {
 // third party.
 // ---------------------------------------------------------------------------
 
+describe('Stripe — path safety', () => {
+  // Regression: `^pi_\S+$` admitted `/` and `.`, so a caller-supplied id
+  // like `pi_../../v1/customers` escaped `/payment_intents/` into a
+  // different authenticated endpoint.
+  for (
+    const id of ['pi_../../v1/customers', 'pi_x/y', 'pi_x?limit=100', 'pi_..']
+  ) {
+    it(`rejects ${JSON.stringify(id)} before any request is sent`, async () => {
+      const client = new MockStripe({
+        auth: { type: 'BASIC', username: 'sk_test_abc123', password: '' },
+      });
+      client.setResponse(validPaymentIntent, 200);
+      await asserts.assertRejects(
+        () => client.retrievePaymentIntent(id),
+        StripeError,
+      );
+      asserts.assertEquals(client.request, undefined);
+    });
+  }
+
+  it('still accepts a documented alphanumeric id verbatim on the wire', async () => {
+    const client = new MockStripe({
+      auth: { type: 'BASIC', username: 'sk_test_abc123', password: '' },
+    });
+    client.setResponse(validPaymentIntent, 200);
+    await client.retrievePaymentIntent('pi_3Nx0aB2c3D4e5F6g');
+    asserts.assert(
+      client.request!.url.endsWith('/v1/payment_intents/pi_3Nx0aB2c3D4e5F6g'),
+    );
+  });
+});
+
 const env = envArgs();
 const credentials = {
   secretKey: env.get('CONNECTOR_STRIPE_SECRET_KEY'),

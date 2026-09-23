@@ -120,9 +120,11 @@ export class Telegram extends RESTler<TelegramOptions> {
       ? options.botToken.trim()
       : '';
     if (!botToken) {
-      throw new TelegramError('CONFIG_INVALID_BOT_TOKEN', {
-        botToken: options?.botToken,
-      });
+      // Deliberately NOT echoing the supplied token into the error context:
+      // this is logged, and "invalid" includes a real token with a stray
+      // newline from an env file. The message already says what shape is
+      // expected.
+      throw new TelegramError('CONFIG_INVALID_BOT_TOKEN', {});
     }
     // An explicit `baseURL` names only the SERVER to target (a self-hosted
     // Bot API server routes with the identical `/bot{token}/{method}` shape)
@@ -249,9 +251,8 @@ export class Telegram extends RESTler<TelegramOptions> {
         const trimmed = typeof value === 'string' ? value.trim() : value;
         const [err] = botTokenGuard.safeParse(trimmed);
         if (err) {
-          throw new TelegramError('CONFIG_INVALID_BOT_TOKEN', {
-            botToken: value,
-          });
+          // Never echo the credential — see the constructor's identical guard.
+          throw new TelegramError('CONFIG_INVALID_BOT_TOKEN', {});
         }
         value = trimmed as TelegramOptions[K];
         break;

@@ -1062,6 +1062,40 @@ describe('Polymarket — error mapping', () => {
 // mutate real state tied to a real wallet (and an order can result in a
 // real fill), which this repo's live-test conventions exclude unless the
 // vendor offers a safe, isolated sandbox for it — Polymarket does not.
+/** Everything an error could surface to a log: its message plus its serialized context. */
+function dumpError(err: unknown): string {
+  const e = err as { message?: string; toJSON?: () => unknown };
+  return `${e.message ?? ''} ${JSON.stringify(e.toJSON?.() ?? String(err))}`;
+}
+
+describe('Polymarket — credential custody', () => {
+  it('does not echo a rejected private key into the config error', () => {
+    const err = asserts.assertThrows(
+      () =>
+        new MockPolymarket({
+          auth: { type: 'CUSTOM', privateKey: 'deadbeef-SECRETMARKER' },
+        }),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_PRIVATE_KEY');
+    asserts.assert(!dumpError(err).includes('SECRETMARKER'));
+  });
+
+  it('never leaks the wallet private key from a runtime failure', async () => {
+    const client = new MockPolymarket({
+      auth: { type: 'CUSTOM', privateKey: TEST_KEY },
+    });
+    client.setResponse({ error: 'boom' }, 500);
+    const err = await asserts.assertRejects(
+      () => client.getMarkets(),
+      PolymarketError,
+    );
+    const dumped = dumpError(err);
+    asserts.assert(!dumped.includes(TEST_KEY));
+    asserts.assert(!dumped.includes(TEST_KEY.slice(2))); // without 0x
+  });
+});
+
 const env = envArgs();
 const credentials = {
   privateKey: env.get('CONNECTOR_POLYMARKET_PRIVATE_KEY'),

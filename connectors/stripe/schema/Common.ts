@@ -40,8 +40,11 @@ export const secretKeyGuard: BaseGuardian<SecretKeySchema> = Guardian.string()
 /** Validates a Stripe PaymentIntent id (`pi_...`). */
 export const paymentIntentIdGuard: BaseGuardian<string> = Guardian.string()
   .pattern(
-    /^pi_\S+$/,
-    "PaymentIntent id must match '^pi_\\S+$'",
+    // Alphanumeric ONLY after the prefix. `\S+` admitted `/` and `.`, so
+    // `pi_../../v1/customers` passed validation and escaped its path
+    // segment into a different authenticated endpoint.
+    /^pi_[A-Za-z0-9]+$/,
+    "PaymentIntent id must match '^pi_[A-Za-z0-9]+$'",
   ).describe({
     title: 'PaymentIntent id',
     description: 'A Stripe PaymentIntent identifier, e.g. `pi_3Nx...`.',

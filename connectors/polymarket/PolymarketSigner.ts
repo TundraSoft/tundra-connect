@@ -106,6 +106,9 @@ export class PolymarketSigner {
    * meta-tx path (see `PolymarketRelayer.ts`), which signs the 32 RAW
    * BYTES of its struct hash this way rather than as EIP-712 typed data
    * (the hex-string form of the hash is rejected by the relay server).
+   *
+   * @throws {Error} Never in practice — {@link signDigest} throws only for a
+   * non-32-byte digest, and the EIP-191 envelope always yields 32 bytes.
    */
   public signMessage(message: Uint8Array): `0x${string}` {
     return this.signDigest(eip191Digest(message));

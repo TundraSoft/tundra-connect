@@ -13,7 +13,7 @@ export const SentryErrorCodes = {
 
   // Connect-specific: configuration failures, caught at construction.
   CONFIG_INVALID_ORGANIZATION:
-    "Sentry 'organization' must be a non-empty string.",
+    "Sentry 'organization' must be a non-empty slug (letters, digits, '-', '_').",
   CONFIG_INVALID_TOKEN:
     'Sentry `auth` must be `{ type: "BEARER", token }` with a non-empty token.',
 

@@ -226,7 +226,7 @@ export class Razorpay extends RESTler<RazorpayOptions> {
   public async getOrder(id: string): Promise<OrderSchema> {
     const orderId = this.__validate(orderIdGuard, id);
     return await this.__requestAndValidate(
-      { path: `/orders/${orderId}`, method: 'GET' },
+      { path: `/orders/${encodeURIComponent(orderId)}`, method: 'GET' },
       OrderSchemaObject,
     );
   }
@@ -264,7 +264,7 @@ export class Razorpay extends RESTler<RazorpayOptions> {
     const payload = this.__validate(CapturePaymentRequestSchemaObject, params);
     return await this.__requestAndValidate(
       {
-        path: `/payments/${paymentId}/capture`,
+        path: `/payments/${encodeURIComponent(paymentId)}/capture`,
         method: 'POST',
         contentType: 'JSON',
         payload: payload as unknown as Record<string, unknown>,
@@ -294,7 +294,7 @@ export class Razorpay extends RESTler<RazorpayOptions> {
   public async getPayment(id: string): Promise<PaymentSchema> {
     const paymentId = this.__validate(paymentIdGuard, id);
     return await this.__requestAndValidate(
-      { path: `/payments/${paymentId}`, method: 'GET' },
+      { path: `/payments/${encodeURIComponent(paymentId)}`, method: 'GET' },
       PaymentSchemaObject,
     );
   }

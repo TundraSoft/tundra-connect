@@ -479,6 +479,33 @@ describe('Sentry', () => {
 // credentials — this suite is Deno-only.
 // =============================================================================
 
+describe('Sentry — path safety', () => {
+  // `organization` is interpolated into every request path. `issueId` in
+  // the same templates was already encoded; the org slug must not be the
+  // one unguarded hole.
+  for (
+    const org of ['my-org/../admin', 'my-org?x=1', 'my org', 'my-org#f', '..']
+  ) {
+    it(`rejects organization ${JSON.stringify(org)} at construction`, () => {
+      const err = asserts.assertThrows(
+        () => client({ organization: org }),
+        SentryError,
+      );
+      asserts.assertEquals(err.code, 'CONFIG_INVALID_ORGANIZATION');
+    });
+  }
+
+  it('accepts a normal slug and never lets an issue id reach the wire un-encoded', async () => {
+    const c = client({ organization: 'my_org-2' });
+    c.setResponse(JSON.stringify(validIssue), 200);
+    await c.getIssue('PUMP/../../x');
+    const url = c.request?.url ?? '';
+    asserts.assertStringIncludes(url, '/organizations/my_org-2/issues/');
+    asserts.assertStringIncludes(url, 'PUMP%2F..%2F..%2Fx');
+    asserts.assertEquals(url.includes('/issues/PUMP/'), false);
+  });
+});
+
 const env = envArgs();
 const credentials = {
   token: env.get('CONNECTOR_SENTRY_TOKEN'),

@@ -15,8 +15,11 @@ export const PAYMENT_STATUSES = [
  * {@link Razorpay.getPayment} / {@link Razorpay.capturePayment}.
  */
 export const paymentIdGuard: BaseGuardian<string> = Guardian.string().pattern(
-  /^pay_\S+$/,
-  "payment id must match '^pay_\\S+$'",
+  // Alphanumeric ONLY after the prefix. The previous `\S+` admitted `/`,
+  // `.` and `?`, so an id like `pay_../../../orders` passed validation and
+  // escaped its path segment into a different authenticated endpoint.
+  /^pay_[A-Za-z0-9]+$/,
+  "payment id must match '^pay_[A-Za-z0-9]+$'",
 ).describe({
   title: 'Payment id',
   description: 'A Razorpay Payment identifier, e.g. `pay_29QQoUBi66xm2f`.',

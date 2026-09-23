@@ -179,7 +179,9 @@ export class Sentry extends RESTler<SentryOptions> {
 
     return await this.__requestAndValidatePaginated(
       {
-        path: `/organizations/${this.organization}/projects/`,
+        path: `/organizations/${
+          encodeURIComponent(this.organization)
+        }/projects/`,
         method: 'GET',
         baseURL: this.__endpointBaseURL(qs),
       },
@@ -225,7 +227,7 @@ export class Sentry extends RESTler<SentryOptions> {
 
     return await this.__requestAndValidatePaginated(
       {
-        path: `/organizations/${this.organization}/issues/`,
+        path: `/organizations/${encodeURIComponent(this.organization)}/issues/`,
         method: 'GET',
         baseURL: this.__endpointBaseURL(qs),
       },
@@ -255,7 +257,7 @@ export class Sentry extends RESTler<SentryOptions> {
 
     return await this.__requestAndValidate(
       {
-        path: `/organizations/${this.organization}/issues/${
+        path: `/organizations/${encodeURIComponent(this.organization)}/issues/${
           encodeURIComponent(id)
         }/`,
         method: 'GET',
@@ -293,7 +295,7 @@ export class Sentry extends RESTler<SentryOptions> {
 
     return await this.__requestAndValidate(
       {
-        path: `/organizations/${this.organization}/issues/${
+        path: `/organizations/${encodeURIComponent(this.organization)}/issues/${
           encodeURIComponent(id)
         }/`,
         method: 'PUT',
@@ -350,7 +352,7 @@ export class Sentry extends RESTler<SentryOptions> {
 
     return await this.__requestAndValidatePaginated(
       {
-        path: `/organizations/${this.organization}/issues/${
+        path: `/organizations/${encodeURIComponent(this.organization)}/issues/${
           encodeURIComponent(id)
         }/events/`,
         method: 'GET',
@@ -393,7 +395,9 @@ export class Sentry extends RESTler<SentryOptions> {
 
     return await this.__requestAndValidate(
       {
-        path: `/organizations/${this.organization}/releases/`,
+        path: `/organizations/${
+          encodeURIComponent(this.organization)
+        }/releases/`,
         method: 'POST',
         contentType: 'JSON',
         payload: parsed as unknown as Record<string, unknown>,
@@ -722,7 +726,14 @@ export class Sentry extends RESTler<SentryOptions> {
       }
       case 'organization': {
         const organization = value as unknown as string;
-        if (typeof organization !== 'string' || organization.trim() === '') {
+        // A slug: letters, digits, `-`, `_`. Anything else (`/`, `.`, `?`)
+        // would let the value escape its path segment — this is interpolated
+        // into every request path, and `issueId` in the same templates is
+        // already encoded; the org must not be the one unguarded hole.
+        if (
+          typeof organization !== 'string' ||
+          !/^[A-Za-z0-9_-]+$/.test(organization.trim())
+        ) {
           throw new SentryError('CONFIG_INVALID_ORGANIZATION', {});
         }
         value = organization.trim() as SentryOptions[K];

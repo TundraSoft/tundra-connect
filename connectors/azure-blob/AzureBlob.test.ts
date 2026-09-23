@@ -806,6 +806,26 @@ describe('AzureBlob', () => {
 // ---------------------------------------------------------------------------
 import { envArgs } from '@utils';
 
+/** Everything an error could surface to a log: its message plus its serialized context. */
+function dumpError(err: unknown): string {
+  const e = err as { message?: string; toJSON?: () => unknown };
+  return `${e.message ?? ''} ${JSON.stringify(e.toJSON?.() ?? String(err))}`;
+}
+
+describe('AzureBlob — credential custody', () => {
+  it('never leaks the shared account key from a runtime failure', async () => {
+    const client = new MockAzureBlob({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+    });
+    client.setResponse(null, 500);
+    const err = await asserts.assertRejects(
+      () => client.deleteObject({ bucket: 'my-container', key: 'a.txt' }),
+      AzureBlobError,
+    );
+    asserts.assert(!dumpError(err).includes(ACCOUNT_KEY));
+  });
+});
+
 const env = envArgs();
 const credentials = {
   account: env.get('CONNECTOR_AZURE_BLOB_ACCOUNT'),

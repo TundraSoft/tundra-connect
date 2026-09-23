@@ -1167,6 +1167,66 @@ describe('GCS', () => {
 // ---------------------------------------------------------------------------
 import { envArgs } from '@utils';
 
+/** Everything an error could surface to a log: its message plus its serialized context. */
+function dumpError(err: unknown): string {
+  const e = err as { message?: string; toJSON?: () => unknown };
+  return `${e.message ?? ''} ${JSON.stringify(e.toJSON?.() ?? String(err))}`;
+}
+
+describe('GCS — credential custody', () => {
+  it('never leaks a bearer access token from a runtime failure', async () => {
+    const client = new MockGCS({
+      auth: { type: 'BEARER', token: 'ya29-SECRETMARKER' },
+    });
+    client.queueResponse(() =>
+      new Response(JSON.stringify({ error: { message: 'boom' } }), {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    const err = await asserts.assertRejects(
+      () =>
+        client.putObject({
+          bucket: 'my-bucket',
+          key: 'k.txt',
+          body: 'x',
+          contentType: 'text/plain',
+        }),
+      GCSError,
+    );
+    asserts.assert(!dumpError(err).includes('SECRETMARKER'));
+  });
+
+  it('never echoes a malformed service-account private key, whether it fails at construction or on first use', async () => {
+    let err: unknown;
+    let client: MockGCS | undefined;
+    try {
+      client = new MockGCS({
+        auth: {
+          type: 'CUSTOM',
+          clientEmail: 'svc@x.iam.gserviceaccount.com',
+          privateKey: 'garbage-SECRETMARKER',
+        },
+      });
+    } catch (e) {
+      err = e;
+    }
+    if (client) {
+      client.queueResponse(() => new Response('{}', { status: 500 }));
+      err = await asserts.assertRejects(() =>
+        client!.putObject({
+          bucket: 'b',
+          key: 'k',
+          body: 'x',
+          contentType: 'text/plain',
+        })
+      );
+    }
+    asserts.assertExists(err);
+    asserts.assert(!dumpError(err).includes('SECRETMARKER'));
+  });
+});
+
 const env = envArgs();
 const credentials = {
   clientEmail: env.get('CONNECTOR_GCS_CLIENT_EMAIL'),
