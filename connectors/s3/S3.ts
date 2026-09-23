@@ -211,7 +211,7 @@ export class S3 extends RESTler<S3Options> {
       forcePathStyle: hasCustomBaseURL,
     } as Partial<S3Options>);
 
-    if (!this.hasOption('auth')) {
+    if (!this._hasOption('auth')) {
       throw new S3Error('CONFIG_INVALID_AUTH', { accessKeyId: undefined });
     }
     this._responseHandler = (response) => this.__toError(response);
@@ -800,6 +800,46 @@ export class S3 extends RESTler<S3Options> {
    * @throws {S3Error} `RESPONSE_ERROR` when the body fails validation.
    * @private
    */
+  /**
+   * Seconds a caller should wait before retrying after a 429, read from
+   * whichever rate-limit header the vendor sent: `Retry-After` (delta
+   * seconds or an HTTP-date), `X-RateLimit-Reset-After` (delta seconds),
+   * or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or
+   * milliseconds). `undefined` when none is present or parseable — the
+   * value is only ever what the vendor said, never a guess.
+   */
+  private static __retryAfterSeconds(
+    headers: Record<string, string> | undefined,
+    nowMs = Date.now(),
+  ): number | undefined {
+    if (!headers) return undefined;
+    const get = (name: string): string | undefined =>
+      headers[name] ?? headers[name.toLowerCase()];
+    const retryAfter = get('retry-after');
+    if (retryAfter !== undefined) {
+      const n = Number(retryAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+      const at = Date.parse(retryAfter);
+      if (Number.isFinite(at)) {
+        return Math.max(0, Math.ceil((at - nowMs) / 1000));
+      }
+    }
+    const resetAfter = get('x-ratelimit-reset-after');
+    if (resetAfter !== undefined) {
+      const n = Number(resetAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+    }
+    const reset = get('x-ratelimit-reset') ?? get('ratelimit-reset');
+    if (reset !== undefined) {
+      const n = Number(reset);
+      if (Number.isFinite(n) && n > 0) {
+        const epochMs = n > 1e12 ? n : n * 1000;
+        return Math.max(0, Math.ceil((epochMs - nowMs) / 1000));
+      }
+    }
+    return undefined;
+  }
+
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,
@@ -866,6 +906,7 @@ export class S3 extends RESTler<S3Options> {
         const code = VENDOR_CODE_MAP[parsed.Code] ??
           (parsed.Code as S3ErrorCode);
         throw new S3Error(code, {
+          retryAfterSeconds: S3.__retryAfterSeconds(response.headers),
           status,
           message: parsed.Message,
           resource: parsed.Resource,

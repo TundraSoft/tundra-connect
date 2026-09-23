@@ -8,6 +8,7 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { constantTimeEqual, sha256, signHMAC } from '@crypt';
 import {
   accountSidGuard,
   type CallSchema,
@@ -120,6 +121,36 @@ export type TwilioOptions = RESTlerOptions & {
  * console.log(call.sid, call.status);
  * ```
  */
+/**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Arguments to {@link Twilio.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /**
+   * The EXACT URL Twilio requested — scheme, host, path and query string as
+   * received, never re-encoded. Twilio signs this string byte-for-byte.
+   */
+  url: string;
+  headers: WebhookHeadersLike;
+  /** The POST form parameters, for an `application/x-www-form-urlencoded` webhook. */
+  params?: Record<string, string>;
+  /** The RAW JSON body, for an `application/json` webhook (Twilio then puts a `bodySHA256` query param on the URL). */
+  payload?: string;
+  /**
+   * The ACCOUNT auth token. Defaults to the configured `auth.password`
+   * when this client uses account-SID/auth-token Basic auth. Required
+   * explicitly under API-key auth — Twilio signs with the account token,
+   * never the API-key secret.
+   */
+  authToken?: string;
+};
+
 export class Twilio extends RESTler<TwilioOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Twilio';
@@ -724,6 +755,141 @@ export class Twilio extends RESTler<TwilioOptions> {
    *
    * @private
    */
+  /**
+   * Seconds a caller should wait before retrying after a 429, read from
+   * whichever rate-limit header the vendor sent: `Retry-After` (delta
+   * seconds or an HTTP-date), `X-RateLimit-Reset-After` (delta seconds),
+   * or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or
+   * milliseconds). `undefined` when none is present or parseable — the
+   * value is only ever what the vendor said, never a guess.
+   */
+  private static __retryAfterSeconds(
+    headers: Record<string, string> | undefined,
+    nowMs = Date.now(),
+  ): number | undefined {
+    if (!headers) return undefined;
+    const get = (name: string): string | undefined =>
+      headers[name] ?? headers[name.toLowerCase()];
+    const retryAfter = get('retry-after');
+    if (retryAfter !== undefined) {
+      const n = Number(retryAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+      const at = Date.parse(retryAfter);
+      if (Number.isFinite(at)) {
+        return Math.max(0, Math.ceil((at - nowMs) / 1000));
+      }
+    }
+    const resetAfter = get('x-ratelimit-reset-after');
+    if (resetAfter !== undefined) {
+      const n = Number(resetAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+    }
+    const reset = get('x-ratelimit-reset') ?? get('ratelimit-reset');
+    if (reset !== undefined) {
+      const n = Number(reset);
+      if (Number.isFinite(n) && n > 0) {
+        const epochMs = n > 1e12 ? n : n * 1000;
+        return Math.max(0, Math.ceil((epochMs - nowMs) / 1000));
+      }
+    }
+    return undefined;
+  }
+
+  /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
+  private static __webhookHeader(
+    headers: WebhookHeadersLike,
+    name: string,
+  ): string | null {
+    if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+      return headers.get(name);
+    }
+    const lower = name.toLowerCase();
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() !== lower) continue;
+      return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+    }
+    return null;
+  }
+
+  /**
+   * Verifies a Twilio webhook's `X-Twilio-Signature`.
+   *
+   * Twilio's scheme: HMAC-SHA1 over the exact request URL followed by every
+   * POST parameter as `key` immediately followed by `value`, sorted by key,
+   * no separators; keyed by the ACCOUNT auth token; base64 output. For a
+   * JSON body Twilio instead appends `bodySHA256=<hex>` to the URL — this
+   * method checks that hash against `payload` (constant-time) and signs the
+   * URL alone, exactly as Twilio's own validator does.
+   *
+   * The HMAC runs through `@tundralibs/crypt` (`signHMAC`, SHA-1); its hex
+   * output is re-encoded to the base64 Twilio presents. Resolves to
+   * nothing on success — the caller already holds the parameters.
+   *
+   * @throws {TwilioError} `WEBHOOK_INVALID_HEADERS`,
+   * `WEBHOOK_INVALID_AUTH_TOKEN`, or `WEBHOOK_SIGNATURE_INVALID`.
+   *
+   * @example
+   * ```typescript
+   * // Form webhook (SMS status callback):
+   * await client.verifyWebhook({ url: req.url, headers: req.headers, params });
+   * // JSON webhook:
+   * await client.verifyWebhook({ url: req.url, headers: req.headers, payload: await req.text() });
+   * ```
+   */
+  public async verifyWebhook(options: VerifyWebhookOptions): Promise<void> {
+    const { url, headers, params = {}, payload } = options;
+    // Both auth modes are Basic on the wire, so `type` alone cannot tell
+    // them apart: under API-key auth the password is the API-key SECRET,
+    // which Twilio does NOT sign with. Only default to the configured
+    // password when the username is the account SID — i.e. account-SID /
+    // auth-token mode — and otherwise insist on an explicit token.
+    const auth = this._getOption('auth') as {
+      type: string;
+      username?: string;
+      password?: string;
+    };
+    const authToken = options.authToken ??
+      (auth.type === 'BASIC' && auth.username === this.accountSid
+        ? auth.password
+        : undefined);
+    if (!authToken) {
+      throw new TwilioError('WEBHOOK_INVALID_AUTH_TOKEN', {});
+    }
+    const signature = Twilio.__webhookHeader(headers, 'x-twilio-signature');
+    if (!signature) {
+      throw new TwilioError('WEBHOOK_INVALID_HEADERS', {
+        reason: 'missing X-Twilio-Signature',
+      });
+    }
+    let data = url;
+    if (payload !== undefined) {
+      const bodyHash = new URL(url).searchParams.get('bodySHA256');
+      if (!bodyHash) {
+        throw new TwilioError('WEBHOOK_INVALID_HEADERS', {
+          reason:
+            'a JSON webhook URL must carry the bodySHA256 query parameter',
+        });
+      }
+      if (
+        !constantTimeEqual(await sha256(payload, 'hex'), bodyHash.toLowerCase())
+      ) {
+        throw new TwilioError('WEBHOOK_SIGNATURE_INVALID', {});
+      }
+    } else {
+      for (const key of Object.keys(params).sort()) data += key + params[key];
+    }
+    const hex = await signHMAC(data, authToken, { hashAlgorithm: 'SHA-1' });
+    // Twilio presents the HMAC as base64; re-encode crypt's hex output.
+    let binary = '';
+    for (let i = 0; i < hex.length; i += 2) {
+      binary += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+    }
+    const expected = btoa(binary);
+    if (!constantTimeEqual(signature, expected)) {
+      throw new TwilioError('WEBHOOK_SIGNATURE_INVALID', {});
+    }
+  }
+
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,
@@ -780,6 +946,7 @@ export class Twilio extends RESTler<TwilioOptions> {
         : undefined;
       throw new TwilioError(mapped ?? 'RESPONSE_ERROR', {
         status: status,
+        retryAfterSeconds: Twilio.__retryAfterSeconds(response.headers),
         vendorCode: body.code,
         vendorMessage: body.message,
         moreInfo: body.more_info,

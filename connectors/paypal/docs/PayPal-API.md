@@ -143,3 +143,44 @@ See [Errors](PayPal-Errors.md) for failure handling and
 ---
 
 [← Back to PayPal](../README.md)
+
+## Webhooks
+
+### `verifyWebhook(options)`
+
+Verifies an inbound webhook from PayPal — a method on the client, not an HTTP call (except that PayPal verifies server-side, see below).
+
+**Scheme** (the five `PayPal-Transmission-*` / `PayPal-Cert-Url` / `PayPal-Auth-Algo` headers): PayPal verifies its own signature server-side: the method posts the transmission headers, your `webhook_id` and the event body **exactly as delivered** to `POST /v1/notifications/verify-webhook-signature` (one authenticated call per webhook, using this client's OAuth token) and reads `verification_status`.
+
+| Option      | Type                | Required | Description                                    |
+| ----------- | ------------------- | -------- | ---------------------------------------------- |
+| `payload`   | `string`            | yes      | Raw body exactly as received.                  |
+| `headers`   | `Headers \| object` | yes      | Case-insensitive lookup.                       |
+| `webhookId` | `string`            | yes      | The webhook's id from the developer dashboard. |
+
+**Returns:** The parsed event (`unknown`) when PayPal answers `SUCCESS`.
+
+**Throws:** `PayPalError` with `WEBHOOK_INVALID_HEADERS`, `WEBHOOK_SIGNATURE_INVALID`, `RESPONSE_ERROR`, plus the usual vendor codes for the verification call.
+
+```ts
+const raw = await req.text(); // text(), never json()
+const event = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  webhookId: PAYPAL_WEBHOOK_ID,
+});
+```
+
+Comparison is constant-time via `@tundralibs/crypt`. Treat `WEBHOOK_SIGNATURE_INVALID` as a forged request.
+
+## Idempotency
+
+`createOrder`, `captureOrder` and `refundCapture` accept a trailing `IdempotentRequestOptions`:
+
+```ts
+const key = PayPal.newIdempotencyKey(); // a ULID from @tundralibs/id
+await db.orders.update(id, { idempotencyKey: key }); // persist FIRST
+await client.createOrder(request, { idempotencyKey: key });
+```
+
+Sent as `PayPal-Request-Id` (≤ 108 chars). Supply the **same** key on every retry of one logical operation and PayPal returns the original result instead of acting again — the defence against a double charge when a request times out after the vendor already acted. Deliberately opt-in: a fresh key per call would be indistinguishable from none, and a fresh key per _retry_ would defeat the point.

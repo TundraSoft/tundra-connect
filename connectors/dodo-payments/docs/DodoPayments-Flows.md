@@ -102,13 +102,11 @@ the part integrations most often miss.
 Fulfilment belongs here, for both flows.
 
 ```ts
-import { verifyWebhookSignature } from '@tundraconnect/dodo-payments';
-
 export async function POST(req: Request) {
   const raw = await req.text(); // text(), never json()
   let event;
   try {
-    event = await verifyWebhookSignature({
+    event = await dodo.verifyWebhook({
       payload: raw,
       headers: req.headers,
       secret: WEBHOOK_SIGNING_SECRET,

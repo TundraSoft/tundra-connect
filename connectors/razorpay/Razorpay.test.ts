@@ -687,6 +687,90 @@ describe('Razorpay — path safety', () => {
   });
 });
 
+async function hmacHex(
+  secret: string,
+  message: string,
+  hash = 'SHA-256',
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret) as unknown as BufferSource,
+    { name: 'HMAC', hash },
+    false,
+    ['sign'],
+  );
+  const mac = new Uint8Array(
+    await crypto.subtle.sign(
+      'HMAC',
+      key,
+      new TextEncoder().encode(message) as unknown as BufferSource,
+    ),
+  );
+  let out = '';
+  for (const b of mac) out += b.toString(16).padStart(2, '0');
+  return out;
+}
+function hexToB64(hex: string): string {
+  let bin = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    bin += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+  }
+  return btoa(bin);
+}
+
+describe('Razorpay — verifyWebhook', () => {
+  const SECRET = 'rzp_webhook_secret';
+  const PAYLOAD = JSON.stringify({
+    event: 'payment.captured',
+    payload: { payment: { entity: { id: 'pay_1' } } },
+  });
+  const client = () => new MockRazorpay({ auth: validAuth });
+  it('accepts a genuine HMAC-SHA256 hex signature over the raw body', async () => {
+    const event = await client().verifyWebhook({
+      payload: PAYLOAD,
+      headers: { 'x-razorpay-signature': await hmacHex(SECRET, PAYLOAD) },
+      secret: SECRET,
+    }) as { event: string };
+    asserts.assertEquals(event.event, 'payment.captured');
+  });
+  it('rejects a tampered payload', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD + ' ',
+          headers: { 'x-razorpay-signature': await hmacHex(SECRET, PAYLOAD) },
+          secret: SECRET,
+        }),
+      RazorpayError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('rejects the wrong secret', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: { 'x-razorpay-signature': await hmacHex('other', PAYLOAD) },
+          secret: SECRET,
+        }),
+      RazorpayError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('rejects a missing header', async () => {
+    const err = await asserts.assertRejects(
+      () =>
+        client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: {},
+          secret: SECRET,
+        }),
+      RazorpayError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_INVALID_HEADERS');
+  });
+});
+
 const env = envArgs();
 const credentials = {
   keyId: env.get('CONNECTOR_RAZORPAY_KEY_ID'),

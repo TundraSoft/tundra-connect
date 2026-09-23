@@ -8,6 +8,7 @@ import {
   RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { issueJWT } from '@crypt';
 import { type BaseGuardian, Guardian, GuardianError } from '@guardian';
 import {
   ErrorEnvelopeSchemaObject,
@@ -37,44 +38,6 @@ const JWT_LIFETIME_SECONDS = 3600;
  * mid-flight.
  */
 const TOKEN_REFRESH_SKEW_SECONDS = 60;
-
-/**
- * Base64url-encode raw bytes (RFC 4648 §5): standard base64, `+`/`/`
- * replaced with `-`/`_`, and padding stripped.
- */
-function base64UrlEncodeBytes(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-/** Base64url-encode a value's JSON representation (used for JWT segments). */
-function base64UrlEncodeJSON(value: unknown): string {
-  return base64UrlEncodeBytes(new TextEncoder().encode(JSON.stringify(value)));
-}
-
-/**
- * Decode a PKCS8 PEM-encoded RSA private key (`-----BEGIN PRIVATE
- * KEY-----...`) to its raw DER bytes, as required by
- * `crypto.subtle.importKey('pkcs8', ...)`.
- */
-function pemToDer(pem: string): Uint8Array<ArrayBuffer> {
-  const base64 = pem
-    .replace(/-----BEGIN [A-Z0-9 ]+-----/g, '')
-    .replace(/-----END [A-Z0-9 ]+-----/g, '')
-    .replace(/[\r\n\s]+/g, '');
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
 
 /**
  * Normalise the accepted {@link PutObjectOptions.body} shapes to a `Blob`.
@@ -808,41 +771,17 @@ export class GCS extends RESTler<GCSOptions> {
       iat,
       exp: iat + JWT_LIFETIME_SECONDS,
     };
-    const signingInput = `${
-      base64UrlEncodeJSON({ alg: 'RS256', typ: 'JWT' })
-    }.${base64UrlEncodeJSON(claims)}`;
-
-    let key: CryptoKey;
+    // `@tundralibs/crypt` builds and signs the RS256 JWT from the PEM
+    // directly — header, base64url encoding, PKCS#8 import and
+    // RSASSA-PKCS1-v1_5 signing all live there now.
     try {
-      key = await crypto.subtle.importKey(
-        'pkcs8',
-        pemToDer(auth.privateKey),
-        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-        false,
-        ['sign'],
-      );
-    } catch (cause) {
-      throw new GCSError('JWT_SIGNING_FAILED', {
-        clientEmail: auth.clientEmail,
-        stage: 'importKey',
-      }, cause as Error);
-    }
-
-    let signature: ArrayBuffer;
-    try {
-      signature = await crypto.subtle.sign(
-        'RSASSA-PKCS1-v1_5',
-        key,
-        new TextEncoder().encode(signingInput),
-      );
+      return await issueJWT('RS256', claims, auth.privateKey, { typ: 'JWT' });
     } catch (cause) {
       throw new GCSError('JWT_SIGNING_FAILED', {
         clientEmail: auth.clientEmail,
         stage: 'sign',
       }, cause as Error);
     }
-
-    return `${signingInput}.${base64UrlEncodeBytes(new Uint8Array(signature))}`;
   }
 
   /**
@@ -1066,6 +1005,46 @@ export class GCS extends RESTler<GCSOptions> {
    * @throws {GCSError} `RESPONSE_ERROR` when the body fails validation.
    * @private
    */
+  /**
+   * Seconds a caller should wait before retrying after a 429, read from
+   * whichever rate-limit header the vendor sent: `Retry-After` (delta
+   * seconds or an HTTP-date), `X-RateLimit-Reset-After` (delta seconds),
+   * or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or
+   * milliseconds). `undefined` when none is present or parseable — the
+   * value is only ever what the vendor said, never a guess.
+   */
+  private static __retryAfterSeconds(
+    headers: Record<string, string> | undefined,
+    nowMs = Date.now(),
+  ): number | undefined {
+    if (!headers) return undefined;
+    const get = (name: string): string | undefined =>
+      headers[name] ?? headers[name.toLowerCase()];
+    const retryAfter = get('retry-after');
+    if (retryAfter !== undefined) {
+      const n = Number(retryAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+      const at = Date.parse(retryAfter);
+      if (Number.isFinite(at)) {
+        return Math.max(0, Math.ceil((at - nowMs) / 1000));
+      }
+    }
+    const resetAfter = get('x-ratelimit-reset-after');
+    if (resetAfter !== undefined) {
+      const n = Number(resetAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+    }
+    const reset = get('x-ratelimit-reset') ?? get('ratelimit-reset');
+    if (reset !== undefined) {
+      const n = Number(reset);
+      if (Number.isFinite(n) && n > 0) {
+        const epochMs = n > 1e12 ? n : n * 1000;
+        return Math.max(0, Math.ceil((epochMs - nowMs) / 1000));
+      }
+    }
+    return undefined;
+  }
+
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,
@@ -1117,6 +1096,7 @@ export class GCS extends RESTler<GCSOptions> {
         const mapped = reason ? VENDOR_REASON_TO_ERROR_CODE[reason] : undefined;
         throw new GCSError(mapped ?? this.__statusToErrorCode(status), {
           status,
+          retryAfterSeconds: GCS.__retryAfterSeconds(response.headers),
           vendorCode: envelope.error.code,
           vendorMessage: envelope.error.message,
           reason,
@@ -1126,6 +1106,7 @@ export class GCS extends RESTler<GCSOptions> {
 
     throw new GCSError(this.__statusToErrorCode(status), {
       status,
+      retryAfterSeconds: GCS.__retryAfterSeconds(response.headers),
       body: body instanceof Blob ? '[binary body]' : body,
       // Status-mapped codes such as INVALID_REQUEST interpolate
       // ${vendorMessage}, which the non-JSON error body cannot supply.

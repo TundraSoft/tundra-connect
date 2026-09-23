@@ -85,3 +85,34 @@ See [Errors](SendGrid-Errors.md) for failure handling and
 ---
 
 [← Back to SendGrid](../README.md)
+
+## Webhooks
+
+### `verifyWebhook(options)`
+
+Verifies an inbound webhook from SendGrid — a method on the client, not an HTTP call.
+
+**Scheme** (`X-Twilio-Email-Event-Webhook-Signature` + `-Timestamp`): asymmetric: ECDSA P-256 / SHA-256 over `<timestamp><rawBody>` (no separator); the signature is base64-DER; verified against the Event Webhook public key the dashboard shows (base64 SPKI, or a full PEM). `@tundralibs/crypt` converts DER to raw R‖S (`ecdsaDerToRaw`) and verifies (`verifyEC`). SendGrid specifies no replay window; this connect applies 300 s as its own policy.
+
+| Option             | Type                | Required | Description                                                                   |
+| ------------------ | ------------------- | -------- | ----------------------------------------------------------------------------- |
+| `payload`          | `string`            | yes      | Raw body, **byte-exact** — SendGrid warns re-serializing may drop characters. |
+| `headers`          | `Headers \| object` | yes      | Case-insensitive lookup.                                                      |
+| `publicKey`        | `string`            | yes      | Base64 SPKI from the dashboard, or a PEM.                                     |
+| `toleranceSeconds` | `number`            | no       | Replay window. Default `300`.                                                 |
+| `nowMs`            | `number`            | no       | Clock override for tests.                                                     |
+
+**Returns:** The parsed event array (`unknown`).
+
+**Throws:** `SendGridError` with `WEBHOOK_INVALID_HEADERS`, `WEBHOOK_TIMESTAMP_INVALID`, `WEBHOOK_INVALID_KEY`, `WEBHOOK_SIGNATURE_INVALID`, `RESPONSE_ERROR`.
+
+```ts
+const raw = await req.text(); // text(), never json()
+const events = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  publicKey: SENDGRID_WEBHOOK_KEY,
+});
+```
+
+Comparison is constant-time via `@tundralibs/crypt`. Treat `WEBHOOK_SIGNATURE_INVALID` as a forged request.

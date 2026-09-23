@@ -73,6 +73,19 @@ const customer = await client.createCustomer({
 console.log(customer.id);
 ```
 
+## Webhooks
+
+```ts
+const raw = await req.text(); // text(), never json()
+const event = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  secret: STRIPE_WEBHOOK_SECRET,
+});
+```
+
+See [API → Webhooks](docs/Stripe-API.md#webhooks).
+
 ## License
 
 MIT

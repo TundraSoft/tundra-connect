@@ -28,6 +28,14 @@ export const SendGridErrorCodes = {
   RESPONSE_ERROR: 'SendGrid API response did not match the expected schema.',
   SERVICE_UNAVAILABLE:
     'SendGrid service is currently unavailable (HTTP ${status}).',
+  WEBHOOK_INVALID_HEADERS:
+    'The webhook request is missing a required signature header: ${reason}',
+  WEBHOOK_TIMESTAMP_INVALID:
+    'The webhook timestamp is outside the allowed tolerance: ${reason}',
+  WEBHOOK_SIGNATURE_INVALID:
+    'The webhook signature does not match — treat this request as forged.',
+  WEBHOOK_INVALID_KEY:
+    'The Event Webhook verification key is not a valid P-256 public key (base64 SPKI or PEM).',
 } as const;
 
 /** Valid SendGrid error code. */

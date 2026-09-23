@@ -58,6 +58,12 @@ export const StripeErrorCodes = {
   API_KEY_EXPIRED: 'The API key used to make this request has expired.',
   AUTHENTICATION_REQUIRED:
     'The payment requires additional authentication (e.g. 3D Secure) to proceed.',
+  WEBHOOK_INVALID_HEADERS:
+    'The webhook request is missing a required signature header: ${reason}',
+  WEBHOOK_TIMESTAMP_INVALID:
+    'The webhook timestamp is outside the allowed tolerance: ${reason}',
+  WEBHOOK_SIGNATURE_INVALID:
+    'The webhook signature does not match — treat this request as forged.',
 } as const;
 
 /** Valid Stripe error code. */

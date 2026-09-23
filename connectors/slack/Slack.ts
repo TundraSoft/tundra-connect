@@ -7,6 +7,7 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { constantTimeEqual, signHMAC } from '@crypt';
 import { type BaseGuardian, GuardianError } from '@guardian';
 import {
   type ConversationHistoryRequestSchema,
@@ -148,6 +149,28 @@ export type SlackOptions = Omit<RESTlerOptions, 'auth'> & {
  * console.log(sent.ts);
  * ```
  */
+/**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Arguments to {@link Slack.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /** The RAW request body, before any deserialization — JSON for Events API, form-encoded for slash commands. */
+  payload: string;
+  headers: WebhookHeadersLike;
+  /** The app's Signing Secret, used as a UTF-8 string. */
+  signingSecret: string;
+  /** Replay window in seconds. @default 300 */
+  toleranceSeconds?: number;
+  /** Clock override, for tests. */
+  nowMs?: number;
+};
+
 export class Slack extends RESTler<SlackOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Slack';
@@ -183,7 +206,7 @@ export class Slack extends RESTler<SlackOptions> {
     // the switch-based validation below and would otherwise only surface
     // as a raw auth failure on the first request. Fail fast here instead
     // — mirrors SendGrid's/OpenWeatherMap's own `baseURL`-style guard.
-    if (!this.hasOption('auth')) {
+    if (!this._hasOption('auth')) {
       throw new SlackError('CONFIG_INVALID_TOKEN', {});
     }
     this._responseHandler = (response) => this.__toError(response);
@@ -527,6 +550,131 @@ export class Slack extends RESTler<SlackOptions> {
    * @returns The validated response data.
    * @throws {SlackError} `RESPONSE_ERROR` when the body fails validation.
    */
+  /**
+   * Seconds a caller should wait before retrying after a 429, read from
+   * whichever rate-limit header the vendor sent: `Retry-After` (delta
+   * seconds or an HTTP-date), `X-RateLimit-Reset-After` (delta seconds),
+   * or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or
+   * milliseconds). `undefined` when none is present or parseable — the
+   * value is only ever what the vendor said, never a guess.
+   */
+  private static __retryAfterSeconds(
+    headers: Record<string, string> | undefined,
+    nowMs = Date.now(),
+  ): number | undefined {
+    if (!headers) return undefined;
+    const get = (name: string): string | undefined =>
+      headers[name] ?? headers[name.toLowerCase()];
+    const retryAfter = get('retry-after');
+    if (retryAfter !== undefined) {
+      const n = Number(retryAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+      const at = Date.parse(retryAfter);
+      if (Number.isFinite(at)) {
+        return Math.max(0, Math.ceil((at - nowMs) / 1000));
+      }
+    }
+    const resetAfter = get('x-ratelimit-reset-after');
+    if (resetAfter !== undefined) {
+      const n = Number(resetAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+    }
+    const reset = get('x-ratelimit-reset') ?? get('ratelimit-reset');
+    if (reset !== undefined) {
+      const n = Number(reset);
+      if (Number.isFinite(n) && n > 0) {
+        const epochMs = n > 1e12 ? n : n * 1000;
+        return Math.max(0, Math.ceil((epochMs - nowMs) / 1000));
+      }
+    }
+    return undefined;
+  }
+
+  /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
+  private static __webhookHeader(
+    headers: WebhookHeadersLike,
+    name: string,
+  ): string | null {
+    if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+      return headers.get(name);
+    }
+    const lower = name.toLowerCase();
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() !== lower) continue;
+      return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+    }
+    return null;
+  }
+
+  /**
+   * Verifies a request from Slack (Events API, slash commands,
+   * interactivity) and returns the RAW body string once trusted.
+   *
+   * Slack's scheme: basestring `v0:<timestamp>:<rawBody>`, HMAC-SHA256
+   * with the Signing Secret as UTF-8, hex, presented as `v0=<hex>` in
+   * `X-Slack-Signature`, with `X-Slack-Request-Timestamp` bounded to five
+   * minutes. The raw string is returned rather than a parsed object
+   * because Slack bodies are JSON *or* form-encoded depending on the
+   * feature — parse it yourself once this resolves.
+   *
+   * @throws {SlackError} `WEBHOOK_INVALID_HEADERS`,
+   * `WEBHOOK_TIMESTAMP_INVALID`, or `WEBHOOK_SIGNATURE_INVALID`.
+   *
+   * @example
+   * ```typescript
+   * const raw = await req.text();
+   * const body = await client.verifyWebhook({ payload: raw, headers: req.headers, signingSecret: SLACK_SIGNING_SECRET });
+   * ```
+   */
+  public async verifyWebhook(options: VerifyWebhookOptions): Promise<string> {
+    const {
+      payload,
+      headers,
+      signingSecret,
+      toleranceSeconds = 300,
+      nowMs = Date.now(),
+    } = options;
+    const timestamp = Slack.__webhookHeader(
+      headers,
+      'x-slack-request-timestamp',
+    );
+    const signature = Slack.__webhookHeader(headers, 'x-slack-signature');
+    if (!timestamp || !signature) {
+      throw new SlackError('WEBHOOK_INVALID_HEADERS', {
+        reason: `missing ${
+          [
+            !timestamp && 'X-Slack-Request-Timestamp',
+            !signature && 'X-Slack-Signature',
+          ].filter(Boolean).join(', ')
+        }`,
+      });
+    }
+    const sentAtSec = Number(timestamp);
+    if (!Number.isFinite(sentAtSec)) {
+      throw new SlackError('WEBHOOK_TIMESTAMP_INVALID', {
+        reason: `'${timestamp}' is not a Unix timestamp in seconds`,
+      });
+    }
+    // Both directions: a forged far-future timestamp would otherwise be
+    // replayable forever.
+    const driftSec = Math.abs(nowMs / 1000 - sentAtSec);
+    if (driftSec > toleranceSeconds) {
+      throw new SlackError('WEBHOOK_TIMESTAMP_INVALID', {
+        reason: `${
+          Math.round(driftSec)
+        }s drift exceeds the ${toleranceSeconds}s tolerance`,
+      });
+    }
+    const expected = `v0=${await signHMAC(
+      `v0:${timestamp}:${payload}`,
+      signingSecret,
+    )}`;
+    if (!constantTimeEqual(signature, expected)) {
+      throw new SlackError('WEBHOOK_SIGNATURE_INVALID', {});
+    }
+    return payload;
+  }
+
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,
@@ -598,6 +746,7 @@ export class Slack extends RESTler<SlackOptions> {
       );
       throw new SlackError('RATE_LIMITED', {
         status,
+        retryAfterSeconds: Slack.__retryAfterSeconds(response.headers),
         retryAfter: Number.isNaN(retryAfterNum) ? 'a few' : retryAfterNum,
         vendorError: envelope?.error,
       });

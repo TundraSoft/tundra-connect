@@ -66,6 +66,10 @@ export const PayPalErrorCodes = {
   RESPONSE_ERROR: 'PayPal API response did not match the expected schema.',
   SERVICE_UNAVAILABLE:
     'PayPal service is currently unavailable (HTTP ${status}).',
+  WEBHOOK_INVALID_HEADERS:
+    'The webhook request is missing a required PayPal transmission header: ${reason}',
+  WEBHOOK_SIGNATURE_INVALID:
+    'PayPal did not confirm this webhook transmission — treat it as forged.',
 } as const;
 
 /** Valid PayPal error code. */

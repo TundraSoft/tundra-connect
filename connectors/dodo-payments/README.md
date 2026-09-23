@@ -24,7 +24,7 @@ checkout flow actually needs, not the vendor's full ~147-endpoint API.
 | Payments      | `createPayment`, `getPayment`, `isPaid`, `listPayments`, `listAllPayments`                                 |
 | Subscriptions | `createSubscription`, `getSubscription`, `listSubscriptions`, `listAllSubscriptions`, `cancelSubscription` |
 | Customers     | `getCustomer`                                                                                              |
-| Webhooks      | `verifyWebhookSignature`                                                                                   |
+| Webhooks      | `verifyWebhook`                                                                                            |
 
 Two things this connect is opinionated about, both because getting them
 wrong costs real money:
@@ -212,11 +212,9 @@ Two things to know:
 ### 5. Verify webhooks
 
 ```ts
-import { verifyWebhookSignature } from '@tundraconnect/dodo-payments';
-
 // Note req.text() — NOT req.json().
 const raw = await req.text();
-const event = await verifyWebhookSignature({
+const event = await client.verifyWebhook({
   payload: raw,
   headers: req.headers,
   secret: Deno.env.get('DODO_WEBHOOK_SECRET')!,

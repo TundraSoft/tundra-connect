@@ -540,6 +540,112 @@ describe('Slack', () => {
 // ---------------------------------------------------------------------------
 import { envArgs } from '@utils';
 
+async function hmacHex(
+  secret: string,
+  message: string,
+  hash = 'SHA-256',
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret) as unknown as BufferSource,
+    { name: 'HMAC', hash },
+    false,
+    ['sign'],
+  );
+  const mac = new Uint8Array(
+    await crypto.subtle.sign(
+      'HMAC',
+      key,
+      new TextEncoder().encode(message) as unknown as BufferSource,
+    ),
+  );
+  let out = '';
+  for (const b of mac) out += b.toString(16).padStart(2, '0');
+  return out;
+}
+function hexToB64(hex: string): string {
+  let bin = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    bin += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+  }
+  return btoa(bin);
+}
+
+describe('Slack — verifyWebhook', () => {
+  const SECRET = 'slack_signing_secret';
+  const NOW_MS = 1_700_000_000_000;
+  const TS = String(Math.floor(NOW_MS / 1000));
+  const client = () =>
+    new MockSlack({ auth: { type: 'BEARER', token: 'xoxb-test' } });
+  const hdrs = async (body: string, ts = TS) => ({
+    'x-slack-request-timestamp': ts,
+    'x-slack-signature': `v0=${await hmacHex(SECRET, `v0:${ts}:${body}`)}`,
+  });
+  it('accepts a genuine v0 signature and returns the raw body', async () => {
+    const body = '{"type":"event_callback"}';
+    asserts.assertEquals(
+      await client().verifyWebhook({
+        payload: body,
+        headers: await hdrs(body),
+        signingSecret: SECRET,
+        nowMs: NOW_MS,
+      }),
+      body,
+    );
+  });
+  it('passes a form-encoded slash-command body through untouched', async () => {
+    const body = 'token=x&command=%2Fdeploy&text=prod';
+    asserts.assertEquals(
+      await client().verifyWebhook({
+        payload: body,
+        headers: await hdrs(body),
+        signingSecret: SECRET,
+        nowMs: NOW_MS,
+      }),
+      body,
+    );
+  });
+  it('rejects a tampered body', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: 'b',
+          headers: await hdrs('a'),
+          signingSecret: SECRET,
+          nowMs: NOW_MS,
+        }),
+      SlackError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('rejects a replay older than five minutes', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: 'a',
+          headers: await hdrs('a'),
+          signingSecret: SECRET,
+          nowMs: NOW_MS + 301_000,
+        }),
+      SlackError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_TIMESTAMP_INVALID');
+  });
+  it('rejects missing headers', async () => {
+    const err = await asserts.assertRejects(
+      () =>
+        client().verifyWebhook({
+          payload: 'a',
+          headers: {},
+          signingSecret: SECRET,
+          nowMs: NOW_MS,
+        }),
+      SlackError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_INVALID_HEADERS');
+  });
+});
+
 const env = envArgs();
 const credentials = {
   botToken: env.get('CONNECTOR_SLACK_BOT_TOKEN'),

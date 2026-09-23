@@ -79,6 +79,20 @@ const call = await client.createCall({
 console.log(call.sid, call.status);
 ```
 
+## Webhooks
+
+```ts
+const raw = await req.text(); // text(), never json()
+await client.verifyWebhook({ url: req.url, headers: req.headers, params }); // form
+await client.verifyWebhook({
+  url: req.url,
+  headers: req.headers,
+  payload: raw,
+}); // JSON
+```
+
+See [API → Webhooks](docs/Twilio-API.md#webhooks).
+
 ## License
 
 MIT

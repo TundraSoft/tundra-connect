@@ -661,6 +661,174 @@ describe('Stripe — path safety', () => {
   });
 });
 
+async function hmacHex(
+  secret: string,
+  message: string,
+  hash = 'SHA-256',
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret) as unknown as BufferSource,
+    { name: 'HMAC', hash },
+    false,
+    ['sign'],
+  );
+  const mac = new Uint8Array(
+    await crypto.subtle.sign(
+      'HMAC',
+      key,
+      new TextEncoder().encode(message) as unknown as BufferSource,
+    ),
+  );
+  let out = '';
+  for (const b of mac) out += b.toString(16).padStart(2, '0');
+  return out;
+}
+function hexToB64(hex: string): string {
+  let bin = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    bin += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+  }
+  return btoa(bin);
+}
+
+describe('Stripe — verifyWebhook', () => {
+  const SECRET = 'whsec_test_secret_0123456789';
+  const PAYLOAD = JSON.stringify({
+    id: 'evt_1',
+    type: 'payment_intent.succeeded',
+  });
+  const NOW_MS = 1_700_000_000_000;
+  const T = String(Math.floor(NOW_MS / 1000));
+  const client = () =>
+    new MockStripe({
+      auth: { type: 'BASIC', username: 'sk_test_abc123', password: '' },
+    });
+  const sig = (p = PAYLOAD, t = T, s = SECRET) => hmacHex(s, `${t}.${p}`);
+  const hdr = (v: string) => ({ 'stripe-signature': v });
+
+  it('accepts a genuine signature (whsec_ used as-is) and returns the parsed event', async () => {
+    const event = await client().verifyWebhook({
+      payload: PAYLOAD,
+      headers: hdr(`t=${T},v1=${await sig()}`),
+      secret: SECRET,
+      nowMs: NOW_MS,
+    }) as { id: string };
+    asserts.assertEquals(event.id, 'evt_1');
+  });
+  it('accepts when one of several v1 entries matches (secret rolling)', async () => {
+    await client().verifyWebhook({
+      payload: PAYLOAD,
+      headers: hdr(`t=${T},v1=${'0'.repeat(64)},v1=${await sig()}`),
+      secret: SECRET,
+      nowMs: NOW_MS,
+    });
+  });
+  it('ignores non-v1 schemes — a lone v0 is not a signature', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdr(`t=${T},v0=${await sig()}`),
+          secret: SECRET,
+          nowMs: NOW_MS,
+        }),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_INVALID_HEADERS');
+  });
+  it('rejects a tampered payload', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD + ' ',
+          headers: hdr(`t=${T},v1=${await sig()}`),
+          secret: SECRET,
+          nowMs: NOW_MS,
+        }),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('rejects a replay outside the window, in both directions', async () => {
+    for (const now of [NOW_MS + 301_000, NOW_MS - 301_000]) {
+      const err = await asserts.assertRejects(
+        async () =>
+          await client().verifyWebhook({
+            payload: PAYLOAD,
+            headers: hdr(`t=${T},v1=${await sig()}`),
+            secret: SECRET,
+            nowMs: now,
+          }),
+        StripeError,
+      );
+      asserts.assertEquals(err.code, 'WEBHOOK_TIMESTAMP_INVALID');
+    }
+  });
+  it('rejects a missing header', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: {},
+          secret: SECRET,
+          nowMs: NOW_MS,
+        }),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_INVALID_HEADERS');
+  });
+  it('raises RESPONSE_ERROR for a verified non-JSON payload', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: 'nope',
+          headers: hdr(`t=${T},v1=${await sig('nope')}`),
+          secret: SECRET,
+          nowMs: NOW_MS,
+        }),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+});
+
+describe('Stripe — idempotency', () => {
+  it('sends Idempotency-Key only when a key is given', async () => {
+    const c = new MockStripe({
+      auth: { type: 'BASIC', username: 'sk_test_abc123', password: '' },
+    });
+    c.setResponse(validPaymentIntent, 200);
+    await c.createPaymentIntent({
+      amount: 1999,
+      currency: 'usd',
+      metadata: { orderId: '42', note: 'a b' },
+      automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+      confirm: true,
+    }, { idempotencyKey: 'order-42' });
+    asserts.assertEquals(
+      getHeader(c.request?.headers, 'Idempotency-Key'),
+      'order-42',
+    );
+    await c.createPaymentIntent({
+      amount: 1999,
+      currency: 'usd',
+      metadata: { orderId: '42', note: 'a b' },
+      automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+      confirm: true,
+    });
+    asserts.assertEquals(
+      getHeader(c.request?.headers, 'Idempotency-Key'),
+      undefined,
+    );
+  });
+  it('newIdempotencyKey() is a ULID from @tundralibs/id', () => {
+    const k = Stripe.newIdempotencyKey();
+    asserts.assertMatch(k, /^[0-9A-HJKMNP-TV-Z]{26}$/);
+    asserts.assertNotEquals(k, Stripe.newIdempotencyKey());
+  });
+});
+
 const env = envArgs();
 const credentials = {
   secretKey: env.get('CONNECTOR_STRIPE_SECRET_KEY'),

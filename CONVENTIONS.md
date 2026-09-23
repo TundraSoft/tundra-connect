@@ -393,3 +393,26 @@ Versions, tags, and `CHANGELOG.md` entries are owned by **release-please** —
 never hand-edit a version number or changelog. A PR's squash-merge commit
 message must be a Conventional Commit; the scope is the connect's directory
 name.
+
+## Cryptography and identifiers
+
+Use the shared root aliases `@crypt` (`@tundralibs/crypt`) and `@id`
+(`@tundralibs/id`) — never hand-roll a primitive they provide:
+
+- Hashing, HMAC, RSA/EC/Ed25519 signing and verification, JWT issue/verify,
+  and the constant-time comparison every signature check needs come from
+  `@crypt` (`sha256`, `signHMAC`/`verifyHMAC`, `signRSA`, `verifyEC`,
+  `ecdsaDerToRaw`, `issueJWT`, `constantTimeEqual`, …).
+- Generated identifiers — idempotency keys, client-side ids — come from
+  `@id` (`ulid`, `cuid2`, `nanoID`, …).
+
+Raw Web Crypto (`crypto.subtle`) or a third-party primitive is acceptable
+only where `@crypt` cannot express the operation, and the call site must
+say why in a comment. Known cases: an HMAC keyed by _decoded bytes_ with
+base64 output (S3 SigV4's chained derivation, Azure Shared Key, Polymarket
+L2, Standard Webhooks) — `signHMAC` takes a text key and returns hex;
+Keccak-256 and secp256k1 (Polymarket, via `@noble`); and UUID v4 where a
+vendor mandates it (Kalshi) — `@id` has no UUID generator. Hand-rolled
+base64/hex codecs are the remaining gap: no TundraLibs package exports
+them (`@crypt` uses `@std/encoding` internally), so keep them small and
+local until that is adopted repo-wide.

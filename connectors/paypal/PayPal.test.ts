@@ -849,6 +849,105 @@ describe('PayPal', () => {
 // regardless of credentials — this suite is Deno-only.
 // =============================================================================
 
+describe('PayPal — verifyWebhook', () => {
+  const PAYLOAD = JSON.stringify({
+    id: 'WH-EVT-1',
+    event_type: 'CHECKOUT.ORDER.APPROVED',
+  });
+  const HDRS = {
+    'paypal-transmission-id': 'tid',
+    'paypal-transmission-time': '2026-01-01T00:00:00Z',
+    'paypal-cert-url': 'https://api.paypal.com/cert.pem',
+    'paypal-auth-algo': 'SHA256withRSA',
+    'paypal-transmission-sig': 'c2ln',
+  };
+  it('posts the transmission back verbatim and returns the event on SUCCESS', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH });
+    c.queueTokenThen(
+      [{
+        body: { verification_status: 'SUCCESS' },
+      }],
+      'tok',
+      32400,
+    );
+    const event = await c.verifyWebhook({
+      payload: PAYLOAD,
+      headers: HDRS,
+      webhookId: 'WH-1',
+    }) as { id: string };
+    asserts.assertEquals(event.id, 'WH-EVT-1');
+    const verify = c.requests.find((r) =>
+      r.url.endsWith('/v1/notifications/verify-webhook-signature')
+    )!;
+    const body = JSON.parse(String(verify.body));
+    asserts.assertEquals(body.webhook_id, 'WH-1');
+    asserts.assertEquals(body.transmission_id, 'tid');
+    asserts.assertEquals(body.webhook_event, JSON.parse(PAYLOAD));
+  });
+  it('throws WEBHOOK_SIGNATURE_INVALID on FAILURE', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH });
+    c.queueTokenThen(
+      [{
+        body: { verification_status: 'FAILURE' },
+      }],
+      'tok',
+      32400,
+    );
+    const err = await asserts.assertRejects(
+      () =>
+        c.verifyWebhook({ payload: PAYLOAD, headers: HDRS, webhookId: 'WH-1' }),
+      PayPalError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('rejects a missing transmission header without calling PayPal', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH });
+    const { 'paypal-transmission-sig': _s, ...partial } = HDRS;
+    const err = await asserts.assertRejects(
+      () =>
+        c.verifyWebhook({
+          payload: PAYLOAD,
+          headers: partial,
+          webhookId: 'WH-1',
+        }),
+      PayPalError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_INVALID_HEADERS');
+    asserts.assertEquals(c.requests.length, 0);
+  });
+});
+
+describe('PayPal — idempotency', () => {
+  it('sends PayPal-Request-Id only when a key is given', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH });
+    c.queueTokenThen(
+      [{ body: ORDER_RESPONSE }, { body: ORDER_RESPONSE }],
+      'tok',
+      32400,
+    );
+    await c.createOrder({
+      intent: 'CAPTURE',
+      purchase_units: [
+        { amount: { currency_code: 'USD', value: '10.00' } },
+      ],
+    }, { idempotencyKey: 'order-42' });
+    await c.createOrder({
+      intent: 'CAPTURE',
+      purchase_units: [
+        { amount: { currency_code: 'USD', value: '10.00' } },
+      ],
+    });
+    const posts = c.requests.filter((r) =>
+      r.url.endsWith('/v2/checkout/orders')
+    );
+    asserts.assertEquals(posts[0]!.headers['paypal-request-id'], 'order-42');
+    asserts.assertEquals(posts[1]!.headers['paypal-request-id'], undefined);
+  });
+  it('newIdempotencyKey() is a ULID from @tundralibs/id', () => {
+    asserts.assertMatch(PayPal.newIdempotencyKey(), /^[0-9A-HJKMNP-TV-Z]{26}$/);
+  });
+});
+
 const env = envArgs();
 const credentials = {
   clientId: env.get('CONNECTOR_PAYPAL_CLIENT_ID'),

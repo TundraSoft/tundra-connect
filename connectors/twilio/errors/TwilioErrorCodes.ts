@@ -56,6 +56,12 @@ export const TwilioErrorCodes = {
     'Got an unexpected or malformed response from the Twilio API.',
   SERVICE_UNAVAILABLE:
     'The Twilio service is currently unavailable (status ${status}).',
+  WEBHOOK_INVALID_HEADERS:
+    'The webhook request is missing a required signature header: ${reason}',
+  WEBHOOK_INVALID_AUTH_TOKEN:
+    'Webhook verification needs the ACCOUNT auth token — pass `authToken` explicitly when this client authenticates with an API key.',
+  WEBHOOK_SIGNATURE_INVALID:
+    'The webhook signature does not match — treat this request as forged.',
 } as const;
 
 /** Valid Twilio error code. */

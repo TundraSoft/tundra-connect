@@ -267,9 +267,9 @@ for await (const s of client.listAllSubscriptions({ customerId })) {
 
 ## Webhooks
 
-### `verifyWebhookSignature(options)`
+### `verifyWebhook(options)`
 
-Not an HTTP call — a standalone export. See
+Not an HTTP call — a method on the client (the signing secret is passed per call; it is not the API key). The HMAC stays on Web Crypto because Standard Webhooks keys the MAC with the base64-_decoded_ secret, which `@tundralibs/crypt`'s string-keyed `signHMAC` cannot express; the constant-time comparison does come from crypt. `DodoPayments.webhookSignedContent(id, ts, payload)` exposes the exact signed string. See
 [the README](../README.md#5-verify-webhooks) and
 [Errors](DodoPayments-Errors.md#webhook-codes).
 

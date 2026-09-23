@@ -108,3 +108,33 @@ See [Errors](Razorpay-Errors.md) for failure handling and
 ---
 
 [← Back to Razorpay](../README.md)
+
+## Webhooks
+
+### `verifyWebhook(options)`
+
+Verifies an inbound webhook from Razorpay — a method on the client, not an HTTP call.
+
+**Scheme** (`X-Razorpay-Signature`): HMAC-SHA256 over the raw body with the dashboard webhook secret as the UTF-8 key; hex. The scheme carries **no timestamp**, so replays cannot be bounded here — dedupe on the `x-razorpay-event-id` header (unique per event) in your handler.
+
+| Option    | Type                | Required | Description                               |
+| --------- | ------------------- | -------- | ----------------------------------------- |
+| `payload` | `string`            | yes      | Raw body, never re-serialized or re-cast. |
+| `headers` | `Headers \| object` | yes      | Case-insensitive lookup.                  |
+| `secret`  | `string`            | yes      | The dashboard webhook secret.             |
+
+**Returns:** The parsed event (`unknown`).
+
+**Throws:** `RazorpayError` with `WEBHOOK_INVALID_HEADERS`, `WEBHOOK_SIGNATURE_INVALID`, `RESPONSE_ERROR`.
+
+```ts
+const raw = await req.text(); // text(), never json()
+const event = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  secret: RAZORPAY_WEBHOOK_SECRET,
+});
+const eventId = req.headers.get('x-razorpay-event-id'); // dedupe on this
+```
+
+Comparison is constant-time via `@tundralibs/crypt`. Treat `WEBHOOK_SIGNATURE_INVALID` as a forged request.

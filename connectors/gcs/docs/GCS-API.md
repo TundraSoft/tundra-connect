@@ -150,3 +150,7 @@ See [Errors](GCS-Errors.md) for failure handling and
 ---
 
 [← Back to GCS](../README.md)
+
+## Service-account JWT
+
+The RS256 assertion exchanged for an access token is built and signed by `@tundralibs/crypt`'s `issueJWT` directly from the PEM.

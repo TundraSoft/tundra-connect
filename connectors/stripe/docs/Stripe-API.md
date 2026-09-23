@@ -80,3 +80,46 @@ See [Errors](Stripe-Errors.md) for failure handling and
 ---
 
 [← Back to Stripe](../README.md)
+
+## Webhooks
+
+### `verifyWebhook(options)`
+
+Verifies an inbound webhook from Stripe — a method on the client, not an HTTP call.
+
+**Scheme** (`Stripe-Signature`): `t=<ts>,v1=<hex>[,v1=…]`; HMAC-SHA256 over `<ts>.<rawBody>` with the `whsec_…` secret used **as-is** (UTF-8, not decoded); hex. Every `v1` is checked (a rolling secret yields two); non-`v1` schemes are ignored to prevent downgrade. Five-minute replay window, both directions.
+
+| Option             | Type                | Required | Description                                         |
+| ------------------ | ------------------- | -------- | --------------------------------------------------- |
+| `payload`          | `string`            | yes      | Raw body — `await req.text()`, never re-serialized. |
+| `headers`          | `Headers \| object` | yes      | Case-insensitive lookup.                            |
+| `secret`           | `string`            | yes      | The endpoint's `whsec_…` signing secret.            |
+| `toleranceSeconds` | `number`            | no       | Replay window. Default `300`.                       |
+| `nowMs`            | `number`            | no       | Clock override for tests.                           |
+
+**Returns:** The parsed event (`unknown`).
+
+**Throws:** `StripeError` with `WEBHOOK_INVALID_HEADERS`, `WEBHOOK_TIMESTAMP_INVALID`, `WEBHOOK_SIGNATURE_INVALID`, `RESPONSE_ERROR`.
+
+```ts
+const raw = await req.text(); // text(), never json()
+const event = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  secret: STRIPE_WEBHOOK_SECRET,
+});
+```
+
+Comparison is constant-time via `@tundralibs/crypt`. Treat `WEBHOOK_SIGNATURE_INVALID` as a forged request.
+
+## Idempotency
+
+`createPaymentIntent` and `createCustomer` accept a trailing `IdempotentRequestOptions`:
+
+```ts
+const key = Stripe.newIdempotencyKey(); // a ULID from @tundralibs/id
+await db.orders.update(id, { idempotencyKey: key }); // persist FIRST
+await client.createPaymentIntent(params, { idempotencyKey: key });
+```
+
+Sent as `Idempotency-Key` (≤ 255 chars). Supply the **same** key on every retry of one logical operation and Stripe returns the original result instead of acting again — the defence against a double charge when a request times out after the vendor already acted. Deliberately opt-in: a fresh key per call would be indistinguishable from none, and a fresh key per _retry_ would defeat the point.

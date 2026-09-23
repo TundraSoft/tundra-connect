@@ -70,6 +70,28 @@ class MockDodo extends DodoPayments {
     body?: string;
   };
 
+  /** Like setResponse, but with explicit response headers — for rate-limit hints. */
+  setResponseWithHeaders(
+    body: unknown,
+    status: number,
+    headers: Record<string, string>,
+  ): void {
+    this._fetch = (input, init) => {
+      this.request = {
+        url: String(input),
+        method: init?.method,
+        headers: init?.headers as Record<string, string> | undefined,
+        body: init?.body as string | undefined,
+      };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json', ...headers },
+        }),
+      );
+    };
+  }
+
   setResponse(body: unknown, status = 200): void {
     this._fetch = (input, init) => {
       this.request = {
@@ -714,6 +736,293 @@ describe('DodoPayments — auto-paging', () => {
       DodoPaymentsError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+  });
+});
+
+const WH_SECRET = `whsec_${btoa('super-secret-key-material-0123')}`;
+const WH_ID = 'msg_2abc';
+const WH_NOW = 1_700_000_000_000;
+const WH_TS = String(Math.floor(WH_NOW / 1000));
+const WH_PAYLOAD = JSON.stringify({
+  type: 'payment.succeeded',
+  data: { payment_id: 'pay_1' },
+});
+async function whSign(
+  payload: string,
+  id = WH_ID,
+  ts = WH_TS,
+  secret = WH_SECRET,
+): Promise<string> {
+  const raw = secret.startsWith('whsec_') ? secret.slice(6) : secret;
+  const bin = atob(raw);
+  const kb = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) kb[i] = bin.charCodeAt(i);
+  const key = await crypto.subtle.importKey(
+    'raw',
+    kb as unknown as BufferSource,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = new Uint8Array(
+    await crypto.subtle.sign(
+      'HMAC',
+      key,
+      new TextEncoder().encode(
+        DodoPayments.webhookSignedContent(id, ts, payload),
+      ) as unknown as BufferSource,
+    ),
+  );
+  let s = '';
+  for (const b of mac) s += String.fromCharCode(b);
+  return btoa(s);
+}
+const whHdrs = (sig: string, o: Record<string, string> = {}) => ({
+  'webhook-id': WH_ID,
+  'webhook-timestamp': WH_TS,
+  'webhook-signature': `v1,${sig}`,
+  ...o,
+});
+
+describe('DodoPayments — verifyWebhook (Standard Webhooks)', () => {
+  it('webhookSignedContent joins id, timestamp and raw payload with periods', () => {
+    asserts.assertEquals(
+      DodoPayments.webhookSignedContent('msg_1', '1700000000', '{"a":1}'),
+      'msg_1.1700000000.{"a":1}',
+    );
+  });
+  it('accepts a genuine signature and returns the parsed payload', async () => {
+    const e = await client().verifyWebhook({
+      payload: WH_PAYLOAD,
+      headers: whHdrs(await whSign(WH_PAYLOAD)),
+      secret: WH_SECRET,
+      nowMs: WH_NOW,
+    }) as { data: { payment_id: string } };
+    asserts.assertEquals(e.data.payment_id, 'pay_1');
+  });
+  it('accepts a secret without the whsec_ prefix, a Headers instance, and case-insensitive names', async () => {
+    const bare = WH_SECRET.slice(6);
+    await client().verifyWebhook({
+      payload: WH_PAYLOAD,
+      headers: whHdrs(await whSign(WH_PAYLOAD, WH_ID, WH_TS, bare)),
+      secret: bare,
+      nowMs: WH_NOW,
+    });
+    await client().verifyWebhook({
+      payload: WH_PAYLOAD,
+      headers: new Headers(whHdrs(await whSign(WH_PAYLOAD))),
+      secret: WH_SECRET,
+      nowMs: WH_NOW,
+    });
+    await client().verifyWebhook({
+      payload: WH_PAYLOAD,
+      headers: {
+        'Webhook-Id': WH_ID,
+        'WEBHOOK-TIMESTAMP': WH_TS,
+        'Webhook-Signature': `v1,${await whSign(WH_PAYLOAD)}`,
+      },
+      secret: WH_SECRET,
+      nowMs: WH_NOW,
+    });
+  });
+  it('accepts when one of several rotated signatures matches; rejects unknown versions', async () => {
+    const good = await whSign(WH_PAYLOAD);
+    await client().verifyWebhook({
+      payload: WH_PAYLOAD,
+      headers: whHdrs('', {
+        'webhook-signature': `v1,${btoa('wrong')} v1,${good}`,
+      }),
+      secret: WH_SECRET,
+      nowMs: WH_NOW,
+    });
+    const err = await asserts.assertRejects(
+      () =>
+        client().verifyWebhook({
+          payload: WH_PAYLOAD,
+          headers: whHdrs('', { 'webhook-signature': `v2,${good}` }),
+          secret: WH_SECRET,
+          nowMs: WH_NOW,
+        }),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('rejects a tampered payload, the wrong secret, and a re-serialized (whitespace-changed) body', async () => {
+    const sig = await whSign(WH_PAYLOAD);
+    for (
+      const [payload, secret] of [[
+        WH_PAYLOAD.replace('pay_1', 'pay_X'),
+        WH_SECRET,
+      ], [
+        WH_PAYLOAD,
+        `whsec_${btoa('a-completely-different-key-xxxx')}`,
+      ]] as const
+    ) {
+      const err = await asserts.assertRejects(
+        () =>
+          client().verifyWebhook({
+            payload,
+            headers: whHdrs(sig),
+            secret,
+            nowMs: WH_NOW,
+          }),
+        DodoPaymentsError,
+      );
+      asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+    }
+    const raw = '{"type": "payment.succeeded"}';
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: JSON.stringify(JSON.parse(raw)),
+          headers: whHdrs(await whSign(raw)),
+          secret: WH_SECRET,
+          nowMs: WH_NOW,
+        }),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('bounds replays in both directions, honours the edge and a custom tolerance', async () => {
+    const sig = await whSign(WH_PAYLOAD);
+    for (const now of [WH_NOW + 301_000, WH_NOW - 301_000]) {
+      const err = await asserts.assertRejects(
+        () =>
+          client().verifyWebhook({
+            payload: WH_PAYLOAD,
+            headers: whHdrs(sig),
+            secret: WH_SECRET,
+            nowMs: now,
+          }),
+        DodoPaymentsError,
+      );
+      asserts.assertEquals(err.code, 'WEBHOOK_TIMESTAMP_INVALID');
+    }
+    await client().verifyWebhook({
+      payload: WH_PAYLOAD,
+      headers: whHdrs(sig),
+      secret: WH_SECRET,
+      nowMs: WH_NOW + 300_000,
+    });
+    await client().verifyWebhook({
+      payload: WH_PAYLOAD,
+      headers: whHdrs(sig),
+      secret: WH_SECRET,
+      toleranceSeconds: 10_000,
+      nowMs: WH_NOW + 9_000_000,
+    });
+  });
+  it('rejects a bad timestamp, each missing header, an invalid secret, and a non-JSON payload', async () => {
+    const sig = await whSign(WH_PAYLOAD);
+    asserts.assertEquals(
+      (await asserts.assertRejects(() =>
+        client().verifyWebhook({
+          payload: WH_PAYLOAD,
+          headers: whHdrs(sig, { 'webhook-timestamp': 'nope' }),
+          secret: WH_SECRET,
+          nowMs: WH_NOW,
+        }), DodoPaymentsError)).code,
+      'WEBHOOK_TIMESTAMP_INVALID',
+    );
+    for (
+      const name of ['webhook-id', 'webhook-timestamp', 'webhook-signature']
+    ) {
+      const h = whHdrs(sig) as Record<string, string>;
+      delete h[name];
+      const err = await asserts.assertRejects(() =>
+        client().verifyWebhook({
+          payload: WH_PAYLOAD,
+          headers: h,
+          secret: WH_SECRET,
+          nowMs: WH_NOW,
+        }), DodoPaymentsError);
+      asserts.assertEquals(err.code, 'WEBHOOK_INVALID_HEADERS');
+      asserts.assertStringIncludes(String(err.getContextValue('reason')), name);
+    }
+    asserts.assertEquals(
+      (await asserts.assertRejects(() =>
+        client().verifyWebhook({
+          payload: WH_PAYLOAD,
+          headers: whHdrs(sig),
+          secret: 'whsec_!!!not-base64!!!',
+          nowMs: WH_NOW,
+        }), DodoPaymentsError)).code,
+      'WEBHOOK_INVALID_SECRET',
+    );
+    asserts.assertEquals(
+      (await asserts.assertRejects(async () =>
+        await client().verifyWebhook({
+          payload: 'nope',
+          headers: whHdrs(await whSign('nope')),
+          secret: WH_SECRET,
+          nowMs: WH_NOW,
+        }), DodoPaymentsError)).code,
+      'RESPONSE_ERROR',
+    );
+  });
+  it('never leaks the signing secret into a thrown error', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: 'tampered',
+          headers: whHdrs(await whSign(WH_PAYLOAD)),
+          secret: WH_SECRET,
+          nowMs: WH_NOW,
+        }),
+      DodoPaymentsError,
+    );
+    const dumped = JSON.stringify(err.toJSON());
+    asserts.assert(
+      !dumped.includes(WH_SECRET) && !dumped.includes(WH_SECRET.slice(6)),
+    );
+  });
+});
+
+describe('DodoPayments — retryAfterSeconds on a 429', () => {
+  const rateLimited = async (headers: Record<string, string>) => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setResponseWithHeaders(
+      { code: 'RATE_LIMITED', message: 'slow down' },
+      429,
+      headers,
+    );
+    const err = await asserts.assertRejects(
+      () => c.getPayment('pay_1'),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    return err.getContextValue('retryAfterSeconds') as number | undefined;
+  };
+  it('reads Retry-After in delta seconds, rounding up', async () => {
+    asserts.assertEquals(await rateLimited({ 'retry-after': '12' }), 12);
+    asserts.assertEquals(await rateLimited({ 'retry-after': '7.2' }), 8);
+  });
+  it('reads Retry-After as an HTTP-date relative to now', async () => {
+    const s = await rateLimited({
+      'retry-after': new Date(Date.now() + 30_000).toUTCString(),
+    });
+    asserts.assert(s !== undefined && s >= 25 && s <= 31, String(s));
+  });
+  it('falls back to X-RateLimit-Reset-After, then to an epoch X-RateLimit-Reset in seconds or ms', async () => {
+    asserts.assertEquals(
+      await rateLimited({ 'x-ratelimit-reset-after': '4' }),
+      4,
+    );
+    const s1 = await rateLimited({
+      'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 45),
+    });
+    asserts.assert(s1 !== undefined && s1 >= 40 && s1 <= 46, String(s1));
+    const s2 = await rateLimited({
+      'x-ratelimit-reset': String(Date.now() + 20_000),
+    });
+    asserts.assert(s2 !== undefined && s2 >= 15 && s2 <= 21, String(s2));
+  });
+  it('is undefined — never a guess — when the vendor sent no usable hint', async () => {
+    asserts.assertEquals(await rateLimited({}), undefined);
+    asserts.assertEquals(
+      await rateLimited({ 'retry-after': 'soon' }),
+      undefined,
+    );
   });
 });
 

@@ -7,6 +7,7 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { ecdsaDerToRaw, verifyEC } from '@crypt';
 import { type BaseGuardian, GuardianError } from '@guardian';
 import {
   ErrorSchemaObject,
@@ -74,6 +75,28 @@ export type SendMailResult = {
  * console.log(messageId);
  * ```
  */
+/**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Arguments to {@link SendGrid.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /** The RAW request body, byte-exact — SendGrid warns that re-serializing may drop characters. */
+  payload: string;
+  headers: WebhookHeadersLike;
+  /** The Event Webhook verification key from the dashboard: base64 (SPKI), or a full PEM. */
+  publicKey: string;
+  /** Replay window in seconds — this connect's policy; SendGrid specifies none. @default 300 */
+  toleranceSeconds?: number;
+  /** Clock override, for tests. */
+  nowMs?: number;
+};
+
 export class SendGrid extends RESTler<SendGridOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'SendGrid';
@@ -108,7 +131,7 @@ export class SendGrid extends RESTler<SendGridOptions> {
     // the switch-based validation below and would otherwise only surface
     // as a raw auth failure on the first request. Fail fast here instead —
     // mirrors RESTler's own `baseURL` guard in its constructor.
-    if (!this.hasOption('auth')) {
+    if (!this._hasOption('auth')) {
       throw new SendGridError('CONFIG_INVALID_API_KEY', {});
     }
     this._responseHandler = (response) => this.__toError(response);
@@ -248,6 +271,166 @@ export class SendGrid extends RESTler<SendGridOptions> {
    * @returns The validated response data.
    * @throws {SendGridError} `RESPONSE_ERROR` when the body fails validation.
    */
+  /**
+   * Seconds a caller should wait before retrying after a 429, read from
+   * whichever rate-limit header the vendor sent: `Retry-After` (delta
+   * seconds or an HTTP-date), `X-RateLimit-Reset-After` (delta seconds),
+   * or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or
+   * milliseconds). `undefined` when none is present or parseable — the
+   * value is only ever what the vendor said, never a guess.
+   */
+  private static __retryAfterSeconds(
+    headers: Record<string, string> | undefined,
+    nowMs = Date.now(),
+  ): number | undefined {
+    if (!headers) return undefined;
+    const get = (name: string): string | undefined =>
+      headers[name] ?? headers[name.toLowerCase()];
+    const retryAfter = get('retry-after');
+    if (retryAfter !== undefined) {
+      const n = Number(retryAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+      const at = Date.parse(retryAfter);
+      if (Number.isFinite(at)) {
+        return Math.max(0, Math.ceil((at - nowMs) / 1000));
+      }
+    }
+    const resetAfter = get('x-ratelimit-reset-after');
+    if (resetAfter !== undefined) {
+      const n = Number(resetAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+    }
+    const reset = get('x-ratelimit-reset') ?? get('ratelimit-reset');
+    if (reset !== undefined) {
+      const n = Number(reset);
+      if (Number.isFinite(n) && n > 0) {
+        const epochMs = n > 1e12 ? n : n * 1000;
+        return Math.max(0, Math.ceil((epochMs - nowMs) / 1000));
+      }
+    }
+    return undefined;
+  }
+
+  /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
+  private static __webhookHeader(
+    headers: WebhookHeadersLike,
+    name: string,
+  ): string | null {
+    if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+      return headers.get(name);
+    }
+    const lower = name.toLowerCase();
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() !== lower) continue;
+      return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+    }
+    return null;
+  }
+
+  /**
+   * Verifies a SendGrid Event Webhook delivery and returns the PARSED event
+   * array.
+   *
+   * SendGrid's scheme is asymmetric: ECDSA over P-256 with SHA-256 on
+   * `<timestamp><rawBody>` (no separator), the signature base64-DER in
+   * `X-Twilio-Email-Event-Webhook-Signature`, the timestamp in
+   * `X-Twilio-Email-Event-Webhook-Timestamp`, verified against the public
+   * key the dashboard shows (base64 SPKI). `@tundralibs/crypt` does the
+   * work: `ecdsaDerToRaw` converts DER to the raw R‖S `verifyEC` expects.
+   *
+   * @throws {SendGridError} `WEBHOOK_INVALID_HEADERS`,
+   * `WEBHOOK_TIMESTAMP_INVALID`, `WEBHOOK_INVALID_KEY`,
+   * `WEBHOOK_SIGNATURE_INVALID`, or `RESPONSE_ERROR` when the verified
+   * payload is not JSON.
+   *
+   * @example
+   * ```typescript
+   * const raw = await req.text();
+   * const events = await client.verifyWebhook({ payload: raw, headers: req.headers, publicKey: SENDGRID_WEBHOOK_KEY });
+   * ```
+   */
+  public async verifyWebhook(options: VerifyWebhookOptions): Promise<unknown> {
+    const {
+      payload,
+      headers,
+      publicKey,
+      toleranceSeconds = 300,
+      nowMs = Date.now(),
+    } = options;
+    const signature = SendGrid.__webhookHeader(
+      headers,
+      'x-twilio-email-event-webhook-signature',
+    );
+    const timestamp = SendGrid.__webhookHeader(
+      headers,
+      'x-twilio-email-event-webhook-timestamp',
+    );
+    if (!signature || !timestamp) {
+      throw new SendGridError('WEBHOOK_INVALID_HEADERS', {
+        reason: `missing ${
+          [
+            !signature && 'X-Twilio-Email-Event-Webhook-Signature',
+            !timestamp && 'X-Twilio-Email-Event-Webhook-Timestamp',
+          ].filter(Boolean).join(', ')
+        }`,
+      });
+    }
+    const sentAtSec = Number(timestamp);
+    if (!Number.isFinite(sentAtSec)) {
+      throw new SendGridError('WEBHOOK_TIMESTAMP_INVALID', {
+        reason: `'${timestamp}' is not a Unix timestamp in seconds`,
+      });
+    }
+    // Both directions: a forged far-future timestamp would otherwise be
+    // replayable forever.
+    const driftSec = Math.abs(nowMs / 1000 - sentAtSec);
+    if (driftSec > toleranceSeconds) {
+      throw new SendGridError('WEBHOOK_TIMESTAMP_INVALID', {
+        reason: `${
+          Math.round(driftSec)
+        }s drift exceeds the ${toleranceSeconds}s tolerance`,
+      });
+    }
+    const trimmed = publicKey.trim();
+    const pem = trimmed.includes('-----BEGIN')
+      ? trimmed
+      : `-----BEGIN PUBLIC KEY-----\n${
+        trimmed.replace(/\s+/g, '').match(/.{1,64}/g)?.join('\n') ?? ''
+      }\n-----END PUBLIC KEY-----`;
+    let raw: string;
+    try {
+      const binary = atob(signature);
+      const der = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) der[i] = binary.charCodeAt(i);
+      raw = ecdsaDerToRaw(der, 'P-256');
+    } catch {
+      throw new SendGridError('WEBHOOK_SIGNATURE_INVALID', {});
+    }
+    let ok: boolean;
+    try {
+      ok = await verifyEC(`${timestamp}${payload}`, raw, pem, {
+        curve: 'P-256',
+        hashAlgorithm: 'SHA-256',
+      });
+    } catch (cause) {
+      throw new SendGridError(
+        'WEBHOOK_INVALID_KEY',
+        {},
+        cause instanceof Error ? cause : undefined,
+      );
+    }
+    if (!ok) throw new SendGridError('WEBHOOK_SIGNATURE_INVALID', {});
+    try {
+      return JSON.parse(payload);
+    } catch (cause) {
+      throw new SendGridError(
+        'RESPONSE_ERROR',
+        {},
+        cause instanceof Error ? cause : undefined,
+      );
+    }
+  }
+
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,
@@ -289,6 +472,7 @@ export class SendGrid extends RESTler<SendGridOptions> {
     const code = this.__errorCodeForStatus(status);
     if (body) {
       throw new SendGridError(code, {
+        retryAfterSeconds: SendGrid.__retryAfterSeconds(response.headers),
         status,
         errors: body.errors,
         id: body.id,

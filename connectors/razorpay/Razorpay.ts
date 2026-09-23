@@ -8,6 +8,7 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { constantTimeEqual, signHMAC } from '@crypt';
 import { type BaseGuardian, GuardianError } from '@guardian';
 import {
   type CapturePaymentRequestSchema,
@@ -122,6 +123,24 @@ export type RazorpayOptions = Omit<RESTlerOptions, 'auth'> & {
  * const page = await client.listPayments({ count: 20 });
  * ```
  */
+/**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Arguments to {@link Razorpay.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /** The RAW request body, exactly as received, never re-serialized or re-cast. */
+  payload: string;
+  headers: WebhookHeadersLike;
+  /** The webhook secret configured in the dashboard, used as-is. */
+  secret: string;
+};
+
 export class Razorpay extends RESTler<RazorpayOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Razorpay';
@@ -161,7 +180,7 @@ export class Razorpay extends RESTler<RazorpayOptions> {
     // `_processOption` (which only runs for a key actually present in
     // `options`) — catch that case here explicitly, the same way RESTler's
     // own base constructor requires `baseURL`.
-    if (!this.hasOption('auth')) {
+    if (!this._hasOption('auth')) {
       throw new RazorpayError('CONFIG_INVALID_AUTH', {});
     }
     this._responseHandler = (response) => this.__toError(response);
@@ -445,6 +464,106 @@ export class Razorpay extends RESTler<RazorpayOptions> {
    * @throws {RazorpayError} `RESPONSE_ERROR` when the body fails
    * validation.
    */
+  /**
+   * Seconds a caller should wait before retrying after a 429, read from
+   * whichever rate-limit header the vendor sent: `Retry-After` (delta
+   * seconds or an HTTP-date), `X-RateLimit-Reset-After` (delta seconds),
+   * or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or
+   * milliseconds). `undefined` when none is present or parseable — the
+   * value is only ever what the vendor said, never a guess.
+   */
+  private static __retryAfterSeconds(
+    headers: Record<string, string> | undefined,
+    nowMs = Date.now(),
+  ): number | undefined {
+    if (!headers) return undefined;
+    const get = (name: string): string | undefined =>
+      headers[name] ?? headers[name.toLowerCase()];
+    const retryAfter = get('retry-after');
+    if (retryAfter !== undefined) {
+      const n = Number(retryAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+      const at = Date.parse(retryAfter);
+      if (Number.isFinite(at)) {
+        return Math.max(0, Math.ceil((at - nowMs) / 1000));
+      }
+    }
+    const resetAfter = get('x-ratelimit-reset-after');
+    if (resetAfter !== undefined) {
+      const n = Number(resetAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+    }
+    const reset = get('x-ratelimit-reset') ?? get('ratelimit-reset');
+    if (reset !== undefined) {
+      const n = Number(reset);
+      if (Number.isFinite(n) && n > 0) {
+        const epochMs = n > 1e12 ? n : n * 1000;
+        return Math.max(0, Math.ceil((epochMs - nowMs) / 1000));
+      }
+    }
+    return undefined;
+  }
+
+  /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
+  private static __webhookHeader(
+    headers: WebhookHeadersLike,
+    name: string,
+  ): string | null {
+    if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+      return headers.get(name);
+    }
+    const lower = name.toLowerCase();
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() !== lower) continue;
+      return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+    }
+    return null;
+  }
+
+  /**
+   * Verifies a Razorpay webhook's `X-Razorpay-Signature` and returns the
+   * PARSED event.
+   *
+   * Razorpay's scheme: HMAC-SHA256 over the raw body with the dashboard
+   * secret as the UTF-8 key, hex output. There is **no timestamp** in the
+   * scheme, so this method cannot bound replays — dedupe on the
+   * `x-razorpay-event-id` header (unique per event) in your handler.
+   * Comparison is constant-time via `@tundralibs/crypt`.
+   *
+   * @throws {RazorpayError} `WEBHOOK_INVALID_HEADERS`,
+   * `WEBHOOK_SIGNATURE_INVALID`, or `RESPONSE_ERROR` when the verified
+   * payload is not JSON.
+   *
+   * @example
+   * ```typescript
+   * const raw = await req.text();
+   * const event = await client.verifyWebhook({ payload: raw, headers: req.headers, secret: WEBHOOK_SECRET });
+   * const eventId = req.headers.get('x-razorpay-event-id'); // dedupe on this
+   * ```
+   */
+  public async verifyWebhook(options: VerifyWebhookOptions): Promise<unknown> {
+    const { payload, headers, secret } = options;
+    const signature = Razorpay.__webhookHeader(headers, 'x-razorpay-signature');
+    if (!signature) {
+      throw new RazorpayError('WEBHOOK_INVALID_HEADERS', {
+        reason: 'missing X-Razorpay-Signature',
+      });
+    }
+    const expected = await signHMAC(payload, secret);
+    if (!constantTimeEqual(signature, expected)) {
+      throw new RazorpayError('WEBHOOK_SIGNATURE_INVALID', {});
+    }
+    try {
+      return JSON.parse(payload);
+    } catch (cause) {
+      throw new RazorpayError(
+        'RESPONSE_ERROR',
+        {},
+        cause instanceof Error ? cause : undefined,
+      );
+    }
+  }
+
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,
@@ -505,6 +624,7 @@ export class Razorpay extends RESTler<RazorpayOptions> {
     const detail = envelope.error;
     const meta = {
       status,
+      retryAfterSeconds: Razorpay.__retryAfterSeconds(response.headers),
       vendorCode: detail.code,
       vendorDescription: detail.description,
       field: detail.field,

@@ -12,6 +12,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@tundralibs/utils": "npm:@jsr/tundralibs__utils@^1.0.5"
+    "@tundralibs/crypt": "npm:@jsr/tundralibs__crypt@^1.4.1",
+    "@tundralibs/utils": "npm:@jsr/tundralibs__utils@^1.3.1"
   }
 }

@@ -45,3 +45,7 @@ export {
   type ErrorEnvelopeSchema,
   ErrorEnvelopeSchemaObject,
 } from './Error.ts';
+export {
+  type VerifyWebhookResponseSchema,
+  VerifyWebhookResponseSchemaObject,
+} from './VerifyWebhook.ts';

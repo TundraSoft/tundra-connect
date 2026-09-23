@@ -331,6 +331,149 @@ describe('SendGrid', () => {
 // clean up.
 // ---------------------------------------------------------------------------
 
+/** DER-encodes a raw 64-byte R‖S ECDSA signature — what SendGrid puts in the header. */
+function rawToDer(raw: Uint8Array): Uint8Array {
+  const int = (b: Uint8Array) => {
+    let i = 0;
+    while (i < b.length - 1 && b[i] === 0) i++;
+    const v = b.slice(i);
+    const pad = (v[0]! & 0x80) ? [0] : [];
+    return [0x02, v.length + pad.length, ...pad, ...v];
+  };
+  const body = [...int(raw.slice(0, 32)), ...int(raw.slice(32))];
+  return new Uint8Array([0x30, body.length, ...body]);
+}
+function b64(bytes: Uint8Array): string {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+}
+async function p256() {
+  const kp = await crypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify'],
+  );
+  const spki = b64(
+    new Uint8Array(await crypto.subtle.exportKey('spki', kp.publicKey)),
+  );
+  const sign = async (msg: string) =>
+    b64(
+      rawToDer(
+        new Uint8Array(
+          await crypto.subtle.sign(
+            { name: 'ECDSA', hash: 'SHA-256' },
+            kp.privateKey,
+            new TextEncoder().encode(msg) as unknown as BufferSource,
+          ),
+        ),
+      ),
+    );
+  return { spki, sign };
+}
+describe('SendGrid — verifyWebhook', () => {
+  const NOW_MS = 1_700_000_000_000;
+  const TS = String(Math.floor(NOW_MS / 1000));
+  const PAYLOAD = JSON.stringify([{
+    event: 'delivered',
+    email: 'a@example.com',
+  }]);
+  const client = () =>
+    new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test', prefix: 'Bearer' },
+    });
+  const hdrs = (sig: string, ts = TS) => ({
+    'x-twilio-email-event-webhook-signature': sig,
+    'x-twilio-email-event-webhook-timestamp': ts,
+  });
+
+  it('accepts a genuine ECDSA P-256 signature over timestamp+payload (base64 SPKI key)', async () => {
+    const k = await p256();
+    const events = await client().verifyWebhook({
+      payload: PAYLOAD,
+      headers: hdrs(await k.sign(TS + PAYLOAD)),
+      publicKey: k.spki,
+      nowMs: NOW_MS,
+    }) as { event: string }[];
+    asserts.assertEquals(events[0]!.event, 'delivered');
+  });
+  it('accepts the key in PEM armour too', async () => {
+    const k = await p256();
+    const pem =
+      `-----BEGIN PUBLIC KEY-----\n${k.spki}\n-----END PUBLIC KEY-----`;
+    await client().verifyWebhook({
+      payload: PAYLOAD,
+      headers: hdrs(await k.sign(TS + PAYLOAD)),
+      publicKey: pem,
+      nowMs: NOW_MS,
+    });
+  });
+  it('rejects a tampered payload and a signature from a different key', async () => {
+    const k = await p256();
+    const other = await p256();
+    const e1 = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD + ' ',
+          headers: hdrs(await k.sign(TS + PAYLOAD)),
+          publicKey: k.spki,
+          nowMs: NOW_MS,
+        }),
+      SendGridError,
+    );
+    asserts.assertEquals(e1.code, 'WEBHOOK_SIGNATURE_INVALID');
+    const e2 = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs(await other.sign(TS + PAYLOAD)),
+          publicKey: k.spki,
+          nowMs: NOW_MS,
+        }),
+      SendGridError,
+    );
+    asserts.assertEquals(e2.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('rejects a replay outside the window and a garbage key', async () => {
+    const k = await p256();
+    const e1 = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs(await k.sign(TS + PAYLOAD)),
+          publicKey: k.spki,
+          nowMs: NOW_MS + 301_000,
+        }),
+      SendGridError,
+    );
+    asserts.assertEquals(e1.code, 'WEBHOOK_TIMESTAMP_INVALID');
+    const e2 = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs(await k.sign(TS + PAYLOAD)),
+          publicKey: 'bm90LWEta2V5',
+          nowMs: NOW_MS,
+        }),
+      SendGridError,
+    );
+    asserts.assertEquals(e2.code, 'WEBHOOK_INVALID_KEY');
+  });
+  it('rejects missing headers', async () => {
+    const err = await asserts.assertRejects(
+      () =>
+        client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: {},
+          publicKey: 'x',
+          nowMs: NOW_MS,
+        }),
+      SendGridError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_INVALID_HEADERS');
+  });
+});
+
 const env = envArgs();
 const credentials = {
   apiKey: env.get('CONNECTOR_SENDGRID_API_KEY'),

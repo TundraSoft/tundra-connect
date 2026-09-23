@@ -62,3 +62,7 @@ included in any thrown error's message or context.
 ---
 
 [← Back to UpstashRedis](../README.md)
+
+## Backing off after a 429
+
+`getContextValue('retryAfterSeconds')` — seconds to wait before retrying, read from whichever header the vendor sent: `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or milliseconds). `undefined` when none was present — the value is only ever what the vendor said, never a guess. Upstash has no dedicated rate-limit code yet, so a 429 lands in `UNKNOWN_ERROR` — the hint is still carried there.

@@ -75,3 +75,14 @@ only its absence/emptiness is ever reported.
 ---
 
 [← Back to PayPal](../README.md)
+
+## Webhook codes
+
+| Code                        | Raised when                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| `WEBHOOK_INVALID_HEADERS`   | A required signature header is missing.                                        |
+| `WEBHOOK_SIGNATURE_INVALID` | **Treat the request as forged.** Also PayPal answering anything but `SUCCESS`. |
+
+## Backing off after a 429
+
+`getContextValue('retryAfterSeconds')` — seconds to wait before retrying, read from whichever header the vendor sent: `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or milliseconds). `undefined` when none was present — the value is only ever what the vendor said, never a guess. Present on `RATE_LIMITED` when the vendor sent a usable hint.

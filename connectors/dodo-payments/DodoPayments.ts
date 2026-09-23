@@ -7,6 +7,7 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { constantTimeEqual } from '@crypt';
 import type { BaseGuardian, GuardianError } from '@guardian';
 import { DodoPaymentsError } from './errors/mod.ts';
 import {
@@ -164,6 +165,31 @@ type VendorErrorName =
  * console.log(created.payment_link); // send the buyer here
  * ```
  */
+/**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Standard Webhooks' recommended replay window, in seconds. */
+export const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = 300;
+
+/** Arguments to {@link DodoPayments.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /** The RAW request body, exactly as received — `await req.text()`, never a re-serialized object. */
+  payload: string;
+  headers: WebhookHeadersLike;
+  /** The endpoint's signing secret from the dashboard, with or without `whsec_`. */
+  secret: string;
+  /** Replay window in seconds. @default DEFAULT_WEBHOOK_TOLERANCE_SECONDS */
+  toleranceSeconds?: number;
+  /** Clock override, for tests. */
+  nowMs?: number;
+};
+
 export class DodoPayments extends RESTler<DodoPaymentsOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'DodoPayments';
@@ -192,7 +218,7 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
       timeout: 30,
       contentType: 'JSON',
     });
-    if (!this.hasOption('auth')) {
+    if (!this._hasOption('auth')) {
       throw new DodoPaymentsError('CONFIG_INVALID_API_KEY');
     }
     this._responseHandler = (response) => this.__toError(response);
@@ -674,6 +700,205 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
    * into a {@link DodoPaymentsError}.
    */
+  /**
+   * Seconds a caller should wait before retrying after a 429, read from
+   * whichever rate-limit header the vendor sent: `Retry-After` (delta
+   * seconds or an HTTP-date), `X-RateLimit-Reset-After` (delta seconds),
+   * or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or
+   * milliseconds). `undefined` when none is present or parseable — the
+   * value is only ever what the vendor said, never a guess.
+   */
+  private static __retryAfterSeconds(
+    headers: Record<string, string> | undefined,
+    nowMs = Date.now(),
+  ): number | undefined {
+    if (!headers) return undefined;
+    const get = (name: string): string | undefined =>
+      headers[name] ?? headers[name.toLowerCase()];
+    const retryAfter = get('retry-after');
+    if (retryAfter !== undefined) {
+      const n = Number(retryAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+      const at = Date.parse(retryAfter);
+      if (Number.isFinite(at)) {
+        return Math.max(0, Math.ceil((at - nowMs) / 1000));
+      }
+    }
+    const resetAfter = get('x-ratelimit-reset-after');
+    if (resetAfter !== undefined) {
+      const n = Number(resetAfter);
+      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
+    }
+    const reset = get('x-ratelimit-reset') ?? get('ratelimit-reset');
+    if (reset !== undefined) {
+      const n = Number(reset);
+      if (Number.isFinite(n) && n > 0) {
+        const epochMs = n > 1e12 ? n : n * 1000;
+        return Math.max(0, Math.ceil((epochMs - nowMs) / 1000));
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * The exact string Standard Webhooks signs: `<id>.<timestamp>.<payload>`.
+   *
+   * @example
+   * ```typescript
+   * DodoPayments.webhookSignedContent('msg_1', '1700000000', '{"a":1}');
+   * // 'msg_1.1700000000.{"a":1}'
+   * ```
+   */
+  public static webhookSignedContent(
+    webhookId: string,
+    timestamp: string,
+    payload: string,
+  ): string {
+    return `${webhookId}.${timestamp}.${payload}`;
+  }
+
+  /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
+  private static __webhookHeader(
+    headers: WebhookHeadersLike,
+    name: string,
+  ): string | null {
+    if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+      return headers.get(name);
+    }
+    const lower = name.toLowerCase();
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() !== lower) continue;
+      return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+    }
+    return null;
+  }
+
+  /**
+   * Verifies a Dodo webhook's signature and returns the PARSED payload.
+   *
+   * Dodo implements the Standard Webhooks spec: `webhook-id`,
+   * `webhook-timestamp`, `webhook-signature` (space-separated `v1,<b64>`
+   * entries), HMAC-SHA256 over `<id>.<timestamp>.<rawBody>` keyed by the
+   * base64-DECODED secret. That decoded-bytes key is why the HMAC here
+   * stays on Web Crypto rather than `@tundralibs/crypt`'s `signHMAC`,
+   * which treats a string key as UTF-8 and returns hex; the constant-time
+   * comparison does come from crypt.
+   *
+   * Returning the parsed body is deliberate: it makes the verified payload
+   * the natural thing to act on, so no unverified object is left lying
+   * around.
+   *
+   * @throws {DodoPaymentsError} `WEBHOOK_INVALID_HEADERS`,
+   * `WEBHOOK_TIMESTAMP_INVALID`, `WEBHOOK_SIGNATURE_INVALID`,
+   * `WEBHOOK_INVALID_SECRET`, or `RESPONSE_ERROR` when the verified
+   * payload is not JSON.
+   *
+   * @example
+   * ```typescript
+   * const raw = await req.text(); // text(), never json()
+   * const event = await client.verifyWebhook({
+   *   payload: raw,
+   *   headers: req.headers,
+   *   secret: WEBHOOK_SIGNING_SECRET,
+   * });
+   * ```
+   */
+  public async verifyWebhook(options: VerifyWebhookOptions): Promise<unknown> {
+    const {
+      payload,
+      headers,
+      secret,
+      toleranceSeconds = DEFAULT_WEBHOOK_TOLERANCE_SECONDS,
+      nowMs = Date.now(),
+    } = options;
+    const id = DodoPayments.__webhookHeader(headers, 'webhook-id');
+    const timestamp = DodoPayments.__webhookHeader(
+      headers,
+      'webhook-timestamp',
+    );
+    const signature = DodoPayments.__webhookHeader(
+      headers,
+      'webhook-signature',
+    );
+    const missing = [['webhook-id', id], ['webhook-timestamp', timestamp], [
+      'webhook-signature',
+      signature,
+    ]]
+      .filter(([, v]) => !v).map(([n]) => n);
+    if (missing.length > 0) {
+      throw new DodoPaymentsError('WEBHOOK_INVALID_HEADERS', {
+        reason: `missing ${missing.join(', ')}`,
+      });
+    }
+    const sentAtSec = Number(timestamp);
+    if (!Number.isFinite(sentAtSec)) {
+      throw new DodoPaymentsError('WEBHOOK_TIMESTAMP_INVALID', {
+        reason: `'${timestamp}' is not a Unix timestamp in seconds`,
+      });
+    }
+    // Both directions: a forged far-future timestamp would otherwise be
+    // replayable forever.
+    const driftSec = Math.abs(nowMs / 1000 - sentAtSec);
+    if (driftSec > toleranceSeconds) {
+      throw new DodoPaymentsError('WEBHOOK_TIMESTAMP_INVALID', {
+        reason: `${
+          Math.round(driftSec)
+        }s drift exceeds the ${toleranceSeconds}s tolerance`,
+      });
+    }
+    const raw = secret.startsWith('whsec_') ? secret.slice(6) : secret;
+    let keyBytes: Uint8Array;
+    try {
+      const binary = atob(raw);
+      keyBytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        keyBytes[i] = binary.charCodeAt(i);
+      }
+    } catch (cause) {
+      throw new DodoPaymentsError(
+        'WEBHOOK_INVALID_SECRET',
+        {},
+        cause instanceof Error ? cause : undefined,
+      );
+    }
+    const key = await crypto.subtle.importKey(
+      'raw',
+      keyBytes as unknown as BufferSource,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+    const mac = new Uint8Array(
+      await crypto.subtle.sign(
+        'HMAC',
+        key,
+        new TextEncoder().encode(
+          DodoPayments.webhookSignedContent(id!, timestamp!, payload),
+        ) as unknown as BufferSource,
+      ),
+    );
+    let binary = '';
+    for (const byte of mac) binary += String.fromCharCode(byte);
+    const expected = btoa(binary);
+    // Every candidate compared in constant time; no early break on success.
+    let matched = false;
+    for (const entry of signature!.split(' ')) {
+      const comma = entry.indexOf(',');
+      if (comma === -1 || entry.slice(0, comma) !== 'v1') continue;
+      if (constantTimeEqual(entry.slice(comma + 1), expected)) matched = true;
+    }
+    if (!matched) throw new DodoPaymentsError('WEBHOOK_SIGNATURE_INVALID', {});
+    try {
+      return JSON.parse(payload);
+    } catch (cause) {
+      throw new DodoPaymentsError(
+        'RESPONSE_ERROR',
+        {},
+        cause instanceof Error ? cause : undefined,
+      );
+    }
+  }
+
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,
@@ -716,6 +941,7 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     else code = 'UNKNOWN_ERROR';
 
     throw new DodoPaymentsError(code, {
+      retryAfterSeconds: DodoPayments.__retryAfterSeconds(response.headers),
       status,
       detail,
       vendorCode: parsed?.code,

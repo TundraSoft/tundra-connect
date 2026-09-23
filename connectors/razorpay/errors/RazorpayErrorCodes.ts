@@ -44,6 +44,10 @@ export const RazorpayErrorCodes = {
     'Razorpay encountered an internal error while processing the request: ${vendorDescription}',
   SERVICE_UNAVAILABLE:
     'The Razorpay service is currently unavailable (HTTP ${status}).',
+  WEBHOOK_INVALID_HEADERS:
+    'The webhook request is missing a required signature header: ${reason}',
+  WEBHOOK_SIGNATURE_INVALID:
+    'The webhook signature does not match — treat this request as forged.',
 } as const;
 
 /** Valid Razorpay error code. */

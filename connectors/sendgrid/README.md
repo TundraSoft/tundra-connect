@@ -67,6 +67,19 @@ const { messageId } = await client.sendMail({
 console.log(messageId);
 ```
 
+## Webhooks
+
+```ts
+const raw = await req.text(); // text(), never json()
+const events = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  publicKey: SENDGRID_WEBHOOK_KEY,
+});
+```
+
+See [API → Webhooks](docs/SendGrid-API.md#webhooks).
+
 ## License
 
 MIT

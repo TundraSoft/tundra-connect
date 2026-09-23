@@ -80,6 +80,19 @@ const sent = await client.postMessage({
 console.log(sent.ts);
 ```
 
+## Webhooks
+
+```ts
+const raw = await req.text(); // text(), never json()
+const body = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  signingSecret: SLACK_SIGNING_SECRET,
+});
+```
+
+See [API → Webhooks](docs/Slack-API.md#webhooks).
+
 ## License
 
 MIT

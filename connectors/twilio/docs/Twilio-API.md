@@ -117,3 +117,35 @@ See [Errors](Twilio-Errors.md) for failure handling and
 ---
 
 [← Back to Twilio](../README.md)
+
+## Webhooks
+
+### `verifyWebhook(options)`
+
+Verifies an inbound webhook from Twilio — a method on the client, not an HTTP call.
+
+**Scheme** (`X-Twilio-Signature`): HMAC-SHA1 over the **exact** request URL (query included, never re-encoded) followed by every POST parameter as `key` immediately followed by `value`, sorted by key, no separators; keyed by the **account** auth token; base64. For a JSON body Twilio instead appends `bodySHA256=<hex>` to the URL — the method checks that hash against `payload` and signs the URL alone.
+
+| Option      | Type                    | Required | Description                                                                                                                                                 |
+| ----------- | ----------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`       | `string`                | yes      | The exact URL Twilio requested.                                                                                                                             |
+| `headers`   | `Headers \| object`     | yes      | Case-insensitive lookup.                                                                                                                                    |
+| `params`    | `Record<string,string>` | no       | Form parameters, for `application/x-www-form-urlencoded`.                                                                                                   |
+| `payload`   | `string`                | no       | Raw JSON body, for `application/json`.                                                                                                                      |
+| `authToken` | `string`                | no       | Defaults to the configured auth token in account-SID mode. **Required** under API-key auth — Twilio signs with the account token, never the API-key secret. |
+
+**Returns:** Nothing — resolves on success; the caller already holds the parameters.
+
+**Throws:** `TwilioError` with `WEBHOOK_INVALID_HEADERS`, `WEBHOOK_INVALID_AUTH_TOKEN`, `WEBHOOK_SIGNATURE_INVALID`.
+
+```ts
+const raw = await req.text(); // text(), never json()
+await client.verifyWebhook({ url: req.url, headers: req.headers, params }); // form
+await client.verifyWebhook({
+  url: req.url,
+  headers: req.headers,
+  payload: raw,
+}); // JSON
+```
+
+Comparison is constant-time via `@tundralibs/crypt`. Treat `WEBHOOK_SIGNATURE_INVALID` as a forged request.

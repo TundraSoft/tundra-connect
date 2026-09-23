@@ -859,6 +859,159 @@ describe('Twilio — credential custody', () => {
   });
 });
 
+async function hmacHex(
+  secret: string,
+  message: string,
+  hash = 'SHA-256',
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret) as unknown as BufferSource,
+    { name: 'HMAC', hash },
+    false,
+    ['sign'],
+  );
+  const mac = new Uint8Array(
+    await crypto.subtle.sign(
+      'HMAC',
+      key,
+      new TextEncoder().encode(message) as unknown as BufferSource,
+    ),
+  );
+  let out = '';
+  for (const b of mac) out += b.toString(16).padStart(2, '0');
+  return out;
+}
+function hexToB64(hex: string): string {
+  let bin = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    bin += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+  }
+  return btoa(bin);
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const d = new Uint8Array(
+    await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(s) as unknown as BufferSource,
+    ),
+  );
+  let out = '';
+  for (const b of d) out += b.toString(16).padStart(2, '0');
+  return out;
+}
+describe('Twilio — verifyWebhook', () => {
+  const TOKEN = 'account-auth-token';
+  const URL_ = 'https://example.com/hooks/sms?x=1';
+  const PARAMS = { To: '+14155552671', From: '+15017122661', Body: 'hi' };
+  const client = () =>
+    new MockTwilio({ accountSid: ACCOUNT_SID, authToken: TOKEN });
+  const formSig = async (params = PARAMS, url = URL_, token = TOKEN) =>
+    hexToB64(
+      await hmacHex(
+        token,
+        url +
+          Object.keys(params).sort().map((k) =>
+            k + params[k as keyof typeof params]
+          ).join(''),
+        'SHA-1',
+      ),
+    );
+
+  it('accepts a genuine form-webhook signature (URL + sorted key+value, HMAC-SHA1 base64)', async () => {
+    await client().verifyWebhook({
+      url: URL_,
+      headers: { 'x-twilio-signature': await formSig() },
+      params: PARAMS,
+    });
+  });
+  it('defaults the signing key to the configured auth token in account-SID mode', async () => {
+    await client().verifyWebhook({
+      url: URL_,
+      headers: { 'x-twilio-signature': await formSig() },
+      params: PARAMS,
+    });
+  });
+  it('refuses to default to an API-key secret — Twilio signs with the account token', async () => {
+    const c = new MockTwilio(
+      {
+        accountSid: ACCOUNT_SID,
+        apiKeySid: 'SK' + '2'.repeat(32),
+        apiKeySecret: 'api-secret',
+      } as ConstructorParameters<typeof MockTwilio>[0],
+    );
+    const err = await asserts.assertRejects(
+      async () =>
+        await c.verifyWebhook({
+          url: URL_,
+          headers: { 'x-twilio-signature': await formSig() },
+          params: PARAMS,
+        }),
+      TwilioError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_INVALID_AUTH_TOKEN');
+    await c.verifyWebhook({
+      url: URL_,
+      headers: { 'x-twilio-signature': await formSig() },
+      params: PARAMS,
+      authToken: TOKEN,
+    });
+  });
+  it('rejects a tampered parameter', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          url: URL_,
+          headers: { 'x-twilio-signature': await formSig() },
+          params: { ...PARAMS, Body: 'bye' },
+        }),
+      TwilioError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('verifies a JSON webhook via bodySHA256 and signs the URL alone', async () => {
+    const body = '{"a":1}';
+    const url = `${URL_}&bodySHA256=${await sha256Hex(body)}`;
+    await client().verifyWebhook({
+      url,
+      headers: {
+        'x-twilio-signature': hexToB64(await hmacHex(TOKEN, url, 'SHA-1')),
+      },
+      payload: body,
+    });
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          url,
+          headers: {
+            'x-twilio-signature': hexToB64(await hmacHex(TOKEN, url, 'SHA-1')),
+          },
+          payload: '{"a":2}',
+        }),
+      TwilioError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
+  it('rejects a JSON webhook whose URL lacks bodySHA256, and a missing signature header', async () => {
+    const e1 = await asserts.assertRejects(
+      () =>
+        client().verifyWebhook({
+          url: URL_,
+          headers: { 'x-twilio-signature': 'x' },
+          payload: '{}',
+        }),
+      TwilioError,
+    );
+    asserts.assertEquals(e1.code, 'WEBHOOK_INVALID_HEADERS');
+    const e2 = await asserts.assertRejects(
+      () => client().verifyWebhook({ url: URL_, headers: {}, params: PARAMS }),
+      TwilioError,
+    );
+    asserts.assertEquals(e2.code, 'WEBHOOK_INVALID_HEADERS');
+  });
+});
+
 const env = envArgs();
 const credentials = {
   accountSid: env.get('CONNECTOR_TWILIO_ACCOUNT_SID'),

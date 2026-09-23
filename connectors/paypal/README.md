@@ -111,6 +111,19 @@ await client.refundCapture(capture!.id, {
 });
 ```
 
+## Webhooks
+
+```ts
+const raw = await req.text(); // text(), never json()
+const event = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  webhookId: PAYPAL_WEBHOOK_ID,
+});
+```
+
+See [API → Webhooks](docs/PayPal-API.md#webhooks).
+
 ## License
 
 MIT

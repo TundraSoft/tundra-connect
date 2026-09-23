@@ -49,6 +49,12 @@ export const SlackErrorCodes = {
   // envelope entirely.
   SERVICE_UNAVAILABLE:
     'Slack service is currently unavailable (HTTP ${status}).',
+  WEBHOOK_INVALID_HEADERS:
+    'The webhook request is missing a required signature header: ${reason}',
+  WEBHOOK_TIMESTAMP_INVALID:
+    'The webhook timestamp is outside the allowed tolerance: ${reason}',
+  WEBHOOK_SIGNATURE_INVALID:
+    'The webhook signature does not match — treat this request as forged.',
 } as const;
 
 /** Valid Slack error code. */

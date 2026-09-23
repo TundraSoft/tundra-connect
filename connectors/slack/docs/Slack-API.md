@@ -106,3 +106,34 @@ request/response validation.
 ---
 
 [← Back to Slack](../README.md)
+
+## Webhooks
+
+### `verifyWebhook(options)`
+
+Verifies an inbound webhook from Slack — a method on the client, not an HTTP call.
+
+**Scheme** (`X-Slack-Signature` + `X-Slack-Request-Timestamp`): basestring `v0:<timestamp>:<rawBody>`, HMAC-SHA256 with the app's Signing Secret as UTF-8, hex, presented as `v0=<hex>`. Five-minute replay window.
+
+| Option             | Type                | Required | Description                                                                               |
+| ------------------ | ------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `payload`          | `string`            | yes      | Raw body before any deserialization — JSON (Events API) or form-encoded (slash commands). |
+| `headers`          | `Headers \| object` | yes      | Case-insensitive lookup.                                                                  |
+| `signingSecret`    | `string`            | yes      | The app's Signing Secret.                                                                 |
+| `toleranceSeconds` | `number`            | no       | Replay window. Default `300`.                                                             |
+| `nowMs`            | `number`            | no       | Clock override for tests.                                                                 |
+
+**Returns:** The **raw body string** once trusted — Slack bodies are JSON _or_ form-encoded depending on the feature, so parse it yourself afterwards.
+
+**Throws:** `SlackError` with `WEBHOOK_INVALID_HEADERS`, `WEBHOOK_TIMESTAMP_INVALID`, `WEBHOOK_SIGNATURE_INVALID`.
+
+```ts
+const raw = await req.text(); // text(), never json()
+const body = await client.verifyWebhook({
+  payload: raw,
+  headers: req.headers,
+  signingSecret: SLACK_SIGNING_SECRET,
+});
+```
+
+Comparison is constant-time via `@tundralibs/crypt`. Treat `WEBHOOK_SIGNATURE_INVALID` as a forged request.

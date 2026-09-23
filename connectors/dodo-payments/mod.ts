@@ -7,6 +7,7 @@ export {
   type CancelSubscriptionOptions,
   DEFAULT_MAX_PAGES,
   DEFAULT_PAGE_SIZE,
+  DEFAULT_WEBHOOK_TOLERANCE_SECONDS,
   DodoPayments,
   type DodoPaymentsAuth,
   type DodoPaymentsMode,
@@ -15,16 +16,9 @@ export {
   type ListSubscriptionsOptions,
   LIVE_API,
   TEST_API,
-} from './DodoPayments.ts';
-
-// Export webhook signature verification
-export {
-  DEFAULT_TOLERANCE_SECONDS,
-  signedContent,
   type VerifyWebhookOptions,
-  verifyWebhookSignature,
   type WebhookHeadersLike,
-} from './DodoPaymentsWebhook.ts';
+} from './DodoPayments.ts';
 
 // Export error handling
 export * from './errors/mod.ts';
