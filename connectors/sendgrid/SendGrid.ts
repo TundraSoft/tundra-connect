@@ -7,6 +7,7 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { decodeBase64 } from '@encoding';
 import { ecdsaDerToRaw, verifyEC } from '@crypt';
 import { type BaseGuardian, GuardianError } from '@guardian';
 import {
@@ -399,10 +400,7 @@ export class SendGrid extends RESTler<SendGridOptions> {
       }\n-----END PUBLIC KEY-----`;
     let raw: string;
     try {
-      const binary = atob(signature);
-      const der = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) der[i] = binary.charCodeAt(i);
-      raw = ecdsaDerToRaw(der, 'P-256');
+      raw = ecdsaDerToRaw(decodeBase64(signature), 'P-256');
     } catch {
       throw new SendGridError('WEBHOOK_SIGNATURE_INVALID', {});
     }

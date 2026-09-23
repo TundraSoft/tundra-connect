@@ -97,8 +97,7 @@ export class PolymarketSigner {
     });
     const recovery = signed[0]!;
     const rs = signed.slice(1);
-    const v = (27 + recovery).toString(16).padStart(2, '0');
-    return `0x${toHex(rs)}${v}`;
+    return `0x${toHex(rs)}${toHex(Uint8Array.of(27 + recovery))}`;
   }
 
   /**

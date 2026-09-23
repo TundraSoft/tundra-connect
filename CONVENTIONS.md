@@ -411,8 +411,14 @@ only where `@crypt` cannot express the operation, and the call site must
 say why in a comment. Known cases: an HMAC keyed by _decoded bytes_ with
 base64 output (S3 SigV4's chained derivation, Azure Shared Key, Polymarket
 L2, Standard Webhooks) — `signHMAC` takes a text key and returns hex;
-Keccak-256 and secp256k1 (Polymarket, via `@noble`); and UUID v4 where a
-vendor mandates it (Kalshi) — `@id` has no UUID generator. Hand-rolled
-base64/hex codecs are the remaining gap: no TundraLibs package exports
-them (`@crypt` uses `@std/encoding` internally), so keep them small and
-local until that is adopted repo-wide.
+and Keccak-256 / secp256k1 (Polymarket, via `@noble`).
+
+Two related rules with no gap behind them. Base64/hex encoding of
+arbitrary bytes comes from the shared `@encoding` alias (`@std/encoding` —
+`encodeHex`, `decodeHex`, `encodeBase64`, `decodeBase64`, …); never
+hand-roll a codec. `@crypt` does emit base64 where that is the natural
+output of its own operation (`signRSA`, `sha256(…, 'base64')`), but it
+ships no standalone codec and `signHMAC` is hex-only — re-encode with
+`@encoding` rather than by hand. And UUID v4, where a vendor mandates it
+(Kalshi's `client_order_id`), is `crypto.randomUUID()` — the platform
+primitive is the sanctioned choice, not a gap in `@id`.

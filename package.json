@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@std/assert": "npm:@jsr/std__assert@^1.0.0",
+    "@std/encoding": "npm:@jsr/std__encoding@^1.0.11",
     "@tundralibs/compat": "npm:@jsr/tundralibs__compat@^1.1.4",
     "@tundralibs/crypt": "npm:@jsr/tundralibs__crypt@^1.4.1",
     "@tundralibs/guardian": "npm:@jsr/tundralibs__guardian@^1.1.0",

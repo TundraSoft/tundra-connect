@@ -31,6 +31,7 @@ import {
   uintWord,
 } from './PolymarketEip712.ts';
 import type { PolymarketSigner } from './PolymarketSigner.ts';
+import { decodeBase64, encodeBase64 } from '@encoding';
 
 // EIP-712 domain + struct for the L1 "attest control of wallet" signature.
 export const CLOB_AUTH_DOMAIN_NAME = 'ClobAuthDomain';
@@ -94,31 +95,10 @@ function utf8(value: string): BufferSource {
   return new TextEncoder().encode(value);
 }
 
-/** Encodes raw bytes as standard base64, without any runtime `Buffer`. */
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-/** Decodes a standard (padded) base64 string into raw bytes. */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
 /**
  * Decodes a URL-safe base64 string, restoring padding first — CLOB
- * secrets have been observed both padded and unpadded.
- *
- * The `as unknown as BufferSource` cast resolves a type-only mismatch (some
- * TypeScript DOM lib versions type the bare `Uint8Array` alias as
- * `Uint8Array<ArrayBufferLike>`, which `BufferSource` doesn't structurally
- * accept even though every runtime's Web Crypto accepts any
- * `ArrayBufferView` at runtime) — mirrors the identical cast in
- * `s3/S3.ts`'s `__hashPayload` and `azure-blob/AzureBlobSigner.ts`.
+ * secrets have been observed both padded and unpadded. Decoding itself is
+ * `@std/encoding`'s `decodeBase64`.
  */
 function base64UrlDecode(value: string): BufferSource {
   const standard = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -126,12 +106,16 @@ function base64UrlDecode(value: string): BufferSource {
   const padded = remainder === 0
     ? standard
     : standard + '='.repeat(4 - remainder);
-  return base64ToBytes(padded) as unknown as BufferSource;
+  return decodeBase64(padded) as unknown as BufferSource;
 }
 
-/** Encodes raw bytes as URL-safe base64, keeping the trailing `=` padding (the SDK retains it). */
+/**
+ * Encodes raw bytes as URL-safe base64 KEEPING the trailing `=` padding —
+ * the SDK retains it, so `@std/encoding`'s unpadded `encodeBase64Url` is
+ * deliberately not used; standard base64 with the two-character swap is.
+ */
 function base64UrlEncode(bytes: Uint8Array): string {
-  return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_');
+  return encodeBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 /**

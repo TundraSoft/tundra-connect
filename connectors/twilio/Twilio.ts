@@ -8,6 +8,7 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { decodeHex, encodeBase64 } from '@encoding';
 import { constantTimeEqual, sha256, signHMAC } from '@crypt';
 import {
   accountSidGuard,
@@ -880,11 +881,7 @@ export class Twilio extends RESTler<TwilioOptions> {
     }
     const hex = await signHMAC(data, authToken, { hashAlgorithm: 'SHA-1' });
     // Twilio presents the HMAC as base64; re-encode crypt's hex output.
-    let binary = '';
-    for (let i = 0; i < hex.length; i += 2) {
-      binary += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
-    }
-    const expected = btoa(binary);
+    const expected = encodeBase64(decodeHex(hex));
     if (!constantTimeEqual(signature, expected)) {
       throw new TwilioError('WEBHOOK_SIGNATURE_INVALID', {});
     }

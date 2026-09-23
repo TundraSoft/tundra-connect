@@ -176,4 +176,4 @@ const rows = await client.cancelOrders([orderId1, orderId2]); // -> BatchOrderRo
 
 ## Signing
 
-Request signatures are produced by `@tundralibs/crypt`'s `signRSA` (RSA-PSS, SHA-256, salt 32 — exactly Kalshi's contract) from the PKCS#8 PEM; no hand-rolled Web Crypto remains in the signer. `client_order_id` still uses `crypto.randomUUID()` because Kalshi mandates UUID4 and `@tundralibs/id` ships no UUID generator.
+Request signatures are produced by `@tundralibs/crypt`'s `signRSA` (RSA-PSS, SHA-256, salt 32 — exactly Kalshi's contract) from the PKCS#8 PEM; no hand-rolled Web Crypto remains in the signer. `client_order_id` uses `crypto.randomUUID()` — Kalshi mandates UUID4, and the platform primitive is the sanctioned choice for it.

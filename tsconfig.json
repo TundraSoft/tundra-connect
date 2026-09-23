@@ -43,6 +43,9 @@
       ],
       "@id": [
         "./node_modules/@tundralibs/id/mod.ts"
+      ],
+      "@encoding": [
+        "./node_modules/@std/encoding/mod.ts"
       ]
     }
   },

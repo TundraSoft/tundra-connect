@@ -7,6 +7,7 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
+import { decodeBase64, encodeBase64 } from '@encoding';
 import { constantTimeEqual } from '@crypt';
 import type { BaseGuardian, GuardianError } from '@guardian';
 import { DodoPaymentsError } from './errors/mod.ts';
@@ -849,11 +850,7 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     const raw = secret.startsWith('whsec_') ? secret.slice(6) : secret;
     let keyBytes: Uint8Array;
     try {
-      const binary = atob(raw);
-      keyBytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        keyBytes[i] = binary.charCodeAt(i);
-      }
+      keyBytes = decodeBase64(raw);
     } catch (cause) {
       throw new DodoPaymentsError(
         'WEBHOOK_INVALID_SECRET',
@@ -877,9 +874,7 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
         ) as unknown as BufferSource,
       ),
     );
-    let binary = '';
-    for (const byte of mac) binary += String.fromCharCode(byte);
-    const expected = btoa(binary);
+    const expected = encodeBase64(mac);
     // Every candidate compared in constant time; no early break on success.
     let matched = false;
     for (const entry of signature!.split(' ')) {

@@ -6,6 +6,7 @@ const ALIASES = new Map([
   ['@utils', '@tundralibs/utils'],
   ['@crypt', '@tundralibs/crypt'],
   ['@id', '@tundralibs/id'],
+  ['@encoding', '@std/encoding'],
 ]);
 
 export function resolve(specifier, context, nextResolve) {

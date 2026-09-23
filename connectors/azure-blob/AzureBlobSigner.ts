@@ -1,3 +1,5 @@
+import { decodeBase64, encodeBase64 } from '@encoding';
+
 /**
  * Azure Blob Storage "Shared Key" (HMAC-SHA256) request signer.
  *
@@ -189,25 +191,6 @@ export function buildStringToSign(
     buildCanonicalizedResource(input.account, input.path, input.query);
 }
 
-/** Decode a base64 string (the storage account key) to raw bytes. */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/** Encode raw bytes (an HMAC digest) as base64. */
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
-}
-
 /**
  * Signs a request per Azure's Shared Key scheme:
  * `Base64(HMAC-SHA256(UTF8(StringToSign), Base64-decode(accountKey)))`.
@@ -244,7 +227,7 @@ export async function signSharedKey(
   const stringToSign = buildStringToSign(input);
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    base64ToBytes(input.accountKey) as unknown as BufferSource,
+    decodeBase64(input.accountKey) as unknown as BufferSource,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign'],
@@ -254,7 +237,7 @@ export async function signSharedKey(
     cryptoKey,
     new TextEncoder().encode(stringToSign),
   );
-  const signature = bytesToBase64(new Uint8Array(signatureBytes));
+  const signature = encodeBase64(new Uint8Array(signatureBytes));
   return {
     stringToSign,
     signature,

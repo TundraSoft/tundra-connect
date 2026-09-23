@@ -24,6 +24,7 @@
  */
 
 import { keccak_256 } from '@noble/hashes/sha3.js';
+import { decodeHex, encodeHex } from '@encoding';
 
 /** Keccak-256 digest of `data`, as raw bytes. */
 export function keccak256(data: Uint8Array): Uint8Array {
@@ -32,9 +33,7 @@ export function keccak256(data: Uint8Array): Uint8Array {
 
 /** Lowercase-hex encoding of raw bytes, no `0x` prefix. */
 export function toHex(bytes: Uint8Array): string {
-  let out = '';
-  for (const byte of bytes) out += byte.toString(16).padStart(2, '0');
-  return out;
+  return encodeHex(bytes);
 }
 
 /**
@@ -49,11 +48,10 @@ export function fromHex(hex: string): Uint8Array {
   if (clean.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(clean)) {
     throw new Error('invalid hex string: odd length or non-hex character');
   }
-  const out = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(clean.substr(i * 2, 2), 16);
-  }
-  return out;
+  // Validated above, so `decodeHex` can never throw here — its own error
+  // would echo the offending character, and this function's contract is
+  // that a private key passing through it never surfaces in a message.
+  return decodeHex(clean);
 }
 
 /**

@@ -1,3 +1,5 @@
+import { encodeHex } from '@encoding';
+
 /**
  * @fileoverview AWS Signature Version 4 (SigV4) request signing, scoped to
  * the `s3` service.
@@ -204,17 +206,10 @@ function toBytes(input: BufferSource | string): BufferSource {
   return typeof input === 'string' ? new TextEncoder().encode(input) : input;
 }
 
-/** Lowercase-hex encoding of raw digest/signature bytes. */
-function toHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
-
 /** SHA-256 digest of `data`, as lowercase hex. Web Crypto only — see the module doc. */
 export async function sha256Hex(data: BufferSource | string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', toBytes(data));
-  return toHex(digest);
+  return encodeHex(digest);
 }
 
 /** HMAC-SHA256 of `data` under `key`, returning the raw signature bytes (chainable into the next HMAC step). */
@@ -309,7 +304,7 @@ export async function signV4(params: SigV4Params): Promise<SigV4Result> {
     dateStamp,
     params.credentials.region,
   );
-  const signature = toHex(await hmacSha256(signingKey, stringToSign));
+  const signature = encodeHex(await hmacSha256(signingKey, stringToSign));
 
   const authorization =
     `AWS4-HMAC-SHA256 Credential=${params.credentials.accessKeyId}/${credentialScope},SignedHeaders=${signedHeaders},Signature=${signature}`;
