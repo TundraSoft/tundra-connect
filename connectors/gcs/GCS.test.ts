@@ -1662,6 +1662,144 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('GCS — maxRetryWait (RESTler rate-limit retry)', () => {
+  /**
+   * A client whose every request is answered 429 with a `retry-after` hint,
+   * and whose waits are recorded instead of slept. `maxRetryWait` is what
+   * routes a 429 to RESTler's retry logic (and so to this connect's
+   * `RESTlerRateLimitError` rewrap) — without it the vendor handler maps the
+   * 429 directly, which the error-mapping tests already cover.
+   */
+  const throttled = (maxRetryWait: number, retryAfter: string) => {
+    const c = new MockGCS({
+      auth: { type: 'BEARER', token: 't' },
+      maxRetryWait,
+    });
+    const slept: number[] = [];
+    let calls = 0;
+    c['_sleep'] = (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    };
+    c['_fetch'] = (input) => {
+      calls++;
+      return Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': retryAfter,
+          },
+        }),
+      );
+    };
+    return { c, slept, calls: () => calls };
+  };
+
+  it('waits the hinted time, retries once, then surfaces RATE_LIMIT_EXCEEDED with retried: true', async () => {
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'my-bucket' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMIT_EXCEEDED');
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(calls(), 2);
+  });
+
+  it('throws RATE_LIMIT_EXCEEDED immediately with retried: false when the hint exceeds maxRetryWait', async () => {
+    const { c, slept, calls } = throttled(5, '120');
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'my-bucket' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMIT_EXCEEDED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+  it('rewraps the rate-limit error on every direct-request path, not only __requestAndValidate', async () => {
+    // These methods read their result from response headers (or have no
+    // body), so they call `_makeRequest` directly — the path that used to
+    // leak the raw RESTlerRateLimitError.
+    type Client = ReturnType<typeof throttled>['c'];
+    const paths: Array<(c: Client) => Promise<unknown>> = [
+      (c) => c.getObject({ bucket: 'my-bucket', key: 'k' }),
+      (c) => c.deleteObject({ bucket: 'my-bucket', key: 'k' }),
+      (c) =>
+        c.putObjectStream({
+          bucket: 'my-bucket',
+          key: 'k',
+          body: new Blob(['x']),
+        }),
+    ];
+    for (const path of paths) {
+      const { c } = throttled(5, '120');
+      const err = await asserts.assertRejects(() => path(c), GCSError);
+      asserts.assertEquals(err.code, 'RATE_LIMIT_EXCEEDED');
+      asserts.assertEquals(err.getContextValue('retried'), false);
+    }
+  });
+
+  it('maps a throttled media stream by status once metadata succeeded — RESTler does not retry the stream path', async () => {
+    // `_makeStreamRequest` never consults `maxRetryWait` (restler 1.3.0), so
+    // the 429 reaches the vendor handler, which maps it by status.
+    const c = new MockGCS({
+      auth: { type: 'BEARER', token: 't' },
+      maxRetryWait: 5,
+    });
+    c['_fetch'] = (input) =>
+      Promise.resolve(
+        String(input).includes('alt=media')
+          ? new Response('{}', {
+            status: 429,
+            headers: {
+              'content-type': 'application/json',
+              'retry-after': '120',
+            },
+          })
+          : new Response(
+            JSON.stringify({ name: 'k', bucket: 'my-bucket' }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      );
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMIT_EXCEEDED');
+    asserts.assertEquals(err.getContextValue('retried'), undefined);
+  });
+});
+
+describe('GCS — response validation', () => {
+  it('fails RESPONSE_ERROR when a streamed download settles with no body', async () => {
+    class NoBody extends MockGCS {
+      protected override _makeStreamRequest(): ReturnType<
+        GCS['_makeStreamRequest']
+      > {
+        return Promise.resolve({
+          url: '',
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          timeTaken: 0,
+        });
+      }
+    }
+    const c = new NoBody({ auth: { type: 'BEARER', token: 't' } });
+    c.queueJSON({ name: 'k', bucket: 'my-bucket' });
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+});
+
 describe({
   name: 'GCS — live',
   // Deno only: Bun/Node each get their own connect-wide live-test job

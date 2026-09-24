@@ -791,6 +791,19 @@ describe('Stripe — verifyWebhook', () => {
     );
     asserts.assertEquals(err.code, 'RESPONSE_ERROR');
   });
+  it('rejects a non-numeric t= as WEBHOOK_TIMESTAMP_INVALID', async () => {
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdr(`t=not-a-number,v1=${'0'.repeat(64)}`),
+          secret: SECRET,
+          nowMs: NOW_MS,
+        }),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_TIMESTAMP_INVALID');
+  });
 });
 
 describe('Stripe — idempotency', () => {
@@ -834,6 +847,101 @@ const credentials = {
   secretKey: env.get('CONNECTOR_STRIPE_SECRET_KEY'),
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe('Stripe — maxRetryWait (RESTler rate-limit retry)', () => {
+  /**
+   * A client whose every request is answered 429 with a `retry-after` hint,
+   * and whose waits are recorded instead of slept. `maxRetryWait` is what
+   * routes a 429 to RESTler's retry logic (and so to this connect's
+   * `RESTlerRateLimitError` rewrap) — without it the vendor handler maps the
+   * 429 directly, which the error-mapping tests already cover.
+   */
+  const throttled = (maxRetryWait: number, retryAfter: string) => {
+    const c = new MockStripe({
+      auth: { type: 'BASIC', username: 'sk_test_abc123', password: '' },
+      maxRetryWait,
+    });
+    const slept: number[] = [];
+    let calls = 0;
+    c['_sleep'] = (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    };
+    c['_fetch'] = (input) => {
+      calls++;
+      return Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': retryAfter,
+          },
+        }),
+      );
+    };
+    return { c, slept, calls: () => calls };
+  };
+
+  it('waits the hinted time, retries once, then surfaces RATE_LIMITED with retried: true', async () => {
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.retrievePaymentIntent('pi_3Nx0aB2c3D4e5F6g'),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(calls(), 2);
+  });
+
+  it('throws RATE_LIMITED immediately with retried: false when the hint exceeds maxRetryWait', async () => {
+    const { c, slept, calls } = throttled(5, '120');
+    const err = await asserts.assertRejects(
+      () => c.retrievePaymentIntent('pi_3Nx0aB2c3D4e5F6g'),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+});
+
+describe('Stripe — unrecognised error responses', () => {
+  it('fails RESPONSE_ERROR for an unmapped 4xx with no Stripe error envelope', async () => {
+    const c = new MockStripe({
+      auth: { type: 'BASIC', username: 'sk_test_abc123', password: '' },
+    });
+    c.setResponse({ unexpected: true }, 418);
+    const err = await asserts.assertRejects(
+      () => c.retrievePaymentIntent('pi_3Nx0aB2c3D4e5F6g'),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
+  it('falls back to RESPONSE_ERROR for a valid envelope with a code and status it does not know', async () => {
+    // The case Stripe adding a new error code produces: the envelope parses,
+    // but neither its code nor its (non-5xx) status is mapped.
+    const c = new MockStripe({
+      auth: { type: 'BASIC', username: 'sk_test_abc123', password: '' },
+    });
+    c.setResponse({
+      error: {
+        type: 'invalid_request_error',
+        code: 'a_code_stripe_adds_later',
+        message: 'Something new.',
+      },
+    }, 418);
+    const err = await asserts.assertRejects(
+      () => c.retrievePaymentIntent('pi_3Nx0aB2c3D4e5F6g'),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+});
 
 describe({
   name: 'Stripe — live',

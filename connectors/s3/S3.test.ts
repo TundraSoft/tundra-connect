@@ -1447,6 +1447,220 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('S3 — maxRetryWait (RESTler rate-limit retry)', () => {
+  /**
+   * A client whose every request is answered 429 with a `retry-after` hint,
+   * and whose waits are recorded instead of slept. `maxRetryWait` is what
+   * routes a 429 to RESTler's retry logic (and so to this connect's
+   * `RESTlerRateLimitError` rewrap) — without it the vendor handler maps the
+   * 429 directly, which the error-mapping tests already cover.
+   */
+  const throttled = (maxRetryWait: number, retryAfter: string) => {
+    const c = client({ maxRetryWait });
+    const slept: number[] = [];
+    let calls = 0;
+    c['_sleep'] = (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    };
+    c['_fetch'] = (input) => {
+      calls++;
+      return Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': retryAfter,
+          },
+        }),
+      );
+    };
+    return { c, slept, calls: () => calls };
+  };
+
+  it('waits the hinted time, retries once, then surfaces SLOW_DOWN with retried: true', async () => {
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'examplebucket' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'SLOW_DOWN');
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(calls(), 2);
+  });
+
+  it('throws SLOW_DOWN immediately with retried: false when the hint exceeds maxRetryWait', async () => {
+    const { c, slept, calls } = throttled(5, '120');
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'examplebucket' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'SLOW_DOWN');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+  it('rewraps the rate-limit error on every direct-request path, not only __requestAndValidate', async () => {
+    // These methods read their result from response headers (or have no
+    // body), so they call `_makeRequest` directly — the path that used to
+    // leak the raw RESTlerRateLimitError.
+    type Client = ReturnType<typeof throttled>['c'];
+    const paths: Array<(c: Client) => Promise<unknown>> = [
+      (c) => c.putObject({ bucket: 'examplebucket', key: 'k', body: 'x' }),
+      (c) => c.getObject({ bucket: 'examplebucket', key: 'k' }),
+      (c) => c.headObject({ bucket: 'examplebucket', key: 'k' }),
+      (c) => c.deleteObject({ bucket: 'examplebucket', key: 'k' }),
+      (c) =>
+        c.putObjectStream({
+          bucket: 'examplebucket',
+          key: 'k',
+          body: new Blob(['x']),
+        }),
+    ];
+    for (const path of paths) {
+      const { c } = throttled(5, '120');
+      const err = await asserts.assertRejects(() => path(c), S3Error);
+      asserts.assertEquals(err.code, 'SLOW_DOWN');
+      asserts.assertEquals(err.getContextValue('retried'), false);
+    }
+  });
+  it('maps a throttled streamed download by status — RESTler does not retry the stream path', async () => {
+    // `_makeStreamRequest` never consults `maxRetryWait` (restler 1.3.0), so
+    // there is no wait and no `retried` flag: the vendor handler sees the raw
+    // 429 and maps it to SLOW_DOWN.
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'SLOW_DOWN');
+    asserts.assertEquals(err.getContextValue('retried'), undefined);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+});
+
+describe('S3 — config, validation and guards', () => {
+  it('rejects a non-boolean forcePathStyle as CONFIG_INVALID_FORCE_PATH_STYLE', () => {
+    const err = asserts.assertThrows(
+      () => client({ forcePathStyle: 'yes' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_FORCE_PATH_STYLE');
+  });
+
+  it('rejects a per-request auth override that is not a CUSTOM S3 credential', async () => {
+    const c = client();
+    const err = await asserts.assertRejects(
+      () =>
+        c.callProcessEndpoint({
+          path: '/',
+          method: 'GET',
+          auth: { type: 'BEARER', token: 'x' },
+        } as RESTlerEndpoint),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_AUTH');
+  });
+
+  it('maps a bodiless 429 (as S3-compatible stores send) to SLOW_DOWN', async () => {
+    const c = client();
+    c.enqueue(() => new Response(null, { status: 429 }));
+    const err = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'SLOW_DOWN');
+  });
+
+  it('fails RESPONSE_ERROR when a listing is missing required fields', async () => {
+    const c = client();
+    c.enqueue(() =>
+      new Response(
+        '<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>',
+        { status: 200, headers: { 'Content-Type': 'application/xml' } },
+      )
+    );
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'examplebucket' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
+  it('fails RESPONSE_ERROR when a PUT succeeds without an ETag header', async () => {
+    const c = client();
+    c.enqueue(() => new Response(null, { status: 200 }));
+    const err = await asserts.assertRejects(
+      () => c.putObject({ bucket: 'examplebucket', key: 'k', body: 'x' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
+  it('fails RESPONSE_ERROR when a streamed download settles with no body', async () => {
+    class NoBody extends MockS3 {
+      protected override _makeStreamRequest(): ReturnType<
+        S3['_makeStreamRequest']
+      > {
+        return Promise.resolve({
+          url: '',
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          timeTaken: 0,
+        });
+      }
+    }
+    const c = new NoBody({ auth: { type: 'CUSTOM', ...CREDENTIALS } });
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
+  it('stops before exceeding the part cap with ENTITY_TOO_LARGE and aborts the upload', async () => {
+    const MIB = 1024 * 1024;
+    class SmallCap extends MockS3 {
+      protected override readonly _maxParts = 2;
+    }
+    const c = new SmallCap({ auth: { type: 'CUSTOM', ...CREDENTIALS } });
+    c.enqueue(() =>
+      new Response(
+        '<InitiateMultipartUploadResult><Bucket>examplebucket</Bucket><Key>k</Key><UploadId>u1</UploadId></InitiateMultipartUploadResult>',
+        { status: 200, headers: { 'Content-Type': 'application/xml' } },
+      )
+    );
+    c.enqueue(() =>
+      new Response(null, { status: 200, headers: { ETag: '"e1"' } })
+    );
+    c.enqueue(() =>
+      new Response(null, { status: 200, headers: { ETag: '"e2"' } })
+    );
+    c.enqueue(() => new Response(null, { status: 204 })); // abort
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'examplebucket',
+          key: 'k',
+          body: new Blob([new Uint8Array(11 * MIB)]), // 3 parts of 5 MiB > cap 2
+          partSize: 5 * MIB,
+        }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'ENTITY_TOO_LARGE');
+    asserts.assertEquals(c.requests.at(-1)!.method, 'DELETE'); // aborted
+    asserts.assertEquals(
+      c.requests.filter((r) => r.url.includes('partNumber=')).length,
+      2,
+    );
+  });
+});
+
 describe({
   name: 'S3 — live',
   // Deno only: Bun/Node each get their own connect-wide live-test job

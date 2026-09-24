@@ -513,6 +513,100 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('Sentry — maxRetryWait (RESTler rate-limit retry)', () => {
+  /**
+   * A client whose every request is answered 429 with a `retry-after` hint,
+   * and whose waits are recorded instead of slept. `maxRetryWait` is what
+   * routes a 429 to RESTler's retry logic (and so to this connect's
+   * `RESTlerRateLimitError` rewrap) — without it the vendor handler maps the
+   * 429 directly, which the error-mapping tests already cover.
+   */
+  const throttled = (maxRetryWait: number, retryAfter: string) => {
+    const c = new MockSentry({
+      auth: { type: 'BEARER', token: SECRET_TOKEN },
+      organization: 'my-org',
+      maxRetryWait,
+    });
+    const slept: number[] = [];
+    let calls = 0;
+    c['_sleep'] = (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    };
+    c['_fetch'] = (input) => {
+      calls++;
+      return Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': retryAfter,
+          },
+        }),
+      );
+    };
+    return { c, slept, calls: () => calls };
+  };
+
+  it('waits the hinted time, retries once, then surfaces RATE_LIMITED with retried: true', async () => {
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.getIssue('PUMP-STATION-1'),
+      SentryError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(calls(), 2);
+  });
+
+  it('throws RATE_LIMITED immediately with retried: false when the hint exceeds maxRetryWait', async () => {
+    const { c, slept, calls } = throttled(5, '120');
+    const err = await asserts.assertRejects(
+      () => c.getIssue('PUMP-STATION-1'),
+      SentryError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+});
+
+describe('Sentry — paginated responses', () => {
+  it('fails RESPONSE_ERROR when a paginated body does not match the schema', async () => {
+    const c = client();
+    c.setResponse(JSON.stringify([{ id: {} }]), 200);
+    const err = await asserts.assertRejects(
+      () => c.listProjects(),
+      SentryError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+  it('rewraps an exhausted rate-limit retry on the paginated path too', async () => {
+    const c = new MockSentry({
+      auth: { type: 'BEARER', token: SECRET_TOKEN },
+      organization: 'my-org',
+      maxRetryWait: 5,
+    });
+    c['_fetch'] = () =>
+      Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '120' },
+        }),
+      );
+    const err = await asserts.assertRejects(
+      () => c.listProjects(),
+      SentryError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+  });
+});
+
 describe({
   name: 'Sentry — live',
   ignore: !liveTestsEnabled,

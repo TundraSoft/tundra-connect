@@ -472,6 +472,34 @@ describe('SendGrid — verifyWebhook', () => {
     );
     asserts.assertEquals(err.code, 'WEBHOOK_INVALID_HEADERS');
   });
+  it('rejects a non-numeric timestamp as WEBHOOK_TIMESTAMP_INVALID', async () => {
+    const k = await p256();
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs(await k.sign(TS + PAYLOAD), 'not-a-number'),
+          publicKey: k.spki,
+          nowMs: NOW_MS,
+        }),
+      SendGridError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_TIMESTAMP_INVALID');
+  });
+  it('rejects a signature that is not a DER-encoded ECDSA value as WEBHOOK_SIGNATURE_INVALID', async () => {
+    const k = await p256();
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs('AAAA'), // valid base64, three zero bytes — not DER
+          publicKey: k.spki,
+          nowMs: NOW_MS,
+        }),
+      SendGridError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
 });
 
 const env = envArgs();
@@ -479,6 +507,67 @@ const credentials = {
   apiKey: env.get('CONNECTOR_SENDGRID_API_KEY'),
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
+
+describe('SendGrid — maxRetryWait (RESTler rate-limit retry)', () => {
+  /**
+   * A client whose every request is answered 429 with a `retry-after` hint,
+   * and whose waits are recorded instead of slept. `maxRetryWait` is what
+   * routes a 429 to RESTler's retry logic (and so to this connect's
+   * `RESTlerRateLimitError` rewrap) — without it the vendor handler maps the
+   * 429 directly, which the error-mapping tests already cover.
+   */
+  const throttled = (maxRetryWait: number, retryAfter: string) => {
+    const c = new MockSendGrid({
+      auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
+      maxRetryWait,
+    });
+    const slept: number[] = [];
+    let calls = 0;
+    c['_sleep'] = (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    };
+    c['_fetch'] = (input) => {
+      calls++;
+      return Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': retryAfter,
+          },
+        }),
+      );
+    };
+    return { c, slept, calls: () => calls };
+  };
+
+  it('waits the hinted time, retries once, then surfaces RATE_LIMITED with retried: true', async () => {
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.sendMail(validMailRequest),
+      SendGridError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(calls(), 2);
+  });
+
+  it('throws RATE_LIMITED immediately with retried: false when the hint exceeds maxRetryWait', async () => {
+    const { c, slept, calls } = throttled(5, '120');
+    const err = await asserts.assertRejects(
+      () => c.sendMail(validMailRequest),
+      SendGridError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+});
 
 describe({
   name: 'SendGrid — live',

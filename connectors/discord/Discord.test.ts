@@ -690,6 +690,34 @@ describe('Discord — verifyWebhook (interactions, Ed25519)', () => {
     );
     asserts.assertEquals(e3.code, 'WEBHOOK_INVALID_HEADERS');
   });
+  it('rejects a non-numeric timestamp as WEBHOOK_TIMESTAMP_INVALID', async () => {
+    const k = await ed25519();
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs('ab'.repeat(64), 'not-a-number'),
+          publicKey: k.publicKey,
+          nowMs: NOW_MS,
+        }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_TIMESTAMP_INVALID');
+  });
+  it('rejects a signature that is not 64 hex bytes as WEBHOOK_SIGNATURE_INVALID', async () => {
+    const k = await ed25519();
+    const err = await asserts.assertRejects(
+      async () =>
+        await client().verifyWebhook({
+          payload: PAYLOAD,
+          headers: hdrs('zz'),
+          publicKey: k.publicKey,
+          nowMs: NOW_MS,
+        }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'WEBHOOK_SIGNATURE_INVALID');
+  });
 });
 
 const env = envArgs();
@@ -702,6 +730,104 @@ const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
 
 // Sends a real, visible message — gated behind LIVE_TEST_ALLOW_VISIBLE_EFFECTS
 // so it never fires on the unattended monthly schedule.
+describe('Discord — maxRetryWait (RESTler rate-limit retry)', () => {
+  /**
+   * A client whose every request is answered 429 with a `retry-after` hint,
+   * and whose waits are recorded instead of slept. `maxRetryWait` is what
+   * routes a 429 to RESTler's retry logic (and so to this connect's
+   * `RESTlerRateLimitError` rewrap) — without it the vendor handler maps the
+   * 429 directly, which the error-mapping tests already cover.
+   */
+  const throttled = (maxRetryWait: number, retryAfter: string) => {
+    const c = new MockDiscord({ botToken: BOT_TOKEN, maxRetryWait });
+    const slept: number[] = [];
+    let calls = 0;
+    c['_sleep'] = (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    };
+    c['_fetch'] = (input) => {
+      calls++;
+      return Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': retryAfter,
+          },
+        }),
+      );
+    };
+    return { c, slept, calls: () => calls };
+  };
+
+  it('waits the hinted time, retries once, then surfaces RATE_LIMITED with retried: true', async () => {
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.sendChannelMessage(CHANNEL_ID, { content: 'hi' }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(calls(), 2);
+  });
+
+  it('throws RATE_LIMITED immediately with retried: false when the hint exceeds maxRetryWait', async () => {
+    const { c, slept, calls } = throttled(5, '120');
+    const err = await asserts.assertRejects(
+      () => c.sendChannelMessage(CHANNEL_ID, { content: 'hi' }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+  it('rewraps the rate-limit error in webhook mode too (sendWebhookMessage calls _makeRequest directly)', async () => {
+    const c = new MockDiscord({ webhookUrl: WEBHOOK_URL, maxRetryWait: 5 });
+    c['_fetch'] = () =>
+      Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': '120',
+          },
+        }),
+      );
+    const err = await asserts.assertRejects(
+      () => c.sendWebhookMessage({ content: 'hi' }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+  });
+});
+
+describe('Discord — webhook config validation', () => {
+  it('rejects a blank webhookId as CONFIG_INCOMPLETE_WEBHOOK', () => {
+    const err = asserts.assertThrows(
+      () => new MockDiscord({ webhookId: '   ', webhookToken: 'token' }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INCOMPLETE_WEBHOOK');
+  });
+  it('rejects a blank webhookToken as CONFIG_INCOMPLETE_WEBHOOK', () => {
+    const err = asserts.assertThrows(
+      () =>
+        new MockDiscord({
+          webhookId: '123456789012345678',
+          webhookToken: '   ',
+        }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INCOMPLETE_WEBHOOK');
+  });
+});
+
 describe({
   name: 'Discord — live',
   ignore: !liveTestsEnabled || !visibleEffectsAllowed,

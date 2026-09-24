@@ -1455,6 +1455,152 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('Polymarket — maxRetryWait (RESTler rate-limit retry)', () => {
+  /**
+   * A client whose every request is answered 429 with a `retry-after` hint,
+   * and whose waits are recorded instead of slept. `maxRetryWait` is what
+   * routes a 429 to RESTler's retry logic (and so to this connect's
+   * `RESTlerRateLimitError` rewrap) — without it the vendor handler maps the
+   * 429 directly, which the error-mapping tests already cover.
+   */
+  const throttled = (maxRetryWait: number, retryAfter: string) => {
+    const c = new MockPolymarket({ maxRetryWait });
+    const slept: number[] = [];
+    let calls = 0;
+    c['_sleep'] = (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    };
+    c['_fetch'] = (input) => {
+      calls++;
+      return Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': retryAfter,
+          },
+        }),
+      );
+    };
+    return { c, slept, calls: () => calls };
+  };
+
+  it('waits the hinted time, retries once, then surfaces RATE_LIMITED with retried: true', async () => {
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.getMarkets(),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(calls(), 2);
+  });
+
+  it('throws RATE_LIMITED immediately with retried: false when the hint exceeds maxRetryWait', async () => {
+    const { c, slept, calls } = throttled(5, '120');
+    const err = await asserts.assertRejects(
+      () => c.getMarkets(),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+});
+
+describe('Polymarket — order-path validation and rate limiting', () => {
+  const order = {
+    tokenId: TOKEN,
+    side: 'BUY' as const,
+    price: 0.55,
+    shares: 9.0,
+    orderType: 'FAK' as const,
+  };
+  /** Answers the pre-order lookups normally and the order POST with `orderResponse`. */
+  const routed = (orderResponse: () => Response, maxRetryWait?: number) => {
+    const c = new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        privateKey: TEST_KEY,
+        funder: PROXY,
+        apiCredentials: CREDS,
+      },
+      ...(maxRetryWait !== undefined ? { maxRetryWait } : {}),
+    });
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    c['_fetch'] = (input) => {
+      const url = String(input);
+      if (url.includes('/version')) {
+        return Promise.resolve(json({ version: 2 }));
+      }
+      if (url.includes('/neg-risk')) {
+        return Promise.resolve(json({ neg_risk: false }));
+      }
+      if (url.includes('/tick-size')) {
+        return Promise.resolve(json({ minimum_tick_size: '0.01' }));
+      }
+      return Promise.resolve(orderResponse());
+    };
+    return c;
+  };
+
+  it('rewraps an exhausted rate-limit retry on the order-submission path', async () => {
+    const c = routed(
+      () =>
+        new Response('{}', {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '120' },
+        }),
+      5,
+    );
+    const err = await asserts.assertRejects(
+      () => c.submitOrder(order),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+  });
+
+  it('fails RESPONSE_ERROR when the protocol version body does not match the schema', async () => {
+    const c = new MockPolymarket();
+    c.setResponse({ version: 'not-a-number' });
+    const err = await asserts.assertRejects(
+      () => c.getVersion(),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
+  it('fails RESPONSE_ERROR when a bulk submission returns fewer results than orders sent', async () => {
+    const c = routed(() =>
+      new Response(
+        JSON.stringify([{
+          status: 'matched',
+          orderID: 'o1',
+          success: true,
+          makingAmount: '4.95',
+          takingAmount: '9',
+        }]),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    );
+    const err = await asserts.assertRejects(
+      () => c.submitOrders([order, order]),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+});
+
 describe({
   name: 'Polymarket — live',
   ignore: !liveTestsEnabled,

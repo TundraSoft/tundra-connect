@@ -1112,6 +1112,208 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('AzureBlob — maxRetryWait (RESTler rate-limit retry)', () => {
+  /**
+   * A client whose every request is answered 429 with a `retry-after` hint,
+   * and whose waits are recorded instead of slept. `maxRetryWait` is what
+   * routes a 429 to RESTler's retry logic (and so to this connect's
+   * `RESTlerRateLimitError` rewrap) — without it the vendor handler maps the
+   * 429 directly, which the error-mapping tests already cover.
+   */
+  const throttled = (maxRetryWait: number, retryAfter: string) => {
+    const c = new MockAzureBlob({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      maxRetryWait,
+    });
+    const slept: number[] = [];
+    let calls = 0;
+    c['_sleep'] = (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    };
+    c['_fetch'] = (input) => {
+      calls++;
+      return Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': retryAfter,
+          },
+        }),
+      );
+    };
+    return { c, slept, calls: () => calls };
+  };
+
+  it('waits the hinted time, retries once, then surfaces SERVER_BUSY with retried: true', async () => {
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'my-container' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'SERVER_BUSY');
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(calls(), 2);
+  });
+
+  it('throws SERVER_BUSY immediately with retried: false when the hint exceeds maxRetryWait', async () => {
+    const { c, slept, calls } = throttled(5, '120');
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'my-container' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'SERVER_BUSY');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+  it('rewraps the rate-limit error on every direct-request path, not only __requestAndValidate', async () => {
+    // These methods read their result from response headers (or have no
+    // body), so they call `_makeRequest` directly — the path that used to
+    // leak the raw RESTlerRateLimitError.
+    type Client = ReturnType<typeof throttled>['c'];
+    const paths: Array<(c: Client) => Promise<unknown>> = [
+      (c) => c.putObject({ bucket: 'my-container', key: 'k', body: 'x' }),
+      (c) => c.getObject({ bucket: 'my-container', key: 'k' }),
+      (c) => c.headObject({ bucket: 'my-container', key: 'k' }),
+      (c) => c.deleteObject({ bucket: 'my-container', key: 'k' }),
+      (c) =>
+        c.putObjectStream({
+          bucket: 'my-container',
+          key: 'k',
+          body: new Blob(['x']),
+        }),
+    ];
+    for (const path of paths) {
+      const { c } = throttled(5, '120');
+      const err = await asserts.assertRejects(() => path(c), AzureBlobError);
+      asserts.assertEquals(err.code, 'SERVER_BUSY');
+      asserts.assertEquals(err.getContextValue('retried'), false);
+    }
+  });
+  it('maps a throttled streamed download by status — RESTler does not retry the stream path', async () => {
+    // `_makeStreamRequest` never consults `maxRetryWait` (restler 1.3.0), so
+    // there is no wait and no `retried` flag: the vendor handler sees the raw
+    // 429 and maps it to SERVER_BUSY.
+    const { c, slept, calls } = throttled(60, '1');
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-container', key: 'k' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'SERVER_BUSY');
+    asserts.assertEquals(err.getContextValue('retried'), undefined);
+    asserts.assertEquals(slept, []);
+    asserts.assertEquals(calls(), 1);
+  });
+});
+
+describe('AzureBlob — config, validation and guards', () => {
+  it('rejects a blank account as CONFIG_INVALID_ACCOUNT', () => {
+    const err = asserts.assertThrows(
+      () =>
+        new MockAzureBlob({
+          auth: { type: 'CUSTOM', account: '   ', accountKey: ACCOUNT_KEY },
+        }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_ACCOUNT');
+  });
+
+  it('maps a throttle with no x-ms-error-code by status (429 and 503 -> SERVER_BUSY)', async () => {
+    for (const status of [429, 503]) {
+      const c = new MockAzureBlob({
+        auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      });
+      c.setResponseFactory(() => new Response(null, { status }));
+      const err = await asserts.assertRejects(
+        () => c.headObject({ bucket: 'my-container', key: 'k' }),
+        AzureBlobError,
+      );
+      asserts.assertEquals(err.code, 'SERVER_BUSY');
+    }
+  });
+
+  it('fails RESPONSE_ERROR when a listed blob is missing its required Name', async () => {
+    const c = new MockAzureBlob({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+    });
+    c.setResponseFactory(() =>
+      new Response(
+        JSON.stringify({
+          EnumerationResults: { Blobs: { Blob: [{ Properties: {} }] } },
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      )
+    );
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'my-container' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
+  it('fails RESPONSE_ERROR when a streamed download settles with no body', async () => {
+    class NoBody extends MockAzureBlob {
+      protected override _makeStreamRequest(): ReturnType<
+        AzureBlob['_makeStreamRequest']
+      > {
+        return Promise.resolve({
+          url: '',
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          timeTaken: 0,
+        });
+      }
+    }
+    const c = new NoBody({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+    });
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-container', key: 'k' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
+  it('stops before exceeding the block cap with REQUEST_BODY_TOO_LARGE, never committing', async () => {
+    class SmallCap extends MockAzureBlob {
+      protected override readonly _maxBlocks = 2;
+    }
+    const c = new SmallCap({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+    });
+    const seen: string[] = [];
+    c.setResponseFactory((req) => {
+      seen.push(decodeURIComponent(req.url));
+      return new Response(null, { status: 201 });
+    });
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'my-container',
+          key: 'k',
+          body: new Blob([new Uint8Array(30)]),
+          blockSize: 10, // 3 blocks > cap of 2
+        }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'REQUEST_BODY_TOO_LARGE');
+    asserts.assertEquals(
+      seen.filter((u) => u.includes('comp=block&')).length,
+      2,
+    );
+    asserts.assertEquals(seen.some((u) => u.includes('comp=blocklist')), false);
+  });
+});
+
 describe({
   name: 'AzureBlob — live',
   // Deno only: Bun/Node each get their own connect-wide live-test job
