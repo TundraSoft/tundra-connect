@@ -106,3 +106,7 @@ Every field is optional and unknown fields pass through — see
 `CloudflareEmailError` only. See
 [Errors](CloudflareEmail-Errors.md) for the full code list and the
 vendor-code mapping.
+
+---
+
+[← Back to CloudflareEmail](../README.md)

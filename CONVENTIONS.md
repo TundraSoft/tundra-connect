@@ -463,8 +463,11 @@ primitive is the sanctioned choice, not a gap in `@id`.
 Do not parse `Retry-After`-style headers in a connect. RESTler (>= 1.3.1)
 owns that: read the hint with `this._parseRetryAfter(response.headers)` in
 `__toError` and attach it as `retryAfterSeconds` on the `RATE_LIMITED`
-error. A caller opts into RESTler's single retry with `maxRetryWait`; when
-that retry is exhausted (or the hint exceeds the cap) RESTler throws
+error (or the connect's own rate-limit code — `SLOW_DOWN` on S3,
+`SERVER_BUSY` on Azure). A caller opts into RESTler's single retry with
+`maxRetryWait` (plus `defaultRetryWait` for a 429 with no hint — without it
+RESTler never invents a delay); when that retry is exhausted, the hint
+exceeds the cap, or there is no hint and no default, RESTler throws
 `RESTlerRateLimitError` _before_ `_responseHandler`, so the connect must
 rewrap it as its own `RATE_LIMITED` (with `retryAfterSeconds` and `retried`)
 — every connect still throws exactly one error class.

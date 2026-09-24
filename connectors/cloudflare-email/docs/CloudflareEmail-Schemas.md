@@ -67,3 +67,7 @@ Guardian coerces string-coercible primitives rather than rejecting them, so
 a numeric custom header value (`{ 'X-Count': 5 }`) validates and becomes
 `'5'` — convenient here, since header values must be strings on the wire. A
 value that cannot be coerced, such as a nested object, is rejected.
+
+---
+
+[← Back to CloudflareEmail](../README.md)

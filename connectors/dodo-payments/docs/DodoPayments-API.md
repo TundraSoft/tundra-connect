@@ -284,3 +284,7 @@ Not an HTTP call — a method on the client (the signing secret is passed per ca
 Returns the parsed payload on success — so the verified object is the
 natural thing to act on, and there is no unverified copy to reach for by
 mistake.
+
+---
+
+[← Back to DodoPayments](../README.md)

@@ -65,6 +65,26 @@ Use `getContextValue()` to read diagnostic metadata such as `vendor`,
 [error-codes reference](https://docs.stripe.com/error-codes) URL, when the
 vendor supplies one).
 
+## Backing off after a 429
+
+A rate-limited request throws `RATE_LIMITED`. Two context values tell you what to
+do next:
+
+| Context             | Meaning                                                                                                                                                                                                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `retryAfterSeconds` | Seconds the vendor asked you to wait, parsed by RESTler from `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, `RateLimit-Reset`, or an epoch-seconds `X-RateLimit-Reset`. `undefined` when the response carried none — never a guess. |
+| `retried`           | Set only when `maxRetryWait` is configured: `true` if RESTler already waited once and was throttled again, `false` if it did not wait (the hint exceeded the cap, or there was no hint to wait on).                                                            |
+
+Nothing is retried by default. Opt in with two client options (seconds,
+each `0`–`120`):
+
+- **`maxRetryWait`** — when a 429 carries a hint no longer than this,
+  RESTler waits that long and retries **once**; otherwise it throws
+  `RATE_LIMITED` immediately. `0` disables the retry.
+- **`defaultRetryWait`** — the wait used when a 429 carries **no** hint.
+  Without it a hintless 429 is never retried: RESTler does not invent a
+  delay. Only consulted when `maxRetryWait` is set, and still capped by it.
+
 ---
 
 [← Back to Stripe](../README.md)
@@ -76,7 +96,3 @@ vendor supplies one).
 | `WEBHOOK_INVALID_HEADERS`   | A required signature header is missing.                 |
 | `WEBHOOK_TIMESTAMP_INVALID` | Unparseable timestamp, or outside the tolerance window. |
 | `WEBHOOK_SIGNATURE_INVALID` | **Treat the request as forged.**                        |
-
-## Backing off after a 429
-
-`getContextValue('retryAfterSeconds')` — seconds to wait before retrying, parsed by RESTler (`_parseRetryAfter`) from `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, `RateLimit-Reset`, or an epoch-seconds `X-RateLimit-Reset`; `undefined` when none was present — never a guess. Pass `maxRetryWait` (seconds) at construction to have RESTler wait the hinted time and retry **once**; if that attempt is throttled too, or the hint exceeds the cap, the error is raised with `retried` set so you know whether a wait already happened. Present on `RATE_LIMITED` when the vendor sent a usable hint.

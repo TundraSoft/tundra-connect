@@ -76,16 +76,29 @@ signed resource from the one actually requested. This matters even more
 under SAS-token auth, where requests aren't signed client-side at all, so
 there's no signature to catch the divergence.
 
+## Backing off after a 429
+
+A rate-limited request throws `SERVER_BUSY`. Two context values tell you what to
+do next:
+
+| Context             | Meaning                                                                                                                                                                                                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `retryAfterSeconds` | Seconds the vendor asked you to wait, parsed by RESTler from `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, `RateLimit-Reset`, or an epoch-seconds `X-RateLimit-Reset`. `undefined` when the response carried none — never a guess. |
+| `retried`           | Set only when `maxRetryWait` is configured: `true` if RESTler already waited once and was throttled again, `false` if it did not wait (the hint exceeded the cap, or there was no hint to wait on).                                                            |
+
+Nothing is retried by default. Opt in with two client options (seconds,
+each `0`–`120`):
+
+- **`maxRetryWait`** — when a 429 carries a hint no longer than this,
+  RESTler waits that long and retries **once**; otherwise it throws
+  `SERVER_BUSY` immediately. `0` disables the retry.
+- **`defaultRetryWait`** — the wait used when a 429 carries **no** hint.
+  Without it a hintless 429 is never retried: RESTler does not invent a
+  delay. Only consulted when `maxRetryWait` is set, and still capped by it.
+
+Streamed downloads (`getObjectStream()`) follow the same rules as every
+other method (`@tundralibs/restler` >= 1.3.1).
+
 ---
 
 [← Back to AzureBlob](../README.md)
-
-## Backing off after a 429
-
-`getContextValue('retryAfterSeconds')` — seconds to wait before retrying, parsed by RESTler (`_parseRetryAfter`) from `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, `RateLimit-Reset`, or an epoch-seconds `X-RateLimit-Reset`; `undefined` when none was present — never a guess. Pass `maxRetryWait` (seconds) at construction to have RESTler wait the hinted time and retry **once**; if that attempt is throttled too, or the hint exceeds the cap, the error is raised with `retried` set so you know whether a wait already happened. Present on `RATE_LIMITED` when the vendor sent a usable hint.
-
-**Streamed downloads are retried too.** `getObjectStream()` honours
-`maxRetryWait` exactly like the buffered methods (`@tundralibs/restler`
-
-> = 1.3.1): one wait for the hinted time, then `SERVER_BUSY` with `retried: true`
-> if the stream is throttled again.

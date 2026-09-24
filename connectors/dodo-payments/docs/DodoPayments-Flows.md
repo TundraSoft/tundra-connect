@@ -246,3 +246,7 @@ ended.cancel_at_next_billing_date; // true
 5. **A period-end cancellation stays `active`.** Read
    `cancel_at_next_billing_date`.
 6. **Amounts are the currency's smallest unit.** `1999` is $19.99.
+
+---
+
+[← Back to DodoPayments](../README.md)

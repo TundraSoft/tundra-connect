@@ -55,6 +55,14 @@ Before approving a PR that adds or changes a connect, verify it matches
   once it stops being scannable it should split into subfolders (by role —
   `request/`/`response/`/`common/` — or by endpoint), still barreled in full
   through `schema/mod.ts`.
+- **Rate limits**: no hand-parsed `Retry-After` — `__toError` reads the hint
+  with `this._parseRetryAfter(response.headers)`, and a bodiless 429 maps to
+  the connect's rate-limit code by status. `RESTlerRateLimitError` (imported
+  from `@restler`) is rewrapped in a `_makeRequest` override — and a
+  `_makeStreamRequest` one if the connect streams — not only inside
+  `__requestAndValidate`, which misses every direct `_makeRequest` caller.
+  The connect's tests carry a `maxRetryWait` suite (retry-then-exhaust and
+  hint-over-cap). See CONVENTIONS "Rate limits".
 - **Runtime**: implementation only uses `fetch`/`URL`/standard Web APIs —
   no `node:*` or `Deno.*` calls — so it stays portable to Cloudflare Workers
   and the browser even without dedicated CI for them yet.

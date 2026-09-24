@@ -101,3 +101,7 @@ A scalar body is still rejected.
 record and derives tax treatment from it. The rest of the address is
 optional and accepts explicit `null`s, which is how the vendor returns
 unset fields.
+
+---
+
+[← Back to DodoPayments](../README.md)
