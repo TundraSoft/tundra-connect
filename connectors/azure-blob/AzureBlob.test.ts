@@ -1019,9 +1019,12 @@ describe('AzureBlob — streaming', () => {
   const cancellable = (pieces: number[]) => {
     const state = { cancelled: false, reason: undefined as unknown };
     // Pull-based, like a file stream: pieces are produced on demand and the
-    // stream only closes once the last one has been handed over. (An
-    // eagerly filled-and-closed stream is already "closed" by the time an
-    // upload fails, and cancelling a closed stream never reaches the sink.)
+    // stream only closes once the last one has been handed over. A stream
+    // filled-and-close()d in start() is NOT closed while chunks are still
+    // queued — it becomes closed the moment the reader sees `done`, and
+    // from then on cancel() resolves without ever reaching the sink. The
+    // chunker reads ahead and drains such a source before the failing
+    // upload, so an eager fixture would let the leak through undetected.
     let next = 0;
     const stream = new ReadableStream<Uint8Array>({
       pull(c) {
