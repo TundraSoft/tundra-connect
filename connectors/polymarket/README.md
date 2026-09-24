@@ -4,11 +4,6 @@ Typed, cross-runtime client for [Polymarket](https://polymarket.com)'s two
 public REST APIs: **Gamma** (market discovery — no auth) and the **CLOB**
 (trading — L1/L2 auth, real secp256k1/EIP-712 order signing).
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 One `Polymarket` client covers both APIs, matching how a Gamma market's
@@ -17,10 +12,17 @@ One `Polymarket` client covers both APIs, matching how a Gamma market's
 - **Gamma** (`gamma-api.polymarket.com`) — `getMarkets()` (legacy offset or
   keyset cursor pagination) and `getMarketBySlug()`. No credentials needed.
 - **CLOB** (`clob.polymarket.com`) — `getVersion()`/`getTickSize()`/
-  `getNegRisk()` (public), `deriveApiCredentials()` (one-time L1-signed
-  onboarding), `getBalance()`, `submitOrder()`/`submitOrders()` (single/bulk,
-  up to 15 per request, auto-chunked), `cancelOrder()`/`cancelOrders()`/
-  `cancelMarketOrders()` (L2 HMAC-authenticated).
+  `getNegRisk()`/`getOrderbook()` (public), `deriveApiCredentials()`
+  (one-time L1-signed onboarding), and L2 HMAC-authenticated
+  `getBalance()` (USDC collateral, or one outcome token's shares),
+  `getOpenOrders()`/`getFills()` (cursor-paginated), `submitOrder()`/
+  `submitOrders()` (single/bulk, up to 15 per request, auto-chunked),
+  `cancelOrder()`/`cancelOrders()`/`cancelMarketOrders()`/
+  `cancelAllOrders()`.
+- **Data API** (`data-api.polymarket.com`) — `getPositions()` and
+  `getPortfolioValue()`: the public, read-only portfolio view keyed by
+  wallet address (mark-to-market value and PnL). No signing; defaults to
+  `auth.funder`, reads any wallet via `user`.
 - **Relayer** (`relayer-v2.polymarket.com`) — `split()`/`merge()`/`redeem()`,
   gasless collateral split/merge/redeem via a signed EIP-191 proxy
   meta-transaction. Requires `auth.relayerApiKey`/`auth.relayerApiKeyAddress`,
@@ -35,7 +37,8 @@ calls for.
 
 Construct with `auth.privateKey` (and `auth.funder` for order placement) to
 use the CLOB; omit `auth` entirely for Gamma-only, credential-free market
-data.
+data (`getOrderbook()` and the Data API reads need no credentials either —
+though the Data API reads default to `auth.funder` when no `user` is given).
 
 ### Key custody
 

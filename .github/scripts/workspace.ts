@@ -355,6 +355,42 @@ async function genReadme(
     current.slice(end);
 }
 
+/**
+ * Rewrites ROADMAP.md's generated "Shipped" section from
+ * `workspace-meta.json` + each connect's `deno.json` description. The rest
+ * of the file (candidate integrations, the documentation gate, design
+ * goals) is hand-written and left untouched — only the list of what already
+ * exists is generated, because that is the half that silently went stale
+ * when it was maintained by hand.
+ */
+async function genRoadmap(
+  meta: WorkspaceMeta,
+  current: string,
+): Promise<string> {
+  const START = '<!-- workspace:shipped:start -->';
+  const END = '<!-- workspace:shipped:end -->';
+  const start = current.indexOf(START);
+  const end = current.indexOf(END);
+  if (start < 0 || end < 0 || end < start) {
+    throw new Error(`ROADMAP.md is missing the ${START} / ${END} markers.`);
+  }
+  const entries = await Promise.all(
+    connectorNames(meta).map(async (name) => {
+      const denoJson = await readJson<{ description?: string }>(
+        path(`${CONNECTORS_DIR}/${name}/deno.json`),
+      ).catch(() => ({}) as { description?: string });
+      const description = denoJson.description ?? 'TODO: Add description';
+      return `- **[${
+        meta[name]
+      }](${CONNECTORS_DIR}/${name}/README.md)** — ${description}`;
+    }),
+  );
+  return current.slice(0, start + START.length) +
+    `\n\n${entries.length} connects are implemented today:\n\n` +
+    entries.join('\n') + '\n\n' +
+    current.slice(end);
+}
+
 interface Generated {
   file: string;
   content: string | Record<string, unknown>;
@@ -369,6 +405,7 @@ async function buildGenerated(meta: WorkspaceMeta): Promise<Generated[]> {
     path('.release-please-manifest.json'),
   ).catch(() => ({}));
   const existingReadme = await readText(path('README.md'));
+  const existingRoadmap = await readText(path('ROADMAP.md'));
 
   return [
     { file: '.github/labeler.yml', content: genLabeler(meta), json: false },
@@ -386,6 +423,11 @@ async function buildGenerated(meta: WorkspaceMeta): Promise<Generated[]> {
     {
       file: 'README.md',
       content: await genReadme(meta, existingReadme),
+      json: false,
+    },
+    {
+      file: 'ROADMAP.md',
+      content: await genRoadmap(meta, existingRoadmap),
       json: false,
     },
     ...genIssueTemplates(meta),
@@ -1006,11 +1048,6 @@ function genConnectReadme(name: string, className: string): string {
 
 TODO: Add a one-paragraph description of what this connect does and which
 vendor API it wraps.
-
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
 
 ## Overview
 

@@ -47,8 +47,8 @@ wired up), `mod.ts`, `README.md`, `CHANGELOG.md`, `<Connect>.ts` +
 section, and one passing constructor test), `errors/` (a working
 `<Connect>Error` class, a four-code starter registry, and their test), an
 empty `schema/mod.ts` barrel, and three `docs/<Connect>-*.md` stub pages.
-It also regenerates the derived `.github/` config (labeler, codecov, issue
-templates, release-please manifest) — `deno.json`'s `workspace` and
+It also regenerates the derived config (labeler, codecov, issue templates,
+release-please manifest, README's connect list, ROADMAP's shipped list) — `deno.json`'s `workspace` and
 `package.json`'s `workspaces`/test scripts are a static `connectors/*` glob,
 so they need no update. Everything vendor-specific (base URL, auth scheme,
 error codes, schemas, endpoint methods) is left as a clearly marked `TODO`

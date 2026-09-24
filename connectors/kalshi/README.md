@@ -4,11 +4,6 @@ Typed, cross-runtime client for [Kalshi](https://kalshi.com)'s CFTC-regulated
 event-contract REST API (`/trade-api/v2`) — public market discovery plus
 RSA-PSS-authenticated trading, on one shared host.
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 One `Kalshi` client covers both halves of the API:
@@ -29,10 +24,25 @@ Construct with `auth.accessKey` + `auth.privateKeyPem` to trade; omit
 ### Compared to this repo's Polymarket connect
 
 Kalshi and Polymarket are both event-contract exchanges this repo covers
-with a deliberately similar shape — same method names
-(`getMarkets()`/`submitOrder()`/`submitOrders()`/`cancelOrder()`/
-`cancelOrders()`), same `price`/`OrderSide`/`OrderResult` conventions —
-but the vendors differ enough that full parity isn't honest to force:
+with a deliberately similar shape — the same `price`/`OrderSide`/
+`OrderResult` conventions, and a shared method vocabulary across market
+data, portfolio reads, and order management:
+
+| Capability          | Kalshi                             | Polymarket                                 |
+| ------------------- | ---------------------------------- | ------------------------------------------ |
+| Market data         | `getMarkets()`, `getOrderbook()`   | `getMarkets()`, `getOrderbook()`           |
+| Balance             | `getBalance()`                     | `getBalance({ tokenId? })`                 |
+| Positions           | `getPositions()`                   | `getPositions()` (Data API)                |
+| Orders on the venue | `getOrders()`, `getOrder()`        | `getOpenOrders()`                          |
+| Executions          | `getFills()`                       | `getFills()`                               |
+| Place               | `submitOrder()`, `submitOrders()`  | `submitOrder()`, `submitOrders()`          |
+| Cancel              | `cancelOrder()`, `cancelOrders()`  | `cancelOrder()`, `cancelOrders()`          |
+| Cancel everything   | `cancelAllOrders()` (client sweep) | `cancelAllOrders()` (`DELETE /cancel-all`) |
+| Cancel by market    | — (no vendor endpoint)             | `cancelMarketOrders()`                     |
+| Amend               | `amendOrder()`                     | — (CLOB has no amend; cancel + resubmit)   |
+
+Beyond that the vendors differ enough that full parity isn't honest to
+force:
 
 - **Auth**: Polymarket signs with a wallet's secp256k1 key (needs
   `@noble/curves`, since Web Crypto doesn't implement that curve). Kalshi
@@ -78,6 +88,10 @@ returned, or included in a thrown error. Review `KalshiSigner.ts`/
 - **`decreaseOrder()`** (a legacy size-only-decrease endpoint) isn't wired
   up — `amendOrder()` already covers a size decrease (and a price
   change), which is this connect's one order-modification method.
+- **A single cancel-all endpoint** doesn't exist on Kalshi's side;
+  `cancelAllOrders()` is a client-side sweep over
+  `GET /portfolio/orders?status=resting` — a snapshot, not a lock. See
+  [API → `cancelAllOrders()`](docs/Kalshi-API.md#cancelallorders--client-side-sweep).
 - Historical candlesticks (`GET .../candlesticks`) and the separate
   historical-markets surface aren't covered.
 

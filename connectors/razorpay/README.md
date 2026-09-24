@@ -2,11 +2,6 @@
 
 Typed, cross-runtime client for the [Razorpay REST API](https://razorpay.com/docs/api/), covering Order create/fetch, Payment capture/fetch/list, and Payment Link creation.
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 Razorpay is an India-focused payments platform. This connect provides

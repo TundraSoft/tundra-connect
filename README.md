@@ -4,12 +4,20 @@
 > [`@tundralibs/restler`](https://jsr.io/@tundralibs/restler) and
 > [`@tundralibs/guardian`](https://jsr.io/@tundralibs/guardian)
 
-Tundra Connect wraps popular third-party vendor APIs (currency exchange
-rates, SMS/communications, KYC verification, ...) in typed, tested,
-cross-runtime clients. Each connect is an independently versioned package
-published to JSR under the `@tundraconnect` scope, living under
-`connectors/<name>/`. See [CONVENTIONS.md](CONVENTIONS.md) for the shared
-structure and [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
+![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
+![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
+![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
+![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
+
+Tundra Connect wraps popular third-party vendor APIs (payments, object
+storage, messaging, market data, ...) in typed, tested, cross-runtime
+clients. Each connect is an independently versioned package published to JSR
+under the `@tundraconnect` scope, living under `connectors/<name>/`. See
+[CONVENTIONS.md](CONVENTIONS.md) for the shared structure and
+[CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
+
+Runs on Deno, Bun and Node; Web-APIs-only, so it also works on Cloudflare
+Workers and in the browser (not CI-verified).
 
 <!-- workspace:connectors:start -->
 

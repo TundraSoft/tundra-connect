@@ -6,11 +6,6 @@ Redis over plain HTTPS, no TCP client or connection pool required. Covers
 and list (`LPUSH`/`RPUSH`/`LRANGE`) commands, request-level pipelining, and
 a low-level `execute()` escape hatch for anything not otherwise typed.
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 Upstash exposes every Redis database it hosts over a REST API in addition

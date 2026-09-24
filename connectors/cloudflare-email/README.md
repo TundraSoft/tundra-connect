@@ -5,11 +5,6 @@ Send transactional email through Cloudflare's Email Sending REST API
 of addresses, attachments and recipient limits before anything leaves your
 process.
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 Cloudflare Email Service can send mail two ways: the Workers `send_email`

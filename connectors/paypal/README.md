@@ -4,11 +4,6 @@ A typed client for [PayPal's REST API](https://developer.paypal.com/api/rest/)
 covering the core Orders v2 payment lifecycle: create an order, check its
 status, capture payment once the payer approves it, and refund a capture.
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 PayPal's REST API authenticates with OAuth2 client-credentials: an app's

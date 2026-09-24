@@ -6,11 +6,6 @@ digital products. Covers the checkout path end to end: initialize a payment,
 verify it actually completed, read a customer's history, and create or cancel
 subscriptions — plus Standard Webhooks signature verification.
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 Dodo is a **merchant of record**: it handles tax and compliance on your

@@ -2,11 +2,6 @@
 
 Typed, cross-runtime client for [Sentry's organization/project REST API](https://docs.sentry.io/api/) (`https://sentry.io/api/0/`).
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 Sentry is an error-tracking and performance-monitoring platform. This

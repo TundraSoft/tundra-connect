@@ -2,11 +2,6 @@
 
 Typed, cross-runtime client for the [Stripe REST API](https://docs.stripe.com/api), covering PaymentIntent create/retrieve and Customer create.
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 Stripe provides validated `createPaymentIntent()`, `retrievePaymentIntent()`,

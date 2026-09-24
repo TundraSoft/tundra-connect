@@ -4,11 +4,6 @@ A typed client for the [Algolia Search REST API](https://www.algolia.com/doc/res
 search, save, fetch, delete, and browse records in an Algolia index, plus
 poll indexing tasks to completion.
 
-![Deno](https://img.shields.io/badge/Deno-000000?logo=deno)
-![Bun](https://img.shields.io/badge/Bun-f9f1e1?logo=bun)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
-![Cloudflare Workers & Browser](https://img.shields.io/badge/Cloudflare_Workers_%26_Browser-compatible-orange?logo=cloudflareworkers)
-
 ## Overview
 
 Algolia is a hosted search-as-a-service: you push JSON records into a
