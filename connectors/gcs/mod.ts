@@ -7,6 +7,7 @@
  * RESTler and Guardian.
  */
 export {
+  DEFAULT_CHUNK_SIZE,
   type DeleteObjectOptions,
   GCS,
   type GCSAuth,
@@ -15,10 +16,13 @@ export {
   type GCSServiceAccountAuth,
   type GetObjectOptions,
   type GetObjectResult,
+  type GetObjectStreamResult,
   type HeadObjectOptions,
   type ListObjectsOptions,
   type ListObjectsResult,
   type PutObjectOptions,
+  type PutObjectStreamOptions,
+  RESUMABLE_CHUNK_MULTIPLE,
 } from './GCS.ts';
 export * from './errors/mod.ts';
 export {

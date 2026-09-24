@@ -25,12 +25,17 @@ console.log(typedMeta.contentLength); // 1234 (coerced from the header string)
 
 ## Response Schemas
 
-| Schema                             | Endpoint                       |
-| ---------------------------------- | ------------------------------ |
-| `PutObjectResponseSchemaObject`    | `PUT /{bucket}/{key}`          |
-| `DeleteObjectResponseSchemaObject` | `DELETE /{bucket}/{key}`       |
-| `ListObjectsResponseSchemaObject`  | `GET /{bucket}?list-type=2`    |
-| `S3ErrorEnvelopeSchemaObject`      | Vendor `<Error>` XML envelopes |
+| Schema                                      | Endpoint                                     |
+| ------------------------------------------- | -------------------------------------------- |
+| `PutObjectResponseSchemaObject`             | `PUT /{bucket}/{key}`                        |
+| `DeleteObjectResponseSchemaObject`          | `DELETE /{bucket}/{key}`                     |
+| `ListObjectsResponseSchemaObject`           | `GET /{bucket}?list-type=2`                  |
+| `S3ErrorEnvelopeSchemaObject`               | Vendor `<Error>` XML envelopes               |
+| `InitiateMultipartUploadResultSchemaObject` | `POST /{key}?uploads` (`putObjectStream`)    |
+| `CompleteMultipartUploadResultSchemaObject` | `POST /{key}?uploadId=…` (`putObjectStream`) |
+
+`GetObjectStreamResult` (from `getObjectStream`) is likewise a plain type:
+`ObjectMetadataSchema` intersected with `{ body: ReadableStream<Uint8Array> }`.
 
 `GetObjectResponseSchema` and `HeadObjectResponseSchema` are plain
 TypeScript types (not Guardian schema _objects_) — `getObject`'s body is a

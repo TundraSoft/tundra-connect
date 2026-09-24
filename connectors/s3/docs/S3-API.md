@@ -38,13 +38,15 @@ const client = new S3({
 
 ## Endpoints
 
-| Method                  | HTTP request                        | Result                                      |
-| ----------------------- | ----------------------------------- | ------------------------------------------- |
-| `putObject(options)`    | `PUT /{key}` (or `/{bucket}/{key}`) | `{ etag, versionId? }`                      |
-| `getObject(options)`    | `GET /{key}`                        | `{ body: Blob, contentType?, ... }`         |
-| `deleteObject(options)` | `DELETE /{key}`                     | `{ versionId?, deleteMarker? }`             |
-| `listObjects(options)`  | `GET /?list-type=2&...`             | `{ contents, isTruncated, ... }`            |
-| `headObject(options)`   | `HEAD /{key}`                       | Same metadata shape as `getObject`, no body |
+| Method                     | HTTP request                                   | Result                                        |
+| -------------------------- | ---------------------------------------------- | --------------------------------------------- |
+| `putObject(options)`       | `PUT /{key}` (or `/{bucket}/{key}`)            | `{ etag, versionId? }`                        |
+| `getObject(options)`       | `GET /{key}`                                   | `{ body: Blob, contentType?, ... }`           |
+| `deleteObject(options)`    | `DELETE /{key}`                                | `{ versionId?, deleteMarker? }`               |
+| `listObjects(options)`     | `GET /?list-type=2&...`                        | `{ contents, isTruncated, ... }`              |
+| `headObject(options)`      | `HEAD /{key}`                                  | Same metadata shape as `getObject`, no body   |
+| `putObjectStream(options)` | Multipart upload — see [Streaming](#streaming) | Same result shape as `putObject`              |
+| `getObjectStream(options)` | `GET /{key}`, body left unread                 | `{ body: ReadableStream, contentType?, ... }` |
 
 ```ts
 import { S3 } from '@tundraconnect/s3';
@@ -97,6 +99,82 @@ do {
   }
   token = page.nextContinuationToken;
 } while (token);
+```
+
+## Streaming
+
+### `putObjectStream(options)`
+
+Uploads a large object from a `ReadableStream<Uint8Array>` (or a `Blob`)
+as an S3 multipart upload — `POST ?uploads` (CreateMultipartUpload), one
+`PUT ?partNumber=N&uploadId=…` per part, then `POST ?uploadId=…`
+(CompleteMultipartUpload) with the collected part ETags — so only one part
+is ever in memory. Works unchanged against DigitalOcean Spaces, Cloudflare
+R2 and MinIO, which implement the same multipart API.
+
+Why not a single streamed `PUT`: `fetch` sends a stream body with chunked
+transfer encoding and no `Content-Length`, and SigV4 needs the payload
+hash before the first byte goes out — S3 rejects such a request.
+Multipart is S3's own answer, and each part is a bounded `Blob` that
+RESTler can also retry on a 429 like any other request.
+
+| Option          | Type                                 | Required | Description                                                                                                    |
+| --------------- | ------------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `bucket`, `key` | `string`                             | yes      | Target bucket and object key.                                                                                  |
+| `body`          | `ReadableStream<Uint8Array> \| Blob` | yes      | The data — consumed once.                                                                                      |
+| `contentType`   | `string`                             | no       | `Content-Type` stored on the object (default `application/octet-stream`).                                      |
+| `metadata`      | `Record<string,string>`              | no       | `x-amz-meta-*` on the object.                                                                                  |
+| `partSize`      | `number`                             | no       | Bytes per part. Default 8 MiB (`DEFAULT_PART_SIZE`); minimum 5 MiB (`MIN_PART_SIZE`); S3 caps at 10,000 parts. |
+
+Returns the same `{ etag, versionId? }` as `putObject`. Note that a
+multipart object's ETag carries a `-N` suffix and is **not** an MD5 of the
+content.
+
+Behaviour worth knowing:
+
+- A body that fits in one part (including an empty one) is sent as a plain
+  `putObject` — one request, no upload to initiate or complete — so the
+  method is safe to use for any size.
+- `partSize` below 5 MiB is rejected up front (`CONFIG_INVALID_PART_SIZE`):
+  S3 only reports `EntityTooSmall` at CompleteMultipartUpload, after every
+  byte has already been sent.
+- Any failure after CreateMultipartUpload succeeded triggers a best-effort
+  `DELETE ?uploadId=…` (AbortMultipartUpload) so S3 stops storing — and
+  billing for — the parts that landed. The original error is re-thrown; if
+  the abort itself failed, that error is attached as
+  `getContextValue('cleanupError')`.
+- S3 can fail CompleteMultipartUpload _after_ sending a `200 OK` header, in
+  which case the body is an `<Error>` document. That is detected and mapped
+  (`INTERNAL_ERROR`, `NO_SUCH_UPLOAD`, `INVALID_PART`, ...) exactly like an
+  error status — a 200 is never trusted on its own here.
+
+```ts
+const file = await Deno.open('backup.tar');
+const { etag } = await client.putObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+  body: file.readable,
+  contentType: 'application/x-tar',
+});
+```
+
+### `getObjectStream({ bucket, key })`
+
+Downloads an object as an unread `ReadableStream<Uint8Array>` plus the
+same header-derived metadata `getObject` returns (`contentType`,
+`contentLength`, `etag`, `lastModified`, `versionId`, `metadata`). The
+body is never buffered; the vendor-wide `timeout` bounds only the wait
+for headers, after which an idle timer that resets on every chunk governs
+the transfer. An error response's small XML body is read and mapped
+exactly as for `getObject`. **You own the stream** — consume it or
+`cancel()` it.
+
+```ts
+const { body, contentLength } = await client.getObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+});
+await body.pipeTo((await Deno.create('backup.tar')).writable);
 ```
 
 ## Request signing

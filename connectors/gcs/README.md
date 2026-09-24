@@ -124,6 +124,32 @@ for (const object of objects) console.log(object.name);
 await client.deleteObject({ bucket: 'my-bucket', key: 'reports/2024-01.csv' });
 ```
 
+## Large files
+
+```ts
+import { GCS } from '@tundraconnect/gcs';
+
+const client = new GCS({ auth: { type: 'BEARER', token: 'ya29....' } });
+
+// Upload from a stream as a resumable upload — one 8 MiB chunk in memory
+// at a time; contentType/metadata travel with the session.
+const file = await Deno.open('backup.tar');
+await client.putObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+  body: file.readable,
+});
+
+// Download as a stream — nothing buffered.
+const { body } = await client.getObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+});
+await body.pipeTo((await Deno.create('restored.tar')).writable);
+```
+
+See [API → Streaming](docs/GCS-API.md#streaming).
+
 ## License
 
 MIT

@@ -61,6 +61,63 @@ function toBlob(body: Blob | Uint8Array | ArrayBuffer | string): Blob {
 }
 
 /**
+ * Every non-final chunk of a resumable upload must be a multiple of this
+ * (256 KiB) — GCS rejects the chunk otherwise.
+ */
+export const RESUMABLE_CHUNK_MULTIPLE = 256 * 1024;
+/** Default chunk size for {@link GCS.putObjectStream}: 8 MiB. */
+export const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024;
+
+/**
+ * Re-chunks a byte stream into exact `size`-byte blocks (the last one may
+ * be shorter), regardless of how the source happens to be chunked. Holds
+ * at most `size` bytes plus one source chunk in memory. Releases the
+ * reader lock when done or abandoned.
+ */
+async function* chunked(
+  source: ReadableStream<Uint8Array>,
+  size: number,
+): AsyncGenerator<Uint8Array, void, unknown> {
+  const reader = source.getReader();
+  let pending: Uint8Array[] = [];
+  let pendingBytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending.push(value);
+      pendingBytes += value.byteLength;
+      while (pendingBytes >= size) {
+        const out = new Uint8Array(size);
+        let filled = 0;
+        while (filled < size) {
+          const head = pending[0]!;
+          const take = Math.min(head.byteLength, size - filled);
+          out.set(head.subarray(0, take), filled);
+          filled += take;
+          if (take === head.byteLength) pending.shift();
+          else pending[0] = head.subarray(take);
+        }
+        pendingBytes -= size;
+        yield out;
+      }
+    }
+    if (pendingBytes > 0) {
+      const out = new Uint8Array(pendingBytes);
+      let filled = 0;
+      for (const p of pending) {
+        out.set(p, filled);
+        filled += p.byteLength;
+      }
+      pending = [];
+      yield out;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/**
  * Guardian schema for the OAuth2 token-exchange response
  * (`POST https://oauth2.googleapis.com/token`). Internal to service-account
  * auth — not part of this connect's public schema surface.
@@ -146,6 +203,34 @@ export type PutObjectOptions = {
    * the simple upload completes — see {@link GCS.putObject}.
    */
   metadata?: Record<string, string>;
+};
+
+/** Options for {@link GCS.putObjectStream}. */
+export type PutObjectStreamOptions = {
+  /** Name of the bucket to upload to. */
+  bucket: string;
+  /** Object name (GCS's `name` field — may contain `/`). */
+  key: string;
+  /** The data — consumed exactly once, one chunk in memory at a time. */
+  body: ReadableStream<Uint8Array> | Blob;
+  /** MIME type stored as the object's `Content-Type`. Defaults to `application/octet-stream`. */
+  contentType?: string;
+  /** Custom object metadata — folded into the resumable session, so no follow-up `patch` is needed. */
+  metadata?: Record<string, string>;
+  /**
+   * Bytes per chunk. Must be a positive multiple of
+   * {@link RESUMABLE_CHUNK_MULTIPLE} (256 KiB).
+   * @default DEFAULT_CHUNK_SIZE (8 MiB)
+   */
+  chunkSize?: number;
+};
+
+/** Result of {@link GCS.getObjectStream}. */
+export type GetObjectStreamResult = {
+  /** Unread object bytes — consume or `cancel()` it. */
+  body: ReadableStream<Uint8Array>;
+  /** Object metadata, fetched first — see {@link GCS.getObjectStream}. */
+  metadata: ObjectSchema;
 };
 
 /** Options for {@link GCS.getObject} and {@link GCS.headObject}. */
@@ -583,6 +668,249 @@ export class GCS extends RESTler<GCSOptions> {
     this.__requireSafePathSegment(key, 'key');
 
     return await this.__getObjectMetadata(bucket, key);
+  }
+
+  /**
+   * Upload a large object from a `ReadableStream<Uint8Array>` (or a
+   * `Blob`) via GCS's resumable upload protocol, holding one chunk in
+   * memory at a time.
+   *
+   * `POST {uploadBase}/b/{bucket}/o?uploadType=resumable&name={key}` (with
+   * `contentType`/`metadata` as the JSON metadata body, so — unlike
+   * {@link putObject} — no follow-up `patch` is needed) returns a session
+   * URI in its `Location` header. Each chunk is then `PUT` to that URI
+   * with `Content-Range: bytes a-b/*`; GCS answers `308 Resume Incomplete`
+   * and echoes what it has persisted in a `Range` header. The final chunk
+   * declares the total (`bytes a-b/total`, or `bytes *\/0` for an empty
+   * body) and returns the created {@link ObjectSchema}.
+   *
+   * Why not one streamed `POST`: `fetch` sends a stream body with chunked
+   * transfer encoding and no `Content-Length`, which the upload endpoint
+   * rejects. Resumable upload is GCS's own answer to large uploads, and
+   * each chunk is a bounded `Blob` that RESTler can also retry on a 429.
+   *
+   * The source is consumed as it goes, so a chunk the server reports as
+   * only partially persisted (its `Range` ends short of what was sent)
+   * cannot be replayed — that is surfaced as `RESPONSE_ERROR` rather than
+   * silently committing a truncated object. On any failure after the
+   * session was created, the session is cancelled (`DELETE` to the session
+   * URI, which GCS acknowledges with `499`) on a best-effort basis; the
+   * original error is re-thrown regardless, with a `cleanupError` context
+   * entry if the cancel itself failed.
+   *
+   * @param options - See {@link PutObjectStreamOptions}.
+   * @returns Promise resolving to the created {@link ObjectSchema}.
+   * @throws {GCSError} `INVALID_BUCKET`/`INVALID_KEY`/`INVALID_OBJECT_KEY`
+   * for a bad target; `CONFIG_INVALID_CHUNK_SIZE` when `chunkSize` isn't a
+   * positive multiple of 256 KiB; `RESPONSE_ERROR` when the session
+   * response carries no `Location`, an intermediate chunk isn't answered
+   * with `308`, the server persisted fewer bytes than were sent, or the
+   * final response isn't an Object resource; otherwise a vendor-mapped
+   * code (see {@link __toError}).
+   *
+   * @example
+   * ```typescript
+   * const file = await Deno.open('backup.tar');
+   * const object = await client.putObjectStream({
+   *   bucket: 'backups',
+   *   key: 'backup.tar',
+   *   body: file.readable,
+   *   contentType: 'application/x-tar',
+   * });
+   * console.log(object.size);
+   * ```
+   */
+  public async putObjectStream(
+    options: PutObjectStreamOptions,
+  ): Promise<ObjectSchema> {
+    const { bucket, key, contentType, metadata } = options;
+    const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
+    this.__requireSafePathSegment(bucket, 'bucket');
+    this.__requireSafePathSegment(key, 'key');
+    if (
+      !Number.isInteger(chunkSize) || chunkSize <= 0 ||
+      chunkSize % RESUMABLE_CHUNK_MULTIPLE !== 0
+    ) {
+      throw new GCSError('CONFIG_INVALID_CHUNK_SIZE', {
+        value: chunkSize,
+        multiple: RESUMABLE_CHUNK_MULTIPLE,
+      });
+    }
+    const source = options.body instanceof Blob
+      ? options.body.stream()
+      : options.body;
+
+    // Open the session. The object's content type and metadata travel with
+    // it, so the finished object needs no separate `patch`.
+    const resource: Record<string, unknown> = {};
+    if (contentType !== undefined) resource.contentType = contentType;
+    if (metadata && Object.keys(metadata).length > 0) {
+      resource.metadata = metadata;
+    }
+    const opened = await this._makeRequest({
+      baseURL: GCS_UPLOAD_BASE_URL,
+      path: `/b/${encodeURIComponent(bucket)}/o`,
+      method: 'POST',
+      contentType: 'JSON',
+      payload: resource,
+      query: { uploadType: 'resumable', name: key },
+      headers: {
+        'X-Upload-Content-Type': contentType ?? 'application/octet-stream',
+      },
+    });
+    const location = opened.headers?.['location'];
+    if (!location) {
+      throw new GCSError('RESPONSE_ERROR', {
+        bucket,
+        key,
+        reason: 'resumable session response carried no Location header',
+      });
+    }
+    // The session URI is absolute and opaque — split it into the pieces
+    // RESTler's endpoint model wants rather than guessing at its shape.
+    const session = new URL(location);
+    const target = {
+      baseURL: session.origin,
+      path: session.pathname,
+      query: Object.fromEntries(session.searchParams),
+    };
+
+    const putChunk = async (
+      bytes: Uint8Array,
+      contentRange: string,
+    ): Promise<RESTlerResponse<unknown>> =>
+      await this._makeRequest<unknown>({
+        ...target,
+        method: 'PUT',
+        contentType: 'BLOB',
+        payload: new Blob([bytes as BlobPart]),
+        headers: { 'Content-Range': contentRange },
+      });
+
+    try {
+      // One chunk of look-ahead: the last chunk is only known to be last
+      // once the source ends, and it alone must declare the total size.
+      let offset = 0;
+      let held: Uint8Array | undefined;
+      for await (const chunk of chunked(source, chunkSize)) {
+        if (held) {
+          const end = offset + held.byteLength - 1;
+          const resp = await putChunk(held, `bytes ${offset}-${end}/*`);
+          if (resp.status !== 308) {
+            throw new GCSError('RESPONSE_ERROR', {
+              bucket,
+              key,
+              status: resp.status,
+              reason: 'expected 308 Resume Incomplete for a non-final chunk',
+            });
+          }
+          const persisted = /^bytes=0-(\d+)$/.exec(
+            resp.headers?.['range'] ?? '',
+          )
+            ?.[1];
+          if (persisted !== undefined && Number(persisted) !== end) {
+            throw new GCSError('RESPONSE_ERROR', {
+              bucket,
+              key,
+              reason:
+                `server persisted bytes 0-${persisted} but 0-${end} were sent — cannot replay a consumed stream`,
+            });
+          }
+          offset += held.byteLength;
+        }
+        held = chunk;
+      }
+      const last = held ?? new Uint8Array(0);
+      const total = offset + last.byteLength;
+      const contentRange = last.byteLength === 0
+        ? `bytes */${total}`
+        : `bytes ${offset}-${total - 1}/${total}`;
+      return await this.__requestAndValidate(
+        {
+          ...target,
+          method: 'PUT',
+          contentType: 'BLOB',
+          payload: new Blob([last as BlobPart]),
+          headers: { 'Content-Range': contentRange },
+        },
+        ObjectSchemaObject,
+      );
+    } catch (error) {
+      // Best-effort cancel so GCS drops the partial session now rather than
+      // holding it for a week. GCS acknowledges a cancel with `499`, which
+      // `__toError` (correctly, for every other request) treats as a
+      // failure — so that one status is the success case here. The
+      // caller's signal must stay the original failure: a genuinely failed
+      // cancel is attached to it, never thrown in its place.
+      try {
+        await this._makeRequest({ ...target, method: 'DELETE' });
+      } catch (cleanupError) {
+        const cancelled = cleanupError instanceof GCSError &&
+          cleanupError.getContextValue('status') === 499;
+        if (!cancelled && error instanceof GCSError) {
+          (error.context as Record<string, unknown>).cleanupError =
+            cleanupError;
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Download an object as an unread `ReadableStream<Uint8Array>` plus its
+   * metadata.
+   *
+   * Fetches the metadata first (the same request {@link headObject}
+   * makes) — so a missing/forbidden object surfaces the vendor-mapped
+   * {@link GCSError} from the JSON envelope before any stream is opened —
+   * and only then issues `GET ...?alt=media`, whose body is handed back
+   * unread. Unlike {@link getObject}, the two requests run serially: a
+   * stream opened concurrently would have to be cancelled whenever the
+   * metadata request lost the race, for no latency gain worth that
+   * complexity on a transfer that is, by definition, large.
+   *
+   * Nothing is buffered: the vendor-wide `timeout` bounds only the wait
+   * for headers, after which an idle timer that resets on every chunk
+   * governs the transfer. **The caller owns the stream** — consume it or
+   * `cancel()` it, or the connection stays open.
+   *
+   * @param options - See {@link GetObjectOptions}.
+   * @returns Promise resolving to `{ body, metadata }` — see
+   * {@link GetObjectStreamResult}.
+   * @throws {GCSError} `INVALID_BUCKET`/`INVALID_KEY`/`INVALID_OBJECT_KEY`
+   * for a bad target; `NOT_FOUND` when the object doesn't exist;
+   * `RESPONSE_ERROR` when the media response settled with no body stream
+   * at all; otherwise a vendor-mapped code (see {@link __toError}).
+   *
+   * @example
+   * ```typescript
+   * const { body, metadata } = await client.getObjectStream({
+   *   bucket: 'backups',
+   *   key: 'backup.tar',
+   * });
+   * console.log(metadata.size);
+   * await body.pipeTo((await Deno.create('backup.tar')).writable);
+   * ```
+   */
+  public async getObjectStream(
+    options: GetObjectOptions,
+  ): Promise<GetObjectStreamResult> {
+    const { bucket, key } = options;
+    this.__requireSafePathSegment(bucket, 'bucket');
+    this.__requireSafePathSegment(key, 'key');
+
+    const metadata = await this.__getObjectMetadata(bucket, key);
+    const resp = await this._makeStreamRequest({
+      path: this.__objectPath(bucket, key),
+      method: 'GET',
+      query: { alt: 'media' },
+    });
+    if (!resp.body) {
+      // A streamed GET that settled without a body is malformed, not empty
+      // — an empty object still yields a stream that closes immediately.
+      throw new GCSError('RESPONSE_ERROR', { bucket, key });
+    }
+    return { body: resp.body, metadata };
   }
 
   /**

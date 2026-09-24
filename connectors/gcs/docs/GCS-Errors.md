@@ -51,25 +51,26 @@ isn't the documented JSON envelope (for example, an error surfaced by
 
 ## Codes
 
-| Code                             | Meaning                                                         |
-| -------------------------------- | --------------------------------------------------------------- |
-| `CONFIG_INVALID_AUTH_TYPE`       | `auth.type` was neither `BEARER` nor `CUSTOM`.                  |
-| `CONFIG_INVALID_SERVICE_ACCOUNT` | `CUSTOM` auth is missing `clientEmail`/`privateKey`.            |
-| `JWT_SIGNING_FAILED`             | The service-account JWT could not be signed (bad `privateKey`). |
-| `TOKEN_EXCHANGE_FAILED`          | The signed JWT could not be exchanged for an access token.      |
-| `INVALID_BUCKET`                 | `bucket` was missing, empty, or whitespace-only.                |
-| `INVALID_KEY`                    | `key` was missing, empty, or whitespace-only.                   |
-| `INVALID_OBJECT_KEY`             | `bucket`/`key` contained a `.`/`..` path segment.               |
-| `INVALID_REQUEST`                | GCS rejected the request as invalid.                            |
-| `AUTH_ERROR`                     | The access token is missing, expired, or invalid.               |
-| `FORBIDDEN`                      | The authenticated identity lacks permission for the operation.  |
-| `NOT_FOUND`                      | The requested bucket or object doesn't exist.                   |
-| `CONFLICT`                       | The request conflicts with the resource's current state.        |
-| `RATE_LIMIT_EXCEEDED`            | GCS rate limit exceeded for the project.                        |
-| `BACKEND_ERROR`                  | GCS returned an internal/backend error.                         |
-| `RESPONSE_ERROR`                 | A successful response's body failed schema validation.          |
-| `SERVICE_UNAVAILABLE`            | An undocumented status/response could not be mapped.            |
-| `UNKNOWN_ERROR`                  | An unknown constructor code was supplied.                       |
+| Code                             | Meaning                                                                                                                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CONFIG_INVALID_AUTH_TYPE`       | `auth.type` was neither `BEARER` nor `CUSTOM`.                                                                                                                                                          |
+| `CONFIG_INVALID_SERVICE_ACCOUNT` | `CUSTOM` auth is missing `clientEmail`/`privateKey`.                                                                                                                                                    |
+| `JWT_SIGNING_FAILED`             | The service-account JWT could not be signed (bad `privateKey`).                                                                                                                                         |
+| `TOKEN_EXCHANGE_FAILED`          | The signed JWT could not be exchanged for an access token.                                                                                                                                              |
+| `INVALID_BUCKET`                 | `bucket` was missing, empty, or whitespace-only.                                                                                                                                                        |
+| `INVALID_KEY`                    | `key` was missing, empty, or whitespace-only.                                                                                                                                                           |
+| `INVALID_OBJECT_KEY`             | `bucket`/`key` contained a `.`/`..` path segment.                                                                                                                                                       |
+| `CONFIG_INVALID_CHUNK_SIZE`      | `putObjectStream`'s `chunkSize` wasn't a positive multiple of 256 KiB.                                                                                                                                  |
+| `INVALID_REQUEST`                | GCS rejected the request as invalid.                                                                                                                                                                    |
+| `AUTH_ERROR`                     | The access token is missing, expired, or invalid.                                                                                                                                                       |
+| `FORBIDDEN`                      | The authenticated identity lacks permission for the operation.                                                                                                                                          |
+| `NOT_FOUND`                      | The requested bucket or object doesn't exist.                                                                                                                                                           |
+| `CONFLICT`                       | The request conflicts with the resource's current state.                                                                                                                                                |
+| `RATE_LIMIT_EXCEEDED`            | GCS rate limit exceeded for the project.                                                                                                                                                                |
+| `BACKEND_ERROR`                  | GCS returned an internal/backend error.                                                                                                                                                                 |
+| `RESPONSE_ERROR`                 | A successful response's body failed schema validation — or, for `putObjectStream`, the session had no `Location`, an intermediate chunk wasn't answered `308`, or fewer bytes were persisted than sent. |
+| `SERVICE_UNAVAILABLE`            | An undocumented status/response could not be mapped.                                                                                                                                                    |
+| `UNKNOWN_ERROR`                  | An unknown constructor code was supplied.                                                                                                                                                               |
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:
@@ -81,7 +82,8 @@ if (error instanceof GCSError && error.code === 'NOT_FOUND') {
 ```
 
 Use `getContextValue()` to read diagnostic metadata such as `vendor`,
-`status`, `reason`, or `originalCode`.
+`status`, `reason`, `cleanupError` (a failed compensating delete/cancel
+after a `putObject`/`putObjectStream` failure), or `originalCode`.
 
 ---
 

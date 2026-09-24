@@ -13,12 +13,15 @@ import type { EventOptionKeys } from '@utils';
 import { type BaseGuardian, GuardianError } from '@guardian';
 import { S3Error, type S3ErrorCode } from './errors/mod.ts';
 import {
+  CompleteMultipartUploadResultSchemaObject,
   type DeleteObjectResponseSchema,
   DeleteObjectResponseSchemaObject,
   type GetObjectResponseSchema,
   type HeadObjectResponseSchema,
+  InitiateMultipartUploadResultSchemaObject,
   type ListObjectsResponseSchema,
   ListObjectsResponseSchemaObject,
+  type ObjectMetadataSchema,
   ObjectMetadataSchemaObject,
   type PutObjectResponseSchema,
   PutObjectResponseSchemaObject,
@@ -91,11 +94,110 @@ const VENDOR_CODE_MAP: Record<string, S3ErrorCode> = {
   PreconditionFailed: 'PRECONDITION_FAILED',
   InvalidRange: 'INVALID_RANGE',
   EntityTooLarge: 'ENTITY_TOO_LARGE',
+  EntityTooSmall: 'ENTITY_TOO_SMALL',
+  NoSuchUpload: 'NO_SUCH_UPLOAD',
+  InvalidPart: 'INVALID_PART',
+  InvalidPartOrder: 'INVALID_PART_ORDER',
   MethodNotAllowed: 'METHOD_NOT_ALLOWED',
   InternalError: 'INTERNAL_ERROR',
   SlowDown: 'SLOW_DOWN',
   ServiceUnavailable: 'SERVICE_UNAVAILABLE',
 };
+
+/**
+ * Smallest part S3 accepts in a multipart upload, except for the last
+ * part: 5 MiB. A smaller non-final part fails CompleteMultipartUpload with
+ * `EntityTooSmall` — after every byte has already been sent — so
+ * {@link S3.putObjectStream} rejects a smaller `partSize` up front.
+ */
+export const MIN_PART_SIZE = 5 * 1024 * 1024;
+/** Default part size for {@link S3.putObjectStream}: 8 MiB. */
+export const DEFAULT_PART_SIZE = 8 * 1024 * 1024;
+/** S3's hard cap on parts per multipart upload. */
+const MAX_PARTS = 10_000;
+
+/** Arguments to {@link S3.putObjectStream}. */
+export type PutObjectStreamOptions = {
+  /** Target bucket name. */
+  bucket: string;
+  /** Object key. */
+  key: string;
+  /** The data — consumed exactly once, one part in memory at a time. */
+  body: ReadableStream<Uint8Array> | Blob;
+  /** `Content-Type` stored on the object. Defaults to `application/octet-stream`. */
+  contentType?: string;
+  /** Emitted as one `x-amz-meta-{key}` header per entry on the object. */
+  metadata?: Record<string, string>;
+  /**
+   * Bytes per part. Must be at least {@link MIN_PART_SIZE} (5 MiB); S3
+   * allows up to 5 GiB per part and 10,000 parts, so the default of
+   * {@link DEFAULT_PART_SIZE} (8 MiB) covers objects up to 80 GB — raise it
+   * for anything larger.
+   */
+  partSize?: number;
+};
+
+/** Result of {@link S3.getObjectStream}: the header-derived metadata plus an unread byte stream. */
+export type GetObjectStreamResult = ObjectMetadataSchema & {
+  body: ReadableStream<Uint8Array>;
+};
+
+/**
+ * Re-chunks a byte stream into exact `size`-byte blocks (the last one may
+ * be shorter), regardless of how the source happens to be chunked. Holds
+ * at most `size` bytes plus one source chunk in memory. Releases the
+ * reader lock when done or abandoned.
+ */
+async function* chunked(
+  source: ReadableStream<Uint8Array>,
+  size: number,
+): AsyncGenerator<Uint8Array, void, unknown> {
+  const reader = source.getReader();
+  let pending: Uint8Array[] = [];
+  let pendingBytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending.push(value);
+      pendingBytes += value.byteLength;
+      while (pendingBytes >= size) {
+        const out = new Uint8Array(size);
+        let filled = 0;
+        while (filled < size) {
+          const head = pending[0]!;
+          const take = Math.min(head.byteLength, size - filled);
+          out.set(head.subarray(0, take), filled);
+          filled += take;
+          if (take === head.byteLength) pending.shift();
+          else pending[0] = head.subarray(take);
+        }
+        pendingBytes -= size;
+        yield out;
+      }
+    }
+    if (pendingBytes > 0) {
+      const out = new Uint8Array(pendingBytes);
+      let filled = 0;
+      for (const p of pending) {
+        out.set(p, filled);
+        filled += p.byteLength;
+      }
+      pending = [];
+      yield out;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/** Escapes the three characters that would break an XML text node. ETags never contain them, but the body is built by hand. */
+function escapeXml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
+    />/g,
+    '&gt;',
+  );
+}
 
 /**
  * HTTP-status fallback used when no `<Error>` body is available to map —
@@ -465,6 +567,260 @@ export class S3 extends RESTler<S3Options> {
       versionId: headers['x-amz-version-id'],
       metadata: this.__extractMetadata(headers),
     });
+  }
+
+  /**
+   * Uploads a large object from a `ReadableStream<Uint8Array>` (or a
+   * `Blob`) as an S3 multipart upload, holding one part in memory at a
+   * time: CreateMultipartUpload, one UploadPart per {@link PutObjectStreamOptions.partSize}
+   * bytes, then CompleteMultipartUpload. Works unchanged against
+   * DigitalOcean Spaces, Cloudflare R2 and MinIO, which all implement the
+   * same multipart API.
+   *
+   * Why not one streamed `PUT`: `fetch` sends a stream body with chunked
+   * transfer encoding and no `Content-Length`, and SigV4 needs the
+   * payload hash (or at least the length) before the first byte goes out
+   * — S3 rejects such a request. Multipart is S3's own answer, and each
+   * part is a bounded, hashable `Blob` that RESTler can also retry on a
+   * 429 like any other request.
+   *
+   * A body that fits in a single part (including an empty one) is sent
+   * with a plain {@link putObject} instead — one request, no upload to
+   * initiate or complete — so callers can use this method for any size
+   * without paying multipart's overhead on small objects.
+   *
+   * On any failure after CreateMultipartUpload succeeded, the upload is
+   * aborted (AbortMultipartUpload) on a best-effort basis so S3 doesn't
+   * keep billing for orphaned parts; the original error is re-thrown
+   * regardless, with a `cleanupError` context entry if the abort itself
+   * failed. A CompleteMultipartUpload that answers `200 OK` with an
+   * embedded `<Error>` body (S3 does this when it fails *after* sending
+   * headers) is treated as the failure it is, not a success.
+   *
+   * @param options - See {@link PutObjectStreamOptions}.
+   * @returns Promise resolving to {@link PutObjectResponseSchema} — the
+   * assembled object's `etag` (note: a multipart ETag carries a `-N`
+   * suffix and is not an MD5 of the content) and, when versioning is
+   * enabled, `versionId`.
+   * @throws {S3Error} `CONFIG_INVALID_BUCKET`/`CONFIG_INVALID_KEY`/
+   * `INVALID_OBJECT_KEY` for a bad target; `CONFIG_INVALID_PART_SIZE` when
+   * `partSize` is below 5 MiB; `RESPONSE_ERROR` when an UploadPart response
+   * carries no `ETag` or CompleteMultipartUpload's body is malformed; or a
+   * vendor-mapped code (`NO_SUCH_BUCKET`, `ACCESS_DENIED`, `NO_SUCH_UPLOAD`,
+   * `INVALID_PART`, `ENTITY_TOO_SMALL`, `SLOW_DOWN`, ...).
+   *
+   * @example
+   * ```typescript
+   * const file = await Deno.open('backup.tar');
+   * const { etag } = await client.putObjectStream({
+   *   bucket: 'backups',
+   *   key: 'backup.tar',
+   *   body: file.readable,
+   *   contentType: 'application/x-tar',
+   * });
+   * ```
+   */
+  public async putObjectStream(
+    options: PutObjectStreamOptions,
+  ): Promise<PutObjectResponseSchema> {
+    const { bucket, key, contentType, metadata } = options;
+    const partSize = options.partSize ?? DEFAULT_PART_SIZE;
+    this.__assertBucket(bucket);
+    this.__assertKey(key);
+    if (!Number.isInteger(partSize) || partSize < MIN_PART_SIZE) {
+      throw new S3Error('CONFIG_INVALID_PART_SIZE', {
+        value: partSize,
+        min: MIN_PART_SIZE,
+      });
+    }
+    const source = options.body instanceof Blob
+      ? options.body.stream()
+      : options.body;
+    const parts = chunked(source, partSize);
+
+    // Look one part ahead: a body that ends within the first part needs no
+    // multipart upload at all.
+    const first = await parts.next();
+    const second = first.done ? first : await parts.next();
+    if (second.done) {
+      return await this.putObject({
+        bucket,
+        key,
+        body: first.done ? new Uint8Array(0) : first.value,
+        contentType,
+        metadata,
+      });
+    }
+
+    const { baseURL, path } = this._target(bucket, key);
+    const headers: Record<string, string> = {
+      'Content-Type': contentType ?? 'application/octet-stream',
+    };
+    if (metadata) {
+      for (const [metaKey, value] of Object.entries(metadata)) {
+        headers[`x-amz-meta-${metaKey.toLowerCase()}`] = value;
+      }
+    }
+    const { uploadId } = await this.__requestAndValidate(
+      { path, baseURL, method: 'POST', query: { uploads: '' }, headers },
+      InitiateMultipartUploadResultSchemaObject,
+      (data) =>
+        (data as { InitiateMultipartUploadResult?: unknown } | undefined)
+          ?.InitiateMultipartUploadResult,
+      { bucket, key },
+    );
+
+    const etags: string[] = [];
+    const uploadPart = async (bytes: Uint8Array): Promise<void> => {
+      if (etags.length >= MAX_PARTS) {
+        throw new S3Error('ENTITY_TOO_LARGE', {
+          bucket,
+          key,
+          reason: `object needs more than ${MAX_PARTS} parts — raise partSize`,
+        });
+      }
+      const partNumber = String(etags.length + 1);
+      const resp = await this._makeRequest({
+        path,
+        baseURL,
+        method: 'PUT',
+        query: { partNumber, uploadId },
+        contentType: 'BLOB',
+        payload: new Blob([bytes as BlobPart]),
+      }, this.__ctx({ bucket, key }));
+      const etag = resp.headers?.['etag'];
+      if (!etag) {
+        throw new S3Error('RESPONSE_ERROR', {
+          bucket,
+          key,
+          partNumber,
+          reason: 'UploadPart response carried no ETag header',
+        });
+      }
+      etags.push(etag);
+    };
+
+    try {
+      await uploadPart(first.value as Uint8Array);
+      await uploadPart(second.value);
+      for await (const part of parts) {
+        await uploadPart(part);
+      }
+
+      const manifest = `<CompleteMultipartUpload>${
+        etags.map((etag, index) =>
+          `<Part><PartNumber>${index + 1}</PartNumber><ETag>${
+            escapeXml(etag)
+          }</ETag></Part>`
+        ).join('')
+      }</CompleteMultipartUpload>`;
+      const resp = await this._makeRequest<unknown>({
+        path,
+        baseURL,
+        method: 'POST',
+        query: { uploadId },
+        headers: { 'Content-Type': 'application/xml' },
+        contentType: 'TEXT',
+        payload: manifest,
+      }, this.__ctx({ bucket, key }));
+
+      // S3 may fail CompleteMultipartUpload after it has already sent a
+      // `200 OK` header — the failure then arrives as an `<Error>` body on
+      // a success status, which `__toError` (status-gated) let through.
+      const body = resp.body as
+        | { CompleteMultipartUploadResult?: unknown; Error?: unknown }
+        | undefined;
+      const embedded = this.__vendorError(
+        body?.Error,
+        resp.status ?? 0,
+        resp.headers,
+        { bucket, key },
+      );
+      if (embedded) throw embedded;
+      const completed = this.__parse(
+        CompleteMultipartUploadResultSchemaObject,
+        body?.CompleteMultipartUploadResult,
+      );
+      return this.__parse(PutObjectResponseSchemaObject, {
+        etag: completed.etag,
+        versionId: resp.headers?.['x-amz-version-id'],
+      });
+    } catch (error) {
+      // Best-effort abort so S3 stops storing (and billing) the parts that
+      // did land. The caller's signal must stay the original failure — a
+      // failed abort is attached to it, never thrown in its place.
+      try {
+        await this._makeRequest({
+          path,
+          baseURL,
+          method: 'DELETE',
+          query: { uploadId },
+        }, this.__ctx({ bucket, key }));
+      } catch (cleanupError) {
+        if (error instanceof S3Error) {
+          (error.context as Record<string, unknown>).cleanupError =
+            cleanupError;
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Downloads an object as an unread `ReadableStream<Uint8Array>` plus the
+   * same header-derived metadata {@link getObject} returns. Nothing is
+   * buffered: the vendor-wide `timeout` bounds only the wait for headers,
+   * after which an idle timer that resets on every chunk governs the
+   * transfer. **The caller owns the stream** — consume it or `cancel()`
+   * it, or the connection stays open.
+   *
+   * @param options.bucket - Bucket name.
+   * @param options.key - Object key.
+   * @returns Promise resolving to {@link GetObjectStreamResult}.
+   * @throws {S3Error} `NO_SUCH_KEY`, `NO_SUCH_BUCKET`, `ACCESS_DENIED`, or
+   * another mapped code (an error response's small XML body is read and
+   * mapped exactly as for `getObject`); `RESPONSE_ERROR` when the response
+   * settled with no body stream at all.
+   *
+   * @example
+   * ```typescript
+   * const { body, contentLength } = await client.getObjectStream({
+   *   bucket: 'backups',
+   *   key: 'backup.tar',
+   * });
+   * await body.pipeTo((await Deno.create('backup.tar')).writable);
+   * ```
+   */
+  public async getObjectStream(
+    options: { bucket: string; key: string },
+  ): Promise<GetObjectStreamResult> {
+    const { bucket, key } = options;
+    this.__assertBucket(bucket);
+    this.__assertKey(key);
+    const { baseURL, path } = this._target(bucket, key);
+
+    const resp = await this._makeStreamRequest(
+      { path, baseURL, method: 'GET' },
+      {
+        responseHandler: (response) =>
+          this.__toError(response, { bucket, key }),
+      },
+    );
+    if (!resp.body) {
+      // A streamed GET that settled without a body is malformed, not empty
+      // — an empty object still yields a stream that closes immediately.
+      throw new S3Error('RESPONSE_ERROR', { bucket, key });
+    }
+    const headers = resp.headers ?? {};
+    const meta = this.__parse(ObjectMetadataSchemaObject, {
+      contentType: headers['content-type'],
+      contentLength: headers['content-length'],
+      etag: headers['etag'],
+      lastModified: headers['last-modified'],
+      versionId: headers['x-amz-version-id'],
+      metadata: this.__extractMetadata(headers),
+    });
+    return { ...meta, body: resp.body };
   }
 
   /**
@@ -872,26 +1228,46 @@ export class S3 extends RESTler<S3Options> {
       : (response.body as { Error?: Record<string, unknown> } | undefined)
         ?.Error;
 
-    if (envelope) {
-      const [err, parsed] = S3ErrorEnvelopeSchemaObject.safeParse(envelope);
-      if (!err && parsed) {
-        const code = VENDOR_CODE_MAP[parsed.Code] ??
-          (parsed.Code as S3ErrorCode);
-        throw new S3Error(code, {
-          retryAfterSeconds: this._parseRetryAfter(response.headers),
-          status,
-          message: parsed.Message,
-          resource: parsed.Resource,
-          requestId: parsed.RequestId,
-          ...context,
-        });
-      }
-    }
+    const mapped = this.__vendorError(
+      envelope,
+      status,
+      response.headers,
+      context,
+    );
+    if (mapped) throw mapped;
 
     const fallback = STATUS_FALLBACK[status];
     throw new S3Error(fallback ?? 'SERVICE_UNAVAILABLE', {
       status,
       body: response.body instanceof Blob ? undefined : response.body,
+      ...context,
+    });
+  }
+
+  /**
+   * Maps a parsed `<Error>` envelope (already unwrapped from its root
+   * element) to the {@link S3Error} it denotes, or `undefined` when there
+   * is no envelope / it doesn't match the documented shape. Shared by
+   * {@link __toError} (error statuses) and {@link putObjectStream}'s
+   * CompleteMultipartUpload step, where the very same envelope can arrive
+   * on a `200 OK`.
+   */
+  private __vendorError(
+    envelope: unknown,
+    status: number,
+    headers: Record<string, string> | undefined,
+    context: { bucket?: string; key?: string },
+  ): S3Error | undefined {
+    if (!envelope) return undefined;
+    const [err, parsed] = S3ErrorEnvelopeSchemaObject.safeParse(envelope);
+    if (err || !parsed) return undefined;
+    const code = VENDOR_CODE_MAP[parsed.Code] ?? (parsed.Code as S3ErrorCode);
+    return new S3Error(code, {
+      retryAfterSeconds: this._parseRetryAfter(headers),
+      status,
+      message: parsed.Message,
+      resource: parsed.Resource,
+      requestId: parsed.RequestId,
       ...context,
     });
   }

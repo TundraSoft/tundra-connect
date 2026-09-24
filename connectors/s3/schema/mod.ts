@@ -20,6 +20,13 @@ export {
 
 export type { GetObjectResponseSchema } from './GetObject.ts';
 
+export {
+  type CompleteMultipartUploadResultSchema,
+  CompleteMultipartUploadResultSchemaObject,
+  type InitiateMultipartUploadResultSchema,
+  InitiateMultipartUploadResultSchemaObject,
+} from './Multipart.ts';
+
 export type { HeadObjectResponseSchema } from './HeadObject.ts';
 
 export {

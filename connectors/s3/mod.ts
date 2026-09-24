@@ -20,6 +20,14 @@
  * await client.putObject({ bucket: 'my-bucket', key: 'hello.txt', body: 'Hello!' });
  * ```
  */
-export { S3, type S3Auth, type S3Options } from './S3.ts';
+export {
+  DEFAULT_PART_SIZE,
+  type GetObjectStreamResult,
+  MIN_PART_SIZE,
+  type PutObjectStreamOptions,
+  S3,
+  type S3Auth,
+  type S3Options,
+} from './S3.ts';
 export * from './errors/mod.ts';
 export * from './schema/mod.ts';

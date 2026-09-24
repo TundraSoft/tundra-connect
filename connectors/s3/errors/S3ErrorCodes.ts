@@ -17,6 +17,8 @@ export const S3ErrorCodes = {
     'putObject body must be a Blob, Uint8Array, ArrayBuffer, or string, got ${bodyType}.',
   CONFIG_INVALID_FORCE_PATH_STYLE:
     'forcePathStyle must be a boolean, got ${value}.',
+  CONFIG_INVALID_PART_SIZE:
+    'putObjectStream partSize must be an integer of at least ${min} bytes (5 MiB), got ${value}.',
   INVALID_OBJECT_KEY:
     'Invalid S3 ${field}: "${value}" — must not contain a "." or ".." path segment.',
 
@@ -36,6 +38,14 @@ export const S3ErrorCodes = {
     'A precondition on the request (e.g. If-Match) was not met.',
   INVALID_RANGE: 'The requested Range is not satisfiable for this object.',
   ENTITY_TOO_LARGE: 'The uploaded object exceeds the maximum allowed size.',
+  ENTITY_TOO_SMALL:
+    'A multipart part was smaller than the 5 MiB minimum (only the last part may be smaller).',
+  NO_SUCH_UPLOAD:
+    'The multipart upload does not exist — it may have been aborted or already completed.',
+  INVALID_PART:
+    'One or more multipart parts could not be found, or an ETag did not match the uploaded part.',
+  INVALID_PART_ORDER:
+    'The multipart parts list was not in ascending part-number order.',
   METHOD_NOT_ALLOWED:
     'The specified HTTP method is not allowed for this resource.',
   INTERNAL_ERROR: 'S3 encountered an internal error.',

@@ -107,3 +107,44 @@ See [Errors](AzureBlob-Errors.md) for failure handling and
 ---
 
 [← Back to AzureBlob](../README.md)
+
+## Streaming
+
+### `putObjectStream(options)`
+
+Uploads a large blob from a `ReadableStream<Uint8Array>` (or a `Blob`) as
+`Put Block` per chunk followed by one `Put Block List`, so only one block
+is ever in memory.
+
+Why not a single streamed `PUT`: `fetch` sends a stream body with chunked
+transfer encoding and no `Content-Length`, which Blob Storage rejects and
+which Shared Key cannot sign. Committing blocks is Azure's own answer to
+large uploads, and uncommitted blocks persist for seven days.
+
+| Option          | Type                                 | Required | Description                                                                    |
+| --------------- | ------------------------------------ | -------- | ------------------------------------------------------------------------------ |
+| `bucket`, `key` | `string`                             | yes      | Container and blob name.                                                       |
+| `body`          | `ReadableStream<Uint8Array> \| Blob` | yes      | The data.                                                                      |
+| `contentType`   | `string`                             | no       | Set on the committed blob via `x-ms-blob-content-type`.                        |
+| `metadata`      | `Record<string,string>`              | no       | `x-ms-meta-*` on the committed blob.                                           |
+| `blockSize`     | `number`                             | no       | Bytes per block. Default 4 MiB; Azure allows up to 4000 MiB and 50,000 blocks. |
+
+Returns the same `PutObjectResultSchema` as `putObject`. Block ids are the
+zero-padded block index, base64-encoded (Azure requires equal-length ids).
+A failed block stops the upload before anything is committed.
+
+### `getObjectStream({ bucket, key })`
+
+Downloads a blob as an unread `ReadableStream<Uint8Array>` plus its
+`contentType`, `contentLength`, `etag` and `lastModified`. The body is
+never buffered; the vendor-wide `timeout` bounds only the wait for
+headers, after which an idle timer that resets on every chunk governs the
+transfer. **You own the stream** — consume it or `cancel()` it.
+
+```ts
+const { body } = await client.getObjectStream({
+  bucket: 'backups',
+  key: 'big.bin',
+});
+await body.pipeTo((await Deno.create('big.bin')).writable);
+```

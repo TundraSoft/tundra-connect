@@ -20,6 +20,7 @@ console.log(S3ErrorCodes.NO_SUCH_KEY);
 | `CONFIG_INVALID_KEY`              | A method was called with an empty/missing object key.                                                                     |
 | `CONFIG_INVALID_BODY`             | `putObject`'s `body` wasn't a `Blob`, `Uint8Array`, `ArrayBuffer`, or `string`.                                           |
 | `CONFIG_INVALID_FORCE_PATH_STYLE` | `forcePathStyle` was set to a non-boolean value.                                                                          |
+| `CONFIG_INVALID_PART_SIZE`        | `putObjectStream`'s `partSize` was not an integer of at least 5 MiB (`MIN_PART_SIZE`).                                    |
 | `INVALID_OBJECT_KEY`              | `bucket`/`key` contains a `.`/`..` path segment — rejected up front to prevent a path-traversal/signature-divergence bug. |
 | `RESPONSE_ERROR`                  | A successful response's body/headers didn't match the expected shape.                                                     |
 | `NO_SUCH_KEY`                     | Vendor `NoSuchKey` (404) — the object does not exist.                                                                     |
@@ -30,7 +31,11 @@ console.log(S3ErrorCodes.NO_SUCH_KEY);
 | `REQUEST_TIME_TOO_SKEWED`         | Vendor `RequestTimeTooSkewed` (403) — local clock too far from S3's.                                                      |
 | `PRECONDITION_FAILED`             | Vendor `PreconditionFailed` (412) — e.g. an `If-Match` condition.                                                         |
 | `INVALID_RANGE`                   | Vendor `InvalidRange` (416).                                                                                              |
-| `ENTITY_TOO_LARGE`                | Vendor `EntityTooLarge` (400).                                                                                            |
+| `ENTITY_TOO_LARGE`                | Vendor `EntityTooLarge` (400); also raised locally when a `putObjectStream` body would need more than 10,000 parts.       |
+| `ENTITY_TOO_SMALL`                | Vendor `EntityTooSmall` (400) — a non-final multipart part was under 5 MiB.                                               |
+| `NO_SUCH_UPLOAD`                  | Vendor `NoSuchUpload` (404) — the multipart upload was aborted, completed, or never existed.                              |
+| `INVALID_PART`                    | Vendor `InvalidPart` (400) — a part listed at CompleteMultipartUpload was missing or its ETag didn't match.               |
+| `INVALID_PART_ORDER`              | Vendor `InvalidPartOrder` (400) — the completion manifest wasn't in ascending part order.                                 |
 | `METHOD_NOT_ALLOWED`              | Vendor `MethodNotAllowed` (405).                                                                                          |
 | `INTERNAL_ERROR`                  | Vendor `InternalError` (500).                                                                                             |
 | `SLOW_DOWN`                       | Vendor `SlowDown` (503) — back off and retry.                                                                             |
@@ -48,7 +53,9 @@ if (error instanceof S3Error && error.code === 'NO_SUCH_KEY') {
 
 Use `getContextValue()` to read diagnostic metadata such as `vendor`,
 `status`, `message` (the vendor's own description), `resource`,
-`requestId`, `bucket`, `key`, or `originalCode`. `bucket`/`key` are
+`requestId`, `bucket`, `key`, `cleanupError` (a failed
+AbortMultipartUpload after a `putObjectStream` failure), or
+`originalCode`. `bucket`/`key` are
 populated from the calling method's own arguments whenever they're known —
 including on `NO_SUCH_KEY`/`NO_SUCH_BUCKET`, whose message templates
 interpolate them.

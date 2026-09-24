@@ -1228,6 +1228,335 @@ describe('GCS — credential custody', () => {
 });
 
 const env = envArgs();
+describe('GCS — streaming', () => {
+  const KIB = 1024;
+  const CHUNK = 256 * KIB;
+  const SESSION =
+    'https://storage.googleapis.com/upload/storage/v1/b/my-bucket/o?uploadType=resumable&upload_id=SESSION-1';
+  const client = () =>
+    new MockGCS({ auth: { type: 'BEARER', token: 'access-token' } });
+  /** A byte stream delivered in awkward, non-chunk-aligned pieces. */
+  const stream = (pieces: number[]) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const size of pieces) c.enqueue(new Uint8Array(size));
+        c.close();
+      },
+    });
+  const isSession = (url: string) => url.includes('upload_id=SESSION-1');
+  const queueSession = (c: MockGCS) =>
+    c.queueResponse(() =>
+      new Response(null, { status: 200, headers: { Location: SESSION } })
+    );
+  const queue308 = (c: MockGCS, persistedEnd: number) =>
+    c.queueResponse(
+      () =>
+        new Response(null, {
+          status: 308,
+          headers: { Range: `bytes=0-${persistedEnd}` },
+        }),
+      isSession,
+    );
+  const OBJECT = {
+    kind: 'storage#object',
+    name: 'big.bin',
+    bucket: 'my-bucket',
+    contentType: 'application/x-tar',
+    size: String(700 * KIB),
+    metadata: { owner: 'ops' },
+  };
+
+  it('opens a resumable session, PUTs 256 KiB-multiple chunks, and declares the total on the last one', async () => {
+    const c = client();
+    queueSession(c);
+    queue308(c, CHUNK - 1);
+    queue308(c, 2 * CHUNK - 1);
+    c.queueJSON(OBJECT, 200, isSession);
+
+    const object = await c.putObjectStream({
+      bucket: 'my-bucket',
+      key: 'big.bin',
+      body: stream([100 * KIB, 300 * KIB, 300 * KIB]), // 700 KiB → 256 + 256 + 188
+      chunkSize: CHUNK,
+      contentType: 'application/x-tar',
+      metadata: { owner: 'ops' },
+    });
+    asserts.assertEquals(object.name, 'big.bin');
+    asserts.assertEquals(object.metadata?.owner, 'ops');
+
+    asserts.assertEquals(c.requests.length, 4);
+    const [open, c1, c2, c3] = c.requests as [
+      RequestLog,
+      RequestLog,
+      RequestLog,
+      RequestLog,
+    ];
+    asserts.assertEquals(open.method, 'POST');
+    asserts.assertStringIncludes(
+      open.url,
+      '/upload/storage/v1/b/my-bucket/o?uploadType=resumable&name=big.bin',
+    );
+    asserts.assertEquals(
+      open.headers['x-upload-content-type'],
+      'application/x-tar',
+    );
+    asserts.assertEquals(open.headers['authorization'], 'BEARER access-token');
+    asserts.assertEquals(
+      JSON.parse(String(open.body)),
+      { contentType: 'application/x-tar', metadata: { owner: 'ops' } },
+    );
+
+    const chunks = [c1, c2, c3];
+    const sizes = await Promise.all(chunks.map((r) => (r.body as Blob).size));
+    asserts.assertEquals(sizes, [CHUNK, CHUNK, 188 * KIB]);
+    for (const chunk of chunks) {
+      asserts.assertEquals(chunk.method, 'PUT');
+      asserts.assertEquals(chunk.url, SESSION);
+      asserts.assertEquals(
+        chunk.headers['authorization'],
+        'BEARER access-token',
+      );
+    }
+    asserts.assertEquals(
+      chunks.map((r) => r.headers['content-range']),
+      [
+        `bytes 0-${CHUNK - 1}/*`,
+        `bytes ${CHUNK}-${2 * CHUNK - 1}/*`,
+        `bytes ${2 * CHUNK}-${700 * KIB - 1}/${700 * KIB}`,
+      ],
+    );
+  });
+
+  it('finalises an empty stream with "bytes */0", and accepts a Blob body', async () => {
+    const c = client();
+    queueSession(c);
+    c.queueJSON({ ...OBJECT, size: '0' }, 200, isSession);
+    await c.putObjectStream({
+      bucket: 'my-bucket',
+      key: 'big.bin',
+      body: stream([]),
+    });
+    asserts.assertEquals(c.requests.length, 2);
+    asserts.assertEquals(c.requests[1]!.headers['content-range'], 'bytes */0');
+    asserts.assertEquals((c.requests[1]!.body as Blob).size, 0);
+    // No contentType/metadata → an empty metadata resource, default upload type.
+    asserts.assertEquals(JSON.parse(String(c.requests[0]!.body)), {});
+    asserts.assertEquals(
+      c.requests[0]!.headers['x-upload-content-type'],
+      'application/octet-stream',
+    );
+
+    const c2 = client();
+    queueSession(c2);
+    c2.queueJSON({ ...OBJECT, size: '10' }, 200, isSession);
+    await c2.putObjectStream({
+      bucket: 'my-bucket',
+      key: 'big.bin',
+      body: new Blob([new Uint8Array(10)]),
+    });
+    asserts.assertEquals(
+      c2.requests[1]!.headers['content-range'],
+      'bytes 0-9/10',
+    );
+  });
+
+  it('rejects a chunkSize that is not a positive multiple of 256 KiB before any request', async () => {
+    const c = client();
+    for (const chunkSize of [0, 1000, CHUNK + 1, -CHUNK, 1.5 * CHUNK]) {
+      const err = await asserts.assertRejects(
+        () =>
+          c.putObjectStream({
+            bucket: 'my-bucket',
+            key: 'k',
+            body: stream([10]),
+            chunkSize,
+          }),
+        GCSError,
+      );
+      asserts.assertEquals(err.code, 'CONFIG_INVALID_CHUNK_SIZE');
+    }
+    asserts.assertEquals(c.requests.length, 0);
+  });
+
+  it('fails RESPONSE_ERROR when the session response has no Location header', async () => {
+    const c = client();
+    c.queueResponse(() => new Response(null, { status: 200 }));
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'my-bucket',
+          key: 'k',
+          body: stream([10]),
+        }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertEquals(c.requests.length, 1);
+  });
+
+  it('cancels the session when a chunk fails, treating the 499 acknowledgement as success', async () => {
+    const c = client();
+    queueSession(c);
+    c.queueJSON(
+      {
+        error: {
+          code: 403,
+          message: 'Forbidden',
+          errors: [{ reason: 'forbidden', message: 'Forbidden' }],
+        },
+      },
+      403,
+      isSession,
+    );
+    c.queueResponse(() => new Response(null, { status: 499 }), isSession);
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'my-bucket',
+          key: 'k',
+          body: stream([2 * CHUNK]),
+          chunkSize: CHUNK,
+        }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'FORBIDDEN');
+    asserts.assertEquals(err.context.cleanupError, undefined);
+    asserts.assertEquals(c.requests.length, 3);
+    asserts.assertEquals(c.requests[2]!.method, 'DELETE');
+    asserts.assertEquals(c.requests[2]!.url, SESSION);
+  });
+
+  it('attaches a genuinely failed cancel as cleanupError without masking the original error', async () => {
+    const c = client();
+    queueSession(c);
+    // A non-308 on an intermediate chunk: GCS thinks the upload is done.
+    c.queueJSON(OBJECT, 200, isSession);
+    c.queueJSON(
+      {
+        error: {
+          code: 500,
+          message: 'boom',
+          errors: [{ reason: 'backendError' }],
+        },
+      },
+      500,
+      isSession,
+    );
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'my-bucket',
+          key: 'k',
+          body: stream([2 * CHUNK]),
+          chunkSize: CHUNK,
+        }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertStringIncludes(String(err.context.reason), '308');
+    asserts.assert(err.context.cleanupError instanceof GCSError);
+    asserts.assertEquals(
+      (err.context.cleanupError as GCSError).code,
+      'BACKEND_ERROR',
+    );
+  });
+
+  it('refuses to continue when the server persisted fewer bytes than were sent', async () => {
+    const c = client();
+    queueSession(c);
+    queue308(c, CHUNK - 1000); // short of the chunk actually sent
+    c.queueResponse(() => new Response(null, { status: 499 }), isSession);
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'my-bucket',
+          key: 'k',
+          body: stream([2 * CHUNK]),
+          chunkSize: CHUNK,
+        }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertStringIncludes(String(err.context.reason), 'persisted');
+    asserts.assertEquals(c.requests[2]!.method, 'DELETE');
+  });
+
+  it('streams a download after fetching metadata first, without buffering the body', async () => {
+    const c = client();
+    c.queueJSON(OBJECT, 200, (url) => !url.includes('alt=media'));
+    const bytes = new TextEncoder().encode('streamed body');
+    c.queueResponse(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(ctrl) {
+              ctrl.enqueue(bytes.subarray(0, 4));
+              ctrl.enqueue(bytes.subarray(4));
+              ctrl.close();
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/x-tar' } },
+        ),
+      (url) => url.includes('alt=media'),
+    );
+    const { body, metadata } = await c.getObjectStream({
+      bucket: 'my-bucket',
+      key: 'big.bin',
+    });
+    asserts.assertEquals(metadata.name, 'big.bin');
+    asserts.assert(body instanceof ReadableStream);
+    asserts.assertEquals(await new Response(body).text(), 'streamed body');
+    asserts.assertEquals(c.requests.length, 2);
+    asserts.assertStringIncludes(
+      c.requests[0]!.url,
+      '/storage/v1/b/my-bucket/o/big.bin',
+    );
+    asserts.assertEquals(c.requests[0]!.url.includes('alt=media'), false);
+    asserts.assertStringIncludes(c.requests[1]!.url, 'alt=media');
+  });
+
+  it('surfaces NOT_FOUND from the metadata request and never opens the media stream', async () => {
+    const c = client();
+    c.queueJSON(
+      {
+        error: {
+          code: 404,
+          message: 'No such object',
+          errors: [{ reason: 'notFound' }],
+        },
+      },
+      404,
+    );
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-bucket', key: 'missing.bin' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'NOT_FOUND');
+    asserts.assertEquals(c.requests.length, 1);
+  });
+
+  it('maps a media-stream error from its JSON body', async () => {
+    const c = client();
+    c.queueJSON(OBJECT, 200, (url) => !url.includes('alt=media'));
+    c.queueJSON(
+      {
+        error: {
+          code: 403,
+          message: 'nope',
+          errors: [{ reason: 'forbidden' }],
+        },
+      },
+      403,
+      (url) => url.includes('alt=media'),
+    );
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-bucket', key: 'big.bin' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'FORBIDDEN');
+  });
+});
+
 const credentials = {
   clientEmail: env.get('CONNECTOR_GCS_CLIENT_EMAIL'),
   privateKey: env.get('CONNECTOR_GCS_PRIVATE_KEY'),

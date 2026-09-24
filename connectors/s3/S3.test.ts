@@ -976,6 +976,338 @@ describe('S3 — credential custody', () => {
 });
 
 const env = envArgs();
+describe('S3 — streaming', () => {
+  const MIB = 1024 * 1024;
+  /** A byte stream delivered in awkward, non-part-aligned pieces. */
+  const stream = (pieces: number[]) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const size of pieces) c.enqueue(new Uint8Array(size));
+        c.close();
+      },
+    });
+  const xml = (body: string, status = 200) =>
+    new Response(body, {
+      status,
+      headers: { 'Content-Type': 'application/xml' },
+    });
+  const INITIATED =
+    `<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Bucket>examplebucket</Bucket><Key>big.bin</Key><UploadId>upload-1</UploadId></InitiateMultipartUploadResult>`;
+  const COMPLETED =
+    `<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Location>https://examplebucket.s3.us-east-1.amazonaws.com/big.bin</Location><Bucket>examplebucket</Bucket><Key>big.bin</Key><ETag>"3858f62230ac3c915f300c664312c11f-3"</ETag></CompleteMultipartUploadResult>`;
+  const partResponse = (etag: string) => () =>
+    new Response(null, { status: 200, headers: { ETag: etag } });
+
+  it('uploads a multi-part body as Create → UploadPart×N → Complete, one part in memory at a time', async () => {
+    const c = client();
+    c.enqueue(() => xml(INITIATED));
+    c.enqueue(partResponse('"etag-1"'));
+    c.enqueue(partResponse('"etag-2"'));
+    c.enqueue(partResponse('"etag-3"'));
+    c.enqueue(() =>
+      new Response(COMPLETED, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/xml',
+          'x-amz-version-id': 'v7',
+        },
+      })
+    );
+
+    const result = await c.putObjectStream({
+      bucket: 'examplebucket',
+      key: 'big.bin',
+      body: stream([3 * MIB, 4 * MIB, 5 * MIB]), // 12 MiB → 5 + 5 + 2
+      partSize: 5 * MIB,
+      contentType: 'application/x-tar',
+      metadata: { Owner: 'ops' },
+    });
+    asserts.assertEquals(result.etag, '"3858f62230ac3c915f300c664312c11f-3"');
+    asserts.assertEquals(result.versionId, 'v7');
+
+    asserts.assertEquals(c.requests.length, 5);
+    const [create, p1, p2, p3, complete] = c.requests as [
+      CapturedRequest,
+      CapturedRequest,
+      CapturedRequest,
+      CapturedRequest,
+      CapturedRequest,
+    ];
+    asserts.assertEquals(create.method, 'POST');
+    asserts.assertEquals(
+      create.url,
+      'https://examplebucket.s3.us-east-1.amazonaws.com/big.bin?uploads=',
+    );
+    asserts.assertEquals(create.headers['Content-Type'], 'application/x-tar');
+    asserts.assertEquals(create.headers['x-amz-meta-owner'], 'ops');
+    await assertValidSignature(create, 'POST');
+
+    const parts = [p1, p2, p3];
+    const sizes = await Promise.all(parts.map((r) => (r.body as Blob).size));
+    asserts.assertEquals(sizes, [5 * MIB, 5 * MIB, 2 * MIB]);
+    for (const [index, part] of parts.entries()) {
+      asserts.assertEquals(part.method, 'PUT');
+      asserts.assertEquals(
+        part.url,
+        `https://examplebucket.s3.us-east-1.amazonaws.com/big.bin?partNumber=${
+          index + 1
+        }&uploadId=upload-1`,
+      );
+      await assertValidSignature(part, 'PUT');
+    }
+
+    asserts.assertEquals(complete.method, 'POST');
+    asserts.assertEquals(
+      complete.url,
+      'https://examplebucket.s3.us-east-1.amazonaws.com/big.bin?uploadId=upload-1',
+    );
+    asserts.assertEquals(complete.headers['Content-Type'], 'application/xml');
+    asserts.assertEquals(
+      String(complete.body),
+      '<CompleteMultipartUpload>' +
+        '<Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag></Part>' +
+        '<Part><PartNumber>2</PartNumber><ETag>"etag-2"</ETag></Part>' +
+        '<Part><PartNumber>3</PartNumber><ETag>"etag-3"</ETag></Part>' +
+        '</CompleteMultipartUpload>',
+    );
+    await assertValidSignature(complete, 'POST');
+  });
+
+  it('sends a body that fits in one part as a plain putObject (no multipart round trips)', async () => {
+    const c = client();
+    c.enqueue(() =>
+      new Response(null, { status: 200, headers: { ETag: '"small"' } })
+    );
+    const result = await c.putObjectStream({
+      bucket: 'examplebucket',
+      key: 'small.bin',
+      body: stream([100, 200]),
+      contentType: 'application/octet-stream',
+    });
+    asserts.assertEquals(result.etag, '"small"');
+    asserts.assertEquals(c.requests.length, 1);
+    const req = c.requests[0]!;
+    asserts.assertEquals(req.method, 'PUT');
+    asserts.assertEquals(
+      req.url,
+      'https://examplebucket.s3.us-east-1.amazonaws.com/small.bin',
+    );
+    asserts.assertEquals((req.body as Blob).size, 300);
+    await assertValidSignature(req, 'PUT');
+  });
+
+  it('sends an empty stream as an empty putObject, and accepts a Blob body', async () => {
+    const c = client();
+    c.enqueue(() =>
+      new Response(null, { status: 200, headers: { ETag: '"empty"' } })
+    );
+    await c.putObjectStream({
+      bucket: 'examplebucket',
+      key: 'empty.bin',
+      body: stream([]),
+    });
+    asserts.assertEquals(c.requests.length, 1);
+    asserts.assertEquals((c.requests[0]!.body as Blob).size, 0);
+
+    const c2 = client();
+    c2.enqueue(() =>
+      new Response(null, { status: 200, headers: { ETag: '"blob"' } })
+    );
+    await c2.putObjectStream({
+      bucket: 'examplebucket',
+      key: 'blob.bin',
+      body: new Blob([new Uint8Array(10)]),
+    });
+    asserts.assertEquals((c2.requests[0]!.body as Blob).size, 10);
+  });
+
+  it('rejects a partSize below 5 MiB before any request is sent', async () => {
+    const c = client();
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'examplebucket',
+          key: 'k',
+          body: stream([10]),
+          partSize: 1024,
+        }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_PART_SIZE');
+    asserts.assertEquals(c.requests.length, 0);
+  });
+
+  it('aborts the upload when a part fails, and re-throws the part failure', async () => {
+    const c = client();
+    c.enqueue(() => xml(INITIATED));
+    c.enqueue(() =>
+      xml(
+        '<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>',
+        403,
+      )
+    );
+    c.enqueue(() => new Response(null, { status: 204 })); // abort
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'examplebucket',
+          key: 'big.bin',
+          body: stream([6 * MIB]),
+          partSize: 5 * MIB,
+        }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'ACCESS_DENIED');
+    asserts.assertEquals(c.requests.length, 3);
+    const abort = c.requests[2]!;
+    asserts.assertEquals(abort.method, 'DELETE');
+    asserts.assertEquals(
+      abort.url,
+      'https://examplebucket.s3.us-east-1.amazonaws.com/big.bin?uploadId=upload-1',
+    );
+    await assertValidSignature(abort, 'DELETE');
+  });
+
+  it('treats a 200 CompleteMultipartUpload with an embedded <Error> as the failure it is', async () => {
+    const c = client();
+    c.enqueue(() => xml(INITIATED));
+    c.enqueue(partResponse('"etag-1"'));
+    c.enqueue(partResponse('"etag-2"'));
+    c.enqueue(() =>
+      xml(
+        '<?xml version="1.0" encoding="UTF-8"?><Error><Code>InternalError</Code><Message>We encountered an internal error. Please try again.</Message><RequestId>656c</RequestId></Error>',
+        200,
+      )
+    );
+    c.enqueue(() =>
+      xml(
+        '<Error><Code>NoSuchUpload</Code><Message>The specified upload does not exist.</Message></Error>',
+        404,
+      )
+    ); // abort fails too
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'examplebucket',
+          key: 'big.bin',
+          body: stream([6 * MIB]),
+          partSize: 5 * MIB,
+        }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'INTERNAL_ERROR');
+    asserts.assertEquals(err.context.requestId, '656c');
+    asserts.assert(err.context.cleanupError instanceof S3Error);
+    asserts.assertEquals(
+      (err.context.cleanupError as S3Error).code,
+      'NO_SUCH_UPLOAD',
+    );
+    asserts.assertEquals(c.requests[4]!.method, 'DELETE');
+  });
+
+  it('fails RESPONSE_ERROR when an UploadPart response has no ETag, and still aborts', async () => {
+    const c = client();
+    c.enqueue(() => xml(INITIATED));
+    c.enqueue(() => new Response(null, { status: 200 }));
+    c.enqueue(() => new Response(null, { status: 204 }));
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'examplebucket',
+          key: 'big.bin',
+          body: stream([6 * MIB]),
+          partSize: 5 * MIB,
+        }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertEquals(err.context.partNumber, '1');
+    asserts.assertEquals(c.requests[2]!.method, 'DELETE');
+  });
+
+  it('addresses a DigitalOcean Spaces bucket by subdomain for every multipart step', async () => {
+    const c = client({
+      baseURL: 'https://nyc3.digitaloceanspaces.com',
+      forcePathStyle: false,
+      auth: { type: 'CUSTOM', ...CREDENTIALS, region: 'nyc3' },
+    });
+    c.enqueue(() => xml(INITIATED));
+    c.enqueue(partResponse('"e1"'));
+    c.enqueue(partResponse('"e2"'));
+    c.enqueue(() => xml(COMPLETED));
+    await c.putObjectStream({
+      bucket: 'examplebucket',
+      key: 'big.bin',
+      body: stream([6 * MIB]),
+      partSize: 5 * MIB,
+    });
+    for (const req of c.requests) {
+      asserts.assertStringIncludes(
+        req.url,
+        'https://examplebucket.nyc3.digitaloceanspaces.com/big.bin',
+      );
+    }
+  });
+
+  it('streams a download with header-derived metadata, without buffering the body', async () => {
+    const c = client();
+    const bytes = new TextEncoder().encode('streamed body');
+    c.enqueue(() =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(ctrl) {
+            ctrl.enqueue(bytes.subarray(0, 5));
+            ctrl.enqueue(bytes.subarray(5));
+            ctrl.close();
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/plain',
+            'Content-Length': String(bytes.byteLength),
+            ETag: '"abc"',
+            'Last-Modified': 'Wed, 24 Sep 2026 10:00:00 GMT',
+            'x-amz-meta-owner': 'ada',
+          },
+        },
+      )
+    );
+    const result = await c.getObjectStream({
+      bucket: 'examplebucket',
+      key: 'hello.txt',
+    });
+    asserts.assertEquals(result.contentType, 'text/plain');
+    asserts.assertEquals(result.contentLength, 13);
+    asserts.assertEquals(result.etag, '"abc"');
+    asserts.assertEquals(result.metadata, { owner: 'ada' });
+    asserts.assert(result.body instanceof ReadableStream);
+    asserts.assertEquals(
+      await new Response(result.body).text(),
+      'streamed body',
+    );
+    const req = c.requests[0]!;
+    asserts.assertEquals(req.method, 'GET');
+    await assertValidSignature(req, 'GET');
+  });
+
+  it('maps a streamed download error from its XML body, with the key placeholder populated', async () => {
+    const c = client();
+    c.enqueue(() =>
+      xml(
+        '<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>',
+        404,
+      )
+    );
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'examplebucket', key: 'missing.txt' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'NO_SUCH_KEY');
+    asserts.assertStringIncludes(err.message, 'missing.txt');
+  });
+});
+
 const credentials = {
   accessKeyId: env.get('CONNECTOR_S3_ACCESS_KEY_ID'),
   secretAccessKey: env.get('CONNECTOR_S3_SECRET_ACCESS_KEY'),

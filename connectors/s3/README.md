@@ -136,6 +136,40 @@ requests, only the read path) at
 `listObjects` still need the origin endpoint above, since the CDN mirror is
 read-only.
 
+## Large files
+
+```ts
+import { S3 } from '@tundraconnect/s3';
+
+const client = new S3({
+  auth: {
+    type: 'CUSTOM',
+    accessKeyId: 'AKIA...',
+    secretAccessKey: '...',
+    region: 'us-east-1',
+  },
+});
+
+// Upload from a stream as a multipart upload — one 8 MiB part in memory
+// at a time. Small bodies fall back to a single PUT automatically.
+const file = await Deno.open('backup.tar');
+await client.putObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+  body: file.readable,
+});
+
+// Download as a stream — nothing buffered.
+const { body } = await client.getObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+});
+await body.pipeTo((await Deno.create('restored.tar')).writable);
+```
+
+Works unchanged against DigitalOcean Spaces, Cloudflare R2 and MinIO. See
+[API → Streaming](docs/S3-API.md#streaming).
+
 ## License
 
 MIT

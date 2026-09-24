@@ -826,6 +826,197 @@ describe('AzureBlob — credential custody', () => {
   });
 });
 
+describe('AzureBlob — streaming', () => {
+  const client = () =>
+    new MockAzureBlob({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+    });
+  /** A byte stream delivered in awkward, non-block-aligned pieces. */
+  const stream = (pieces: number[]) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        let n = 0;
+        for (const size of pieces) {
+          const b = new Uint8Array(size);
+          for (let i = 0; i < size; i++) b[i] = (n++) & 0xff;
+          c.enqueue(b);
+        }
+        c.close();
+      },
+    });
+  const recorder = (c: MockAzureBlob, status = 201) => {
+    const seen: CapturedRequest[] = [];
+    c.setResponseFactory((req) => {
+      seen.push(req);
+      return new Response(null, {
+        status,
+        headers: {
+          etag: '"blk-etag"',
+          'last-modified': 'Wed, 24 Sep 2026 10:00:00 GMT',
+        },
+      });
+    });
+    return seen;
+  };
+
+  it('uploads a stream as Put Block per chunk then one Put Block List, holding one block at a time', async () => {
+    const c = client();
+    const seen = recorder(c);
+    const result = await c.putObjectStream({
+      bucket: 'my-container',
+      key: 'big.bin',
+      body: stream([700, 900, 900]),
+      blockSize: 1024,
+      contentType: 'application/x-tar',
+      metadata: { owner: 'ops' },
+    });
+    const blocks = seen.filter((r) =>
+      decodeURIComponent(r.url).includes('comp=block&')
+    );
+    const commit = seen.filter((r) =>
+      decodeURIComponent(r.url).includes('comp=blocklist')
+    );
+    asserts.assertEquals(blocks.length, 3);
+    asserts.assertEquals(commit.length, 1);
+    asserts.assertEquals(seen.indexOf(commit[0]!), 3); // commit is last
+    const sizes = await Promise.all(blocks.map((r) => (r.body as Blob).size));
+    asserts.assertEquals(sizes, [1024, 1024, 452]);
+    const ids = blocks.map((r) => new URL(r.url).searchParams.get('blockid'));
+    asserts.assertEquals(ids, [btoa('000000'), btoa('000001'), btoa('000002')]);
+    const xml = String(commit[0]!.body);
+    asserts.assertEquals(
+      xml,
+      `<?xml version="1.0" encoding="utf-8"?><BlockList>${
+        ids.map((i) => `<Latest>${i}</Latest>`).join('')
+      }</BlockList>`,
+    );
+    asserts.assertEquals(
+      commit[0]!.headers['x-ms-blob-content-type'],
+      'application/x-tar',
+    );
+    asserts.assertEquals(commit[0]!.headers['x-ms-meta-owner'], 'ops');
+    asserts.assertEquals(commit[0]!.method, 'PUT');
+    asserts.assertEquals(result.etag, '"blk-etag"');
+  });
+
+  it('commits an empty blob for an empty stream, and accepts a Blob body', async () => {
+    const c = client();
+    const seen = recorder(c);
+    await c.putObjectStream({
+      bucket: 'my-container',
+      key: 'empty.bin',
+      body: stream([]),
+    });
+    asserts.assertEquals(seen.length, 1);
+    asserts.assertStringIncludes(
+      String(seen[0]!.body),
+      '<BlockList></BlockList>',
+    );
+    const c2 = client();
+    const seen2 = recorder(c2);
+    await c2.putObjectStream({
+      bucket: 'my-container',
+      key: 'blob.bin',
+      body: new Blob([new Uint8Array(10)]),
+      blockSize: 4,
+    });
+    asserts.assertEquals(
+      seen2.filter((r) => decodeURIComponent(r.url).includes('comp=block&'))
+        .length,
+      3,
+    );
+  });
+
+  it('stops at the first failed block and never commits', async () => {
+    const c = client();
+    const seen: CapturedRequest[] = [];
+    c.setResponseFactory((req) => {
+      seen.push(req);
+      return new Response(null, {
+        status: 403,
+        headers: { 'x-ms-error-code': 'AuthenticationFailed' },
+      });
+    });
+    await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'my-container',
+          key: 'k',
+          body: stream([10]),
+          blockSize: 4,
+        }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(seen.length, 1);
+    asserts.assert(!seen.some((r) => r.url.includes('comp=blocklist')));
+  });
+
+  it('rejects a blank key before sending anything', async () => {
+    const c = client();
+    const seen = recorder(c);
+    await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'my-container',
+          key: '',
+          body: stream([1]),
+        }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(seen.length, 0);
+  });
+
+  it('downloads a blob as an unread stream with its headers', async () => {
+    const c = client();
+    const bytes = new Uint8Array([1, 2, 3, 4, 5]);
+    c.setResponseFactory(() =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(ctl) {
+            ctl.enqueue(bytes);
+            ctl.close();
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/octet-stream',
+            'content-length': '5',
+            etag: '"get-etag"',
+          },
+        },
+      )
+    );
+    const result = await c.getObjectStream({
+      bucket: 'my-container',
+      key: 'big.bin',
+    });
+    asserts.assertEquals(result.contentType, 'application/octet-stream');
+    asserts.assertEquals(result.contentLength, 5);
+    asserts.assertEquals(result.etag, '"get-etag"');
+    asserts.assertEquals(
+      new Uint8Array(await new Response(result.body).arrayBuffer()),
+      bytes,
+    );
+    asserts.assertEquals(c.lastRequest?.method, 'GET');
+  });
+
+  it('maps a failed streamed download to the vendor code', async () => {
+    const c = client();
+    c.setResponseFactory(() =>
+      new Response(null, {
+        status: 404,
+        headers: { 'x-ms-error-code': 'BlobNotFound' },
+      })
+    );
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-container', key: 'missing' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'BLOB_NOT_FOUND');
+  });
+});
+
 const env = envArgs();
 const credentials = {
   account: env.get('CONNECTOR_AZURE_BLOB_ACCOUNT'),

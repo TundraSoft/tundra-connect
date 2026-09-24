@@ -7,13 +7,16 @@ export {
   AzureBlob,
   type AzureBlobAuth,
   type AzureBlobOptions,
+  DEFAULT_BLOCK_SIZE,
   type DeleteObjectOptions,
   type GetObjectOptions,
+  type GetObjectStreamResult,
   type HeadObjectOptions,
   type ListedObject,
   type ListObjectsOptions,
   type ListObjectsResult,
   type PutObjectOptions,
+  type PutObjectStreamOptions,
 } from './AzureBlob.ts';
 
 // Export error handling

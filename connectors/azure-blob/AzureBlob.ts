@@ -9,6 +9,7 @@ import {
 } from '@restler';
 import { RESTlerRateLimitError } from '@restler/errors';
 import type { EventOptionKeys } from '@utils';
+import { encodeBase64 } from '@encoding';
 import { type BaseGuardian, GuardianError } from '@guardian';
 import {
   type BlobItemSchema,
@@ -182,6 +183,81 @@ export type ListObjectsResult = {
  * await client.deleteObject({ bucket: 'my-container', key: 'hello.txt' });
  * ```
  */
+/** Default Put Block size for {@link AzureBlob.putObjectStream}: 4 MiB. */
+export const DEFAULT_BLOCK_SIZE = 4 * 1024 * 1024;
+/** Azure's hard cap on blocks per blob. */
+const MAX_BLOCKS = 50_000;
+
+/** Arguments to {@link AzureBlob.putObjectStream}. */
+export type PutObjectStreamOptions = {
+  bucket: string;
+  key: string;
+  /** The data — a `ReadableStream` of bytes (the point of this method) or a `Blob`. */
+  body: ReadableStream<Uint8Array> | Blob;
+  contentType?: string;
+  metadata?: Record<string, string>;
+  /** Bytes per block. @default DEFAULT_BLOCK_SIZE (4 MiB); Azure allows up to 4000 MiB. */
+  blockSize?: number;
+};
+
+/** Result of {@link AzureBlob.getObjectStream}. */
+export type GetObjectStreamResult = {
+  /** The blob's bytes, unread. You OWN this stream: consume or `cancel()` it. */
+  body: ReadableStream<Uint8Array>;
+  contentType?: string;
+  contentLength?: number;
+  etag?: string;
+  lastModified?: string;
+};
+
+/**
+ * Reads `source` and yields it in `size`-byte pieces (the last may be
+ * shorter). Only one piece is held in memory at a time, which is what
+ * makes a multi-gigabyte upload possible without buffering the file.
+ */
+async function* chunked(
+  source: ReadableStream<Uint8Array>,
+  size: number,
+): AsyncGenerator<Uint8Array, void, unknown> {
+  const reader = source.getReader();
+  let pending: Uint8Array[] = [];
+  let pendingBytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending.push(value);
+      pendingBytes += value.byteLength;
+      while (pendingBytes >= size) {
+        const out = new Uint8Array(size);
+        let filled = 0;
+        while (filled < size) {
+          const head = pending[0]!;
+          const take = Math.min(head.byteLength, size - filled);
+          out.set(head.subarray(0, take), filled);
+          filled += take;
+          if (take === head.byteLength) pending.shift();
+          else pending[0] = head.subarray(take);
+        }
+        pendingBytes -= size;
+        yield out;
+      }
+    }
+    if (pendingBytes > 0) {
+      const out = new Uint8Array(pendingBytes);
+      let filled = 0;
+      for (const p of pending) {
+        out.set(p, filled);
+        filled += p.byteLength;
+      }
+      pending = [];
+      yield out;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export class AzureBlob extends RESTler<AzureBlobOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'AzureBlob';
@@ -731,6 +807,137 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
    *
    * @param context - The calling method's `bucket`/`key`, when known.
    */
+  /**
+   * Upload a large blob from a stream — `Put Block` per chunk, then one
+   * `Put Block List` — so only one block is ever in memory.
+   *
+   * A single `PUT` from a stream is not possible against Azure: `fetch`
+   * sends a stream body with chunked transfer encoding and no
+   * `Content-Length`, which Blob Storage rejects and which Shared Key
+   * cannot sign. Committing blocks is the vendor's own answer, and it
+   * doubles as resumability (uncommitted blocks live for seven days).
+   *
+   * Block ids are the zero-padded block index, base64 — Azure requires
+   * every id in one blob to be the same length. An empty stream commits an
+   * empty blob.
+   *
+   * @throws {AzureBlobError} `INVALID_BUCKET`/`INVALID_KEY` for a blank
+   * bucket/key, `REQUEST_BODY_TOO_LARGE` for a stream needing more than
+   * 50,000 blocks; otherwise the
+   * mapped vendor code from whichever block or the final commit failed.
+   *
+   * @example
+   * ```typescript
+   * const file = await Deno.open('backup.tar');
+   * const { etag } = await client.putObjectStream({
+   *   bucket: 'backups',
+   *   key: '2026-09/backup.tar',
+   *   body: file.readable,
+   *   contentType: 'application/x-tar',
+   * });
+   * ```
+   */
+  public async putObjectStream(
+    options: PutObjectStreamOptions,
+  ): Promise<PutObjectResultSchema> {
+    const { bucket, key, contentType, metadata } = options;
+    const blockSize = options.blockSize ?? DEFAULT_BLOCK_SIZE;
+    this.__requireBucketAndKey(bucket, key);
+    const source = options.body instanceof Blob
+      ? options.body.stream()
+      : options.body;
+    const path = this.__blobPath(bucket, key);
+    const ids: string[] = [];
+    for await (const block of chunked(source, blockSize)) {
+      if (ids.length >= MAX_BLOCKS) {
+        throw new AzureBlobError('REQUEST_BODY_TOO_LARGE', {
+          reason: `blob needs more than ${MAX_BLOCKS} blocks — raise blockSize`,
+        });
+      }
+      const blockId = encodeBase64(String(ids.length).padStart(6, '0'));
+      await this._makeRequest({
+        path,
+        method: 'PUT',
+        query: { comp: 'block', blockid: blockId },
+        contentType: 'BLOB',
+        payload: new Blob([block as BlobPart]),
+      }, this.__ctx({ bucket, key }));
+      ids.push(blockId);
+    }
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/xml',
+    };
+    if (contentType) headers['x-ms-blob-content-type'] = contentType;
+    if (metadata) {
+      for (const [name, value] of Object.entries(metadata)) {
+        headers[`x-ms-meta-${name}`] = value;
+      }
+    }
+    const list = `<?xml version="1.0" encoding="utf-8"?><BlockList>${
+      ids.map((id) => `<Latest>${id}</Latest>`).join('')
+    }</BlockList>`;
+    const resp = await this._makeRequest<unknown>({
+      path,
+      method: 'PUT',
+      query: { comp: 'blocklist' },
+      headers,
+      contentType: 'TEXT',
+      payload: list,
+    }, this.__ctx({ bucket, key }));
+    return this.__parse(resp, PutObjectResultSchemaObject, {
+      etag: resp.headers?.['etag'],
+      lastModified: resp.headers?.['last-modified'],
+    });
+  }
+
+  /**
+   * Download a blob as a stream — the body is never buffered, and the
+   * vendor-wide `timeout` bounds only the wait for headers; after that an
+   * idle timer (reset on every chunk) governs, so a large transfer runs as
+   * long as it needs while a stalled one still fails.
+   *
+   * You OWN the returned stream: consume it or `cancel()` it, or the
+   * connection stays open.
+   *
+   * @throws {AzureBlobError} `INVALID_BUCKET`/`INVALID_KEY` for a blank
+   * bucket/key; otherwise the mapped vendor code (`BLOB_NOT_FOUND`, …).
+   *
+   * @example
+   * ```typescript
+   * const { body, contentLength } = await client.getObjectStream({ bucket: 'backups', key: 'big.bin' });
+   * await body.pipeTo((await Deno.create('big.bin')).writable);
+   * ```
+   */
+  public async getObjectStream(
+    options: { bucket: string; key: string },
+  ): Promise<GetObjectStreamResult> {
+    const { bucket, key } = options;
+    this.__requireBucketAndKey(bucket, key);
+    const resp = await this._makeStreamRequest(
+      { path: this.__blobPath(bucket, key), method: 'GET' },
+      {
+        responseHandler: (response) =>
+          this.__toError(response, { bucket, key }),
+      },
+    );
+    if (!resp.body) {
+      // A streamed GET that settled without a body is malformed, not empty
+      // — an empty blob still yields a stream that closes immediately.
+      throw new AzureBlobError('RESPONSE_ERROR', { bucket, key });
+    }
+    const h = resp.headers ?? {};
+    const length = h['content-length'] !== undefined
+      ? Number(h['content-length'])
+      : undefined;
+    return {
+      body: resp.body,
+      contentType: h['content-type'],
+      contentLength: Number.isFinite(length) ? length : undefined,
+      etag: h['etag'],
+      lastModified: h['last-modified'],
+    };
+  }
+
   private __ctx(
     context: { bucket?: string; key?: string },
   ): Pick<RESTlerRequestOptions, 'responseHandler'> {

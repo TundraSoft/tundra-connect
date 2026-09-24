@@ -25,12 +25,12 @@ console.log(typedObject.name, typedObject.size);
 
 ## Response Schemas
 
-| Schema                            | Used by                                         |
-| --------------------------------- | ----------------------------------------------- |
-| `ObjectSchemaObject`              | `putObject`, `getObject`, `headObject`          |
-| `ListObjectsResponseSchemaObject` | `listObjects`                                   |
-| `ErrorEnvelopeSchemaObject`       | Vendor error envelopes                          |
-| `ErrorDetailSchemaObject`         | One entry of an error envelope's `errors` array |
+| Schema                            | Used by                                                                      |
+| --------------------------------- | ---------------------------------------------------------------------------- |
+| `ObjectSchemaObject`              | `putObject`, `putObjectStream`, `getObject`, `getObjectStream`, `headObject` |
+| `ListObjectsResponseSchemaObject` | `listObjects`                                                                |
+| `ErrorEnvelopeSchemaObject`       | Vendor error envelopes                                                       |
+| `ErrorDetailSchemaObject`         | One entry of an error envelope's `errors` array                              |
 
 ## Notes
 

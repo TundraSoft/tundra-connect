@@ -78,6 +78,33 @@ const { body } = await client.getObject({
 console.log(await body.text());
 ```
 
+## Large files
+
+```ts
+import { AzureBlob } from '@tundraconnect/azure-blob';
+
+const client = new AzureBlob({
+  auth: { type: 'CUSTOM', account: 'myaccount', accountKey: '...' },
+});
+
+// Upload from a stream — one 4 MiB block in memory at a time.
+const file = await Deno.open('backup.tar');
+await client.putObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+  body: file.readable,
+});
+
+// Download as a stream — nothing buffered.
+const { body } = await client.getObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+});
+await body.pipeTo((await Deno.create('restored.tar')).writable);
+```
+
+See [API → Streaming](docs/AzureBlob-API.md#streaming).
+
 ## License
 
 MIT

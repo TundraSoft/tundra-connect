@@ -48,13 +48,15 @@ option-bag parameter names, as this repository's other object-storage
 connects. GCS's own field names (`name`, `pageToken`/`nextPageToken`) are
 translated internally.
 
-| Method                  | GCS operation                                           |
-| ----------------------- | ------------------------------------------------------- |
-| `putObject(options)`    | Simple media upload — `POST {uploadBase}/b/{bucket}/o`  |
-| `getObject(options)`    | Metadata `GET` and `GET ...?alt=media`, concurrently    |
-| `deleteObject(options)` | `DELETE /b/{bucket}/o/{key}`                            |
-| `listObjects(options)`  | `GET /b/{bucket}/o`                                     |
-| `headObject(options)`   | Metadata-only `GET` (no real `HEAD` exists — see below) |
+| Method                     | GCS operation                                           |
+| -------------------------- | ------------------------------------------------------- |
+| `putObject(options)`       | Simple media upload — `POST {uploadBase}/b/{bucket}/o`  |
+| `getObject(options)`       | Metadata `GET` and `GET ...?alt=media`, concurrently    |
+| `deleteObject(options)`    | `DELETE /b/{bucket}/o/{key}`                            |
+| `listObjects(options)`     | `GET /b/{bucket}/o`                                     |
+| `headObject(options)`      | Metadata-only `GET` (no real `HEAD` exists — see below) |
+| `putObjectStream(options)` | Resumable upload — see [Streaming](#streaming)          |
+| `getObjectStream(options)` | Metadata `GET`, then `GET ...?alt=media` left unread    |
 
 ```ts
 import { GCS } from '@tundraconnect/gcs';
@@ -150,6 +152,85 @@ See [Errors](GCS-Errors.md) for failure handling and
 ---
 
 [← Back to GCS](../README.md)
+
+## Streaming
+
+### `putObjectStream(options)`
+
+Uploads a large object from a `ReadableStream<Uint8Array>` (or a `Blob`)
+via GCS's resumable upload protocol, so only one chunk is ever in memory:
+
+1. `POST {uploadBase}/b/{bucket}/o?uploadType=resumable&name={key}` with
+   `contentType`/`metadata` as the JSON metadata body (so, unlike
+   `putObject`, no follow-up `PATCH` is needed) and
+   `X-Upload-Content-Type`. The session URI comes back in `Location`.
+2. One `PUT` per chunk to that URI with `Content-Range: bytes a-b/*`. GCS
+   answers `308 Resume Incomplete` and echoes what it persisted in `Range`.
+3. The last chunk declares the total — `bytes a-b/total`, or `bytes */0`
+   for an empty body — and returns the created Object resource.
+
+Why not one streamed `POST`: `fetch` sends a stream body with chunked
+transfer encoding and no `Content-Length`, which the upload endpoint
+rejects. Resumable upload is GCS's own answer, and each chunk is a bounded
+`Blob` that RESTler can also retry on a 429.
+
+| Option          | Type                                 | Required | Description                                                                                                        |
+| --------------- | ------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `bucket`, `key` | `string`                             | yes      | Target bucket and object name.                                                                                     |
+| `body`          | `ReadableStream<Uint8Array> \| Blob` | yes      | The data — consumed once.                                                                                          |
+| `contentType`   | `string`                             | no       | Stored `Content-Type` (default `application/octet-stream`).                                                        |
+| `metadata`      | `Record<string,string>`              | no       | Custom metadata, folded into the session.                                                                          |
+| `chunkSize`     | `number`                             | no       | Bytes per chunk. Default 8 MiB (`DEFAULT_CHUNK_SIZE`); must be a multiple of 256 KiB (`RESUMABLE_CHUNK_MULTIPLE`). |
+
+Returns the same `ObjectSchema` as `putObject`. Behaviour worth knowing:
+
+- A `chunkSize` that isn't a positive multiple of 256 KiB is rejected up
+  front (`CONFIG_INVALID_CHUNK_SIZE`) — GCS only rejects a mis-sized chunk
+  once it arrives.
+- The source is consumed as it goes, so a chunk the server reports as only
+  partially persisted (its `Range` ends short of what was sent) cannot be
+  replayed. That — like a non-`308` answer to an intermediate chunk, or a
+  session response with no `Location` — is surfaced as `RESPONSE_ERROR`
+  rather than committing a truncated object.
+- Any failure after the session was opened triggers a best-effort `DELETE`
+  of the session URI so GCS drops it now rather than holding it for a
+  week. GCS acknowledges the cancel with `499`, which is treated as
+  success; a genuinely failed cancel is attached to the original error as
+  `getContextValue('cleanupError')`, which is always what's thrown.
+
+```ts
+const file = await Deno.open('backup.tar');
+const object = await client.putObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+  body: file.readable,
+  contentType: 'application/x-tar',
+});
+console.log(object.size);
+```
+
+### `getObjectStream({ bucket, key })`
+
+Fetches the metadata first (the same request `headObject` makes — so a
+missing or forbidden object surfaces its vendor-mapped error before any
+stream is opened), then issues `GET ...?alt=media` and hands its body back
+as an unread `ReadableStream<Uint8Array>`. Unlike `getObject` the two
+requests run serially: a stream opened concurrently would have to be
+cancelled whenever the metadata request lost the race, for no latency gain
+worth it on a transfer that is, by definition, large.
+
+Nothing is buffered; the vendor-wide `timeout` bounds only the wait for
+headers, after which an idle timer that resets on every chunk governs the
+transfer. **You own the stream** — consume it or `cancel()` it.
+
+```ts
+const { body, metadata } = await client.getObjectStream({
+  bucket: 'backups',
+  key: 'backup.tar',
+});
+console.log(metadata.size);
+await body.pipeTo((await Deno.create('backup.tar')).writable);
+```
 
 ## Service-account JWT
 

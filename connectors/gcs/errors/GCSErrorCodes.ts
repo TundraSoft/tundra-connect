@@ -31,6 +31,8 @@ export const GCSErrorCodes = {
     'Invalid GCS key: "${value}" — must not be empty or whitespace-only.',
   INVALID_OBJECT_KEY:
     'Invalid GCS ${field}: "${value}" — must not contain a "." or ".." path segment.',
+  CONFIG_INVALID_CHUNK_SIZE:
+    'putObjectStream chunkSize must be a positive multiple of ${multiple} bytes (256 KiB), got ${value}.',
 
   // Vendor error envelope, mapped from `error.errors[0].reason`
   // (https://cloud.google.com/storage/docs/json_api/v1/status-codes).
