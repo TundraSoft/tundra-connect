@@ -3,10 +3,10 @@ import {
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
+  RESTlerRateLimitError,
   type RESTlerResponse,
   RESTlerResponseValidationError,
 } from '@restler';
-import { RESTlerRateLimitError } from '@restler/errors';
 import type { EventOptionKeys } from '@utils';
 import {
   type CurrentWeatherSchema,

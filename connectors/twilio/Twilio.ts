@@ -5,11 +5,11 @@ import {
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
+  RESTlerRateLimitError,
   type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
 } from '@restler';
-import { RESTlerRateLimitError } from '@restler/errors';
 import type { EventOptionKeys } from '@utils';
 import { decodeHex, encodeBase64 } from '@encoding';
 import { constantTimeEqual, sha256, signHMAC } from '@crypt';
