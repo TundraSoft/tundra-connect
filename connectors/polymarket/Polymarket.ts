@@ -1271,7 +1271,11 @@ export class Polymarket extends RESTler<PolymarketOptions> {
         return await this.redeem(rest);
       }
       default:
-        throw new PolymarketError('UNKNOWN_ERROR');
+        // Unreachable from typed callers; a plain-JS caller can still pass
+        // anything, so name the action rather than fail anonymously.
+        throw new PolymarketError('UNKNOWN_ERROR', {
+          action: (request as { action?: unknown }).action,
+        });
     }
   }
 
