@@ -131,15 +131,18 @@ large uploads, and uncommitted blocks persist for seven days.
 
 Returns the same `PutObjectResultSchema` as `putObject`. Block ids are the
 zero-padded block index, base64-encoded (Azure requires equal-length ids).
-A failed block stops the upload before anything is committed.
+A failed block stops the upload before anything is committed, and the
+source stream is cancelled (best-effort) so a partially read file doesn't
+keep its handle open; a fully consumed source is never cancelled.
 
-### `getObjectStream({ bucket, key })`
+### `getObjectStream({ bucket, key, idleTimeout? })`
 
 Downloads a blob as an unread `ReadableStream<Uint8Array>` plus its
 `contentType`, `contentLength`, `etag` and `lastModified`. The body is
 never buffered; the vendor-wide `timeout` bounds only the wait for
 headers, after which an idle timer that resets on every chunk governs the
-transfer. **You own the stream** — consume it or `cancel()` it.
+transfer — `idleTimeout` (seconds, default 60) sets how long a stall is
+tolerated; raise it for very slow or bursty links. **You own the stream** — consume it or `cancel()` it.
 
 ```ts
 const { body } = await client.getObjectStream({

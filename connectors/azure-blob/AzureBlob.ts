@@ -214,6 +214,13 @@ export type GetObjectStreamResult = {
  * Reads `source` and yields it in `size`-byte pieces (the last may be
  * shorter). Only one piece is held in memory at a time, which is what
  * makes a multi-gigabyte upload possible without buffering the file.
+ *
+ * On normal completion the source is fully consumed and only the reader
+ * lock is released. When the generator is abandoned early (the consumer
+ * threw, or called `return()`), the source is also **cancelled** — a
+ * partially consumed stream left open keeps its underlying resource (a
+ * file handle, a socket) alive until GC. The cancel is best-effort and
+ * never masks the consumer's own error.
  */
 async function* chunked(
   source: ReadableStream<Uint8Array>,
@@ -222,6 +229,7 @@ async function* chunked(
   const reader = source.getReader();
   let pending: Uint8Array[] = [];
   let pendingBytes = 0;
+  let completed = false;
   try {
     while (true) {
       const { value, done } = await reader.read();
@@ -253,8 +261,15 @@ async function* chunked(
       pending = [];
       yield out;
     }
+    completed = true;
   } finally {
     reader.releaseLock();
+    if (!completed) {
+      await source.cancel(
+        new Error('upload abandoned before the source was fully read'),
+      )
+        .catch(() => {});
+    }
   }
 }
 
@@ -899,6 +914,9 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
    * You OWN the returned stream: consume it or `cancel()` it, or the
    * connection stays open.
    *
+   * @param options.idleTimeout - Seconds the transfer may stall (no chunk
+   * received) before the stream errors; the timer resets on every chunk.
+   * Defaults to RESTler's 60 s — raise it for very slow or bursty links.
    * @throws {AzureBlobError} `INVALID_BUCKET`/`INVALID_KEY` for a blank
    * bucket/key; otherwise the mapped vendor code (`BLOB_NOT_FOUND`, …).
    *
@@ -909,15 +927,16 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
    * ```
    */
   public async getObjectStream(
-    options: { bucket: string; key: string },
+    options: { bucket: string; key: string; idleTimeout?: number },
   ): Promise<GetObjectStreamResult> {
-    const { bucket, key } = options;
+    const { bucket, key, idleTimeout } = options;
     this.__requireBucketAndKey(bucket, key);
     const resp = await this._makeStreamRequest(
       { path: this.__blobPath(bucket, key), method: 'GET' },
       {
         responseHandler: (response) =>
           this.__toError(response, { bucket, key }),
+        idleTimeout,
       },
     );
     if (!resp.body) {

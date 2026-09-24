@@ -1015,6 +1015,90 @@ describe('AzureBlob — streaming', () => {
     );
     asserts.assertEquals(err.code, 'BLOB_NOT_FOUND');
   });
+  /** A source stream that records whether it was cancelled — what a file-backed stream's close hook would see. */
+  const cancellable = (pieces: number[]) => {
+    const state = { cancelled: false, reason: undefined as unknown };
+    // Pull-based, like a file stream: pieces are produced on demand and the
+    // stream only closes once the last one has been handed over. (An
+    // eagerly filled-and-closed stream is already "closed" by the time an
+    // upload fails, and cancelling a closed stream never reaches the sink.)
+    let next = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (next < pieces.length) c.enqueue(new Uint8Array(pieces[next++]!));
+        else c.close();
+      },
+      cancel(reason) {
+        state.cancelled = true;
+        state.reason = reason;
+      },
+    });
+    return { stream, state };
+  };
+
+  it('cancels the source stream when a block fails, and leaves it unlocked', async () => {
+    const c = client();
+    let n = 0;
+    c.setResponseFactory(() =>
+      new Response(null, {
+        status: ++n === 2 ? 500 : 201,
+        headers: { etag: '"e"' },
+      })
+    );
+    const { stream, state } = cancellable([1000, 1000, 1000, 1000, 1000]);
+    await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'my-container',
+          key: 'k',
+          body: stream,
+          blockSize: 1024,
+        }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(state.cancelled, true);
+    asserts.assertEquals(stream.locked, false);
+  });
+
+  it('does not cancel a source it fully consumed', async () => {
+    const c = client();
+    recorder(c);
+    const { stream, state } = cancellable([3000]);
+    await c.putObjectStream({
+      bucket: 'my-container',
+      key: 'k',
+      body: stream,
+      blockSize: 1024,
+    });
+    asserts.assertEquals(state.cancelled, false);
+    asserts.assertEquals(stream.locked, false);
+  });
+
+  it('passes idleTimeout through to the stream request', async () => {
+    class Spy extends MockAzureBlob {
+      public seen: unknown[] = [];
+      protected override _makeStreamRequest(
+        ...args: Parameters<AzureBlob['_makeStreamRequest']>
+      ): ReturnType<AzureBlob['_makeStreamRequest']> {
+        this.seen.push(args[1]);
+        return super._makeStreamRequest(...args);
+      }
+    }
+    const c = new Spy({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+    });
+    c.setResponseFactory(() => new Response('x', { status: 200 }));
+    const { body } = await c.getObjectStream({
+      bucket: 'my-container',
+      key: 'k',
+      idleTimeout: 600,
+    });
+    await body.cancel();
+    asserts.assertEquals(
+      (c.seen[0] as { idleTimeout?: number }).idleTimeout,
+      600,
+    );
+  });
 });
 
 const env = envArgs();

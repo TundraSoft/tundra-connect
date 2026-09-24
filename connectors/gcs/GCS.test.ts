@@ -1555,6 +1555,101 @@ describe('GCS — streaming', () => {
     );
     asserts.assertEquals(err.code, 'FORBIDDEN');
   });
+  /** A source stream that records whether it was cancelled — what a file-backed stream's close hook would see. */
+  const cancellable = (pieces: number[]) => {
+    const state = { cancelled: false, reason: undefined as unknown };
+    // Pull-based, like a file stream: pieces are produced on demand and the
+    // stream only closes once the last one has been handed over. (An
+    // eagerly filled-and-closed stream is already "closed" by the time an
+    // upload fails, and cancelling a closed stream never reaches the sink.)
+    let next = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (next < pieces.length) c.enqueue(new Uint8Array(pieces[next++]!));
+        else c.close();
+      },
+      cancel(reason) {
+        state.cancelled = true;
+        state.reason = reason;
+      },
+    });
+    return { stream, state };
+  };
+
+  it('cancels the source stream when a chunk fails, and leaves it unlocked', async () => {
+    const c = client();
+    queueSession(c);
+    queue308(c, CHUNK - 1);
+    c.queueJSON(
+      {
+        error: {
+          code: 500,
+          message: 'boom',
+          errors: [{ reason: 'backendError' }],
+        },
+      },
+      500,
+      isSession,
+    );
+    c.queueResponse(() => new Response(null, { status: 499 }), isSession);
+    const { stream, state } = cancellable([CHUNK, CHUNK, CHUNK, CHUNK]);
+    await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'my-bucket',
+          key: 'k',
+          body: stream,
+          chunkSize: CHUNK,
+        }),
+      GCSError,
+    );
+    asserts.assertEquals(state.cancelled, true);
+    asserts.assertEquals(stream.locked, false);
+  });
+
+  it('does not cancel a source it fully consumed', async () => {
+    const c = client();
+    queueSession(c);
+    queue308(c, CHUNK - 1);
+    c.queueJSON(OBJECT, 200, isSession);
+    const { stream, state } = cancellable([CHUNK + 10]);
+    await c.putObjectStream({
+      bucket: 'my-bucket',
+      key: 'big.bin',
+      body: stream,
+      chunkSize: CHUNK,
+    });
+    asserts.assertEquals(state.cancelled, false);
+    asserts.assertEquals(stream.locked, false);
+  });
+
+  it('passes idleTimeout through to the media stream request', async () => {
+    class Spy extends MockGCS {
+      public seen: unknown[] = [];
+      protected override _makeStreamRequest(
+        ...args: Parameters<GCS['_makeStreamRequest']>
+      ): ReturnType<GCS['_makeStreamRequest']> {
+        this.seen.push(args[1]);
+        return super._makeStreamRequest(...args);
+      }
+    }
+    const c = new Spy({ auth: { type: 'BEARER', token: 't' } });
+    c.queueJSON(OBJECT, 200, (url) => !url.includes('alt=media'));
+    c.queueResponse(
+      () => new Response('x', { status: 200 }),
+      (url) => url.includes('alt=media'),
+    );
+    const { body } = await c.getObjectStream({
+      bucket: 'my-bucket',
+      key: 'big.bin',
+      idleTimeout: 600,
+    });
+    await body.cancel();
+    asserts.assertEquals(
+      (c.seen[0] as { idleTimeout?: number }).idleTimeout,
+      600,
+    );
+  });
 });
 
 const credentials = {

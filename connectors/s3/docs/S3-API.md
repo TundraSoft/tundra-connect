@@ -143,6 +143,9 @@ Behaviour worth knowing:
   billing for — the parts that landed. The original error is re-thrown; if
   the abort itself failed, that error is attached as
   `getContextValue('cleanupError')`.
+- On any failure the source stream is **cancelled** (best-effort), not just
+  unlocked — a partially consumed file stream would otherwise keep its
+  handle open until GC. A fully consumed source is never cancelled.
 - S3 can fail CompleteMultipartUpload _after_ sending a `200 OK` header, in
   which case the body is an `<Error>` document. That is detected and mapped
   (`INTERNAL_ERROR`, `NO_SUCH_UPLOAD`, `INVALID_PART`, ...) exactly like an
@@ -158,14 +161,15 @@ const { etag } = await client.putObjectStream({
 });
 ```
 
-### `getObjectStream({ bucket, key })`
+### `getObjectStream({ bucket, key, idleTimeout? })`
 
 Downloads an object as an unread `ReadableStream<Uint8Array>` plus the
 same header-derived metadata `getObject` returns (`contentType`,
 `contentLength`, `etag`, `lastModified`, `versionId`, `metadata`). The
 body is never buffered; the vendor-wide `timeout` bounds only the wait
 for headers, after which an idle timer that resets on every chunk governs
-the transfer. An error response's small XML body is read and mapped
+the transfer — `idleTimeout` (seconds, default 60) sets how long a stall
+is tolerated; raise it for very slow or bursty links. An error response's small XML body is read and mapped
 exactly as for `getObject`. **You own the stream** — consume it or
 `cancel()` it.
 

@@ -1306,6 +1306,134 @@ describe('S3 — streaming', () => {
     asserts.assertEquals(err.code, 'NO_SUCH_KEY');
     asserts.assertStringIncludes(err.message, 'missing.txt');
   });
+  /** A source stream that records whether it was cancelled — what a file-backed stream's close hook would see. */
+  const cancellable = (pieces: number[]) => {
+    const state = { cancelled: false, reason: undefined as unknown };
+    // Pull-based, like a file stream: pieces are produced on demand and the
+    // stream only closes once the last one has been handed over. (An
+    // eagerly filled-and-closed stream is already "closed" by the time an
+    // upload fails, and cancelling a closed stream never reaches the sink.)
+    let next = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (next < pieces.length) c.enqueue(new Uint8Array(pieces[next++]!));
+        else c.close();
+      },
+      cancel(reason) {
+        state.cancelled = true;
+        state.reason = reason;
+      },
+    });
+    return { stream, state };
+  };
+
+  it('cancels the source stream when a part fails inside the for-await, and leaves it unlocked', async () => {
+    const c = client();
+    c.enqueue(() => xml(INITIATED));
+    c.enqueue(partResponse('"etag-1"'));
+    c.enqueue(partResponse('"etag-2"'));
+    c.enqueue(() =>
+      xml(
+        '<Error><Code>InternalError</Code><Message>boom</Message></Error>',
+        500,
+      )
+    );
+    c.enqueue(() => new Response(null, { status: 204 })); // abort
+    const { stream, state } = cancellable(Array(16).fill(MIB)); // 5 + 5 + 5 + 1 → fails on part 3
+    await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'examplebucket',
+          key: 'big.bin',
+          body: stream,
+          partSize: 5 * MIB,
+        }),
+      S3Error,
+    );
+    asserts.assertEquals(state.cancelled, true);
+    asserts.assertEquals(stream.locked, false);
+  });
+
+  it('cancels the source stream when the FIRST part fails (pulled before the for-await)', async () => {
+    const c = client();
+    c.enqueue(() => xml(INITIATED));
+    c.enqueue(() =>
+      xml(
+        '<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>',
+        403,
+      )
+    );
+    c.enqueue(() => new Response(null, { status: 204 })); // abort
+    // 12 x 1 MiB: the two look-ahead parts consume 10 MiB, leaving data
+    // outstanding when part 1's upload is rejected.
+    const { stream, state } = cancellable(Array(12).fill(MIB));
+    const err = await asserts.assertRejects(
+      () =>
+        c.putObjectStream({
+          bucket: 'examplebucket',
+          key: 'big.bin',
+          body: stream,
+          partSize: 5 * MIB,
+        }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'ACCESS_DENIED');
+    asserts.assertEquals(state.cancelled, true);
+    asserts.assertEquals(stream.locked, false);
+  });
+
+  it('does not cancel a source it fully consumed', async () => {
+    const c = client();
+    c.enqueue(() => xml(INITIATED));
+    c.enqueue(partResponse('"etag-1"'));
+    c.enqueue(partResponse('"etag-2"'));
+    c.enqueue(() => xml(COMPLETED));
+    const { stream, state } = cancellable([6 * MIB]);
+    await c.putObjectStream({
+      bucket: 'examplebucket',
+      key: 'big.bin',
+      body: stream,
+      partSize: 5 * MIB,
+    });
+    asserts.assertEquals(state.cancelled, false);
+    asserts.assertEquals(stream.locked, false);
+
+    const c2 = client();
+    c2.enqueue(() =>
+      new Response(null, { status: 200, headers: { ETag: '"small"' } })
+    );
+    const small = cancellable([10]);
+    await c2.putObjectStream({
+      bucket: 'examplebucket',
+      key: 'small.bin',
+      body: small.stream,
+    });
+    asserts.assertEquals(small.state.cancelled, false);
+  });
+
+  it('passes idleTimeout through to the stream request', async () => {
+    class Spy extends MockS3 {
+      public seen: unknown[] = [];
+      protected override _makeStreamRequest(
+        ...args: Parameters<S3['_makeStreamRequest']>
+      ): ReturnType<S3['_makeStreamRequest']> {
+        this.seen.push(args[1]);
+        return super._makeStreamRequest(...args);
+      }
+    }
+    const c = new Spy({ auth: { type: 'CUSTOM', ...CREDENTIALS } });
+    c.enqueue(() => new Response('x', { status: 200 }));
+    const { body } = await c.getObjectStream({
+      bucket: 'examplebucket',
+      key: 'k',
+      idleTimeout: 600,
+    });
+    await body.cancel();
+    asserts.assertEquals(
+      (c.seen[0] as { idleTimeout?: number }).idleTimeout,
+      600,
+    );
+  });
 });
 
 const credentials = {

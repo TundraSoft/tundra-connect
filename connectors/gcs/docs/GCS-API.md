@@ -192,6 +192,9 @@ Returns the same `ObjectSchema` as `putObject`. Behaviour worth knowing:
   replayed. That — like a non-`308` answer to an intermediate chunk, or a
   session response with no `Location` — is surfaced as `RESPONSE_ERROR`
   rather than committing a truncated object.
+- On any failure the source stream is **cancelled** (best-effort), not just
+  unlocked — a partially consumed file stream would otherwise keep its
+  handle open until GC. A fully consumed source is never cancelled.
 - Any failure after the session was opened triggers a best-effort `DELETE`
   of the session URI so GCS drops it now rather than holding it for a
   week. GCS acknowledges the cancel with `499`, which is treated as
@@ -209,7 +212,7 @@ const object = await client.putObjectStream({
 console.log(object.size);
 ```
 
-### `getObjectStream({ bucket, key })`
+### `getObjectStream({ bucket, key, idleTimeout? })`
 
 Fetches the metadata first (the same request `headObject` makes — so a
 missing or forbidden object surfaces its vendor-mapped error before any
@@ -221,7 +224,9 @@ worth it on a transfer that is, by definition, large.
 
 Nothing is buffered; the vendor-wide `timeout` bounds only the wait for
 headers, after which an idle timer that resets on every chunk governs the
-transfer. **You own the stream** — consume it or `cancel()` it.
+transfer — `idleTimeout` (seconds, default 60) sets how long a stall is
+tolerated; raise it for very slow or bursty links. **You own the stream**
+— consume it or `cancel()` it.
 
 ```ts
 const { body, metadata } = await client.getObjectStream({

@@ -145,8 +145,14 @@ export type GetObjectStreamResult = ObjectMetadataSchema & {
 /**
  * Re-chunks a byte stream into exact `size`-byte blocks (the last one may
  * be shorter), regardless of how the source happens to be chunked. Holds
- * at most `size` bytes plus one source chunk in memory. Releases the
- * reader lock when done or abandoned.
+ * at most `size` bytes plus one source chunk in memory.
+ *
+ * On normal completion the source is fully consumed and only the reader
+ * lock is released. When the generator is abandoned early (the consumer
+ * threw, or called `return()`), the source is also **cancelled** — a
+ * partially consumed stream left open keeps its underlying resource (a
+ * file handle, a socket) alive until GC. The cancel is best-effort and
+ * never masks the consumer's own error.
  */
 async function* chunked(
   source: ReadableStream<Uint8Array>,
@@ -155,6 +161,7 @@ async function* chunked(
   const reader = source.getReader();
   let pending: Uint8Array[] = [];
   let pendingBytes = 0;
+  let completed = false;
   try {
     while (true) {
       const { value, done } = await reader.read();
@@ -186,8 +193,15 @@ async function* chunked(
       pending = [];
       yield out;
     }
+    completed = true;
   } finally {
     reader.releaseLock();
+    if (!completed) {
+      await source.cancel(
+        new Error('upload abandoned before the source was fully read'),
+      )
+        .catch(() => {});
+    }
   }
 }
 
@@ -746,6 +760,12 @@ export class S3 extends RESTler<S3Options> {
         versionId: resp.headers?.['x-amz-version-id'],
       });
     } catch (error) {
+      // The first two parts are pulled with explicit `next()` calls, so a
+      // failure there leaves the generator suspended and holding the
+      // source's reader lock — finalize it so `chunked()` releases the
+      // lock and cancels the source (a `for await` body does this on its
+      // own; these two calls happen before the loop).
+      await parts.return(undefined).catch(() => {});
       // Best-effort abort so S3 stops storing (and billing) the parts that
       // did land. The caller's signal must stay the original failure — a
       // failed abort is attached to it, never thrown in its place.
@@ -776,6 +796,9 @@ export class S3 extends RESTler<S3Options> {
    *
    * @param options.bucket - Bucket name.
    * @param options.key - Object key.
+   * @param options.idleTimeout - Seconds the transfer may stall (no chunk
+   * received) before the stream errors; the timer resets on every chunk.
+   * Defaults to RESTler's 60 s — raise it for very slow or bursty links.
    * @returns Promise resolving to {@link GetObjectStreamResult}.
    * @throws {S3Error} `NO_SUCH_KEY`, `NO_SUCH_BUCKET`, `ACCESS_DENIED`, or
    * another mapped code (an error response's small XML body is read and
@@ -792,9 +815,9 @@ export class S3 extends RESTler<S3Options> {
    * ```
    */
   public async getObjectStream(
-    options: { bucket: string; key: string },
+    options: { bucket: string; key: string; idleTimeout?: number },
   ): Promise<GetObjectStreamResult> {
-    const { bucket, key } = options;
+    const { bucket, key, idleTimeout } = options;
     this.__assertBucket(bucket);
     this.__assertKey(key);
     const { baseURL, path } = this._target(bucket, key);
@@ -804,6 +827,7 @@ export class S3 extends RESTler<S3Options> {
       {
         responseHandler: (response) =>
           this.__toError(response, { bucket, key }),
+        idleTimeout,
       },
     );
     if (!resp.body) {

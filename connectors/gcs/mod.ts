@@ -16,6 +16,7 @@ export {
   type GCSServiceAccountAuth,
   type GetObjectOptions,
   type GetObjectResult,
+  type GetObjectStreamOptions,
   type GetObjectStreamResult,
   type HeadObjectOptions,
   type ListObjectsOptions,
