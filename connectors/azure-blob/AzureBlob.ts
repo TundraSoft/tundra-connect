@@ -7,6 +7,7 @@ import {
   type RESTlerResponse,
   RESTlerResponseValidationError,
 } from '@restler';
+import { RESTlerRateLimitError } from '@restler/errors';
 import type { EventOptionKeys } from '@utils';
 import { type BaseGuardian, GuardianError } from '@guardian';
 import {
@@ -763,45 +764,6 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
    * @throws {AzureBlobError} `RESPONSE_ERROR` when the body fails validation.
    * @private
    */
-  /**
-   * Seconds a caller should wait before retrying after a 429, read from
-   * whichever rate-limit header the vendor sent: `Retry-After` (delta
-   * seconds or an HTTP-date), `X-RateLimit-Reset-After` (delta seconds),
-   * or `X-RateLimit-Reset` / `RateLimit-Reset` (a Unix epoch in seconds or
-   * milliseconds). `undefined` when none is present or parseable — the
-   * value is only ever what the vendor said, never a guess.
-   */
-  private static __retryAfterSeconds(
-    headers: Record<string, string> | undefined,
-    nowMs = Date.now(),
-  ): number | undefined {
-    if (!headers) return undefined;
-    const get = (name: string): string | undefined =>
-      headers[name] ?? headers[name.toLowerCase()];
-    const retryAfter = get('retry-after');
-    if (retryAfter !== undefined) {
-      const n = Number(retryAfter);
-      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
-      const at = Date.parse(retryAfter);
-      if (Number.isFinite(at)) {
-        return Math.max(0, Math.ceil((at - nowMs) / 1000));
-      }
-    }
-    const resetAfter = get('x-ratelimit-reset-after');
-    if (resetAfter !== undefined) {
-      const n = Number(resetAfter);
-      if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
-    }
-    const reset = get('x-ratelimit-reset') ?? get('ratelimit-reset');
-    if (reset !== undefined) {
-      const n = Number(reset);
-      if (Number.isFinite(n) && n > 0) {
-        const epochMs = n > 1e12 ? n : n * 1000;
-        return Math.max(0, Math.ceil((epochMs - nowMs) / 1000));
-      }
-    }
-    return undefined;
-  }
 
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
@@ -818,6 +780,16 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
       if (err instanceof RESTlerResponseValidationError) {
         throw new AzureBlobError('RESPONSE_ERROR', {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
+        }, err);
+      }
+      if (err instanceof RESTlerRateLimitError) {
+        // RESTler retried once (maxRetryWait) and was throttled again, or the
+        // vendor's hint exceeded the cap — surface it as this connect's own
+        // error, with the hint and whether a wait already happened.
+        throw new AzureBlobError('SERVER_BUSY', {
+          status: 429,
+          retryAfterSeconds: err.getContextValue('retryAfter'),
+          retried: err.getContextValue('retried'),
         }, err);
       }
       throw err;
@@ -862,7 +834,7 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
     const mapped = vendorCode ? VENDOR_ERROR_CODE_MAP[vendorCode] : undefined;
     throw new AzureBlobError(mapped ?? 'RESPONSE_ERROR', {
       status,
-      retryAfterSeconds: AzureBlob.__retryAfterSeconds(response.headers),
+      retryAfterSeconds: this._parseRetryAfter(response.headers),
       vendorCode,
       vendorMessage,
       body: mapped || response.body instanceof Blob ? undefined : response.body,

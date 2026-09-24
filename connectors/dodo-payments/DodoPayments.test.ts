@@ -979,6 +979,8 @@ describe('DodoPayments — verifyWebhook (Standard Webhooks)', () => {
 });
 
 describe('DodoPayments — retryAfterSeconds on a 429', () => {
+  // Parsing is RESTler's (`_parseRetryAfter`, restler >= 1.3.0); these pin
+  // that the connect surfaces its verdict, not a copy of the logic.
   const rateLimited = async (headers: Record<string, string>) => {
     const c = new MockDodo({ auth: AUTH });
     c.setResponseWithHeaders(
@@ -993,9 +995,9 @@ describe('DodoPayments — retryAfterSeconds on a 429', () => {
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     return err.getContextValue('retryAfterSeconds') as number | undefined;
   };
-  it('reads Retry-After in delta seconds, rounding up', async () => {
+  it('reads Retry-After as delta seconds, verbatim', async () => {
     asserts.assertEquals(await rateLimited({ 'retry-after': '12' }), 12);
-    asserts.assertEquals(await rateLimited({ 'retry-after': '7.2' }), 8);
+    asserts.assertEquals(await rateLimited({ 'retry-after': '7.2' }), 7.2);
   });
   it('reads Retry-After as an HTTP-date relative to now', async () => {
     const s = await rateLimited({
@@ -1003,19 +1005,15 @@ describe('DodoPayments — retryAfterSeconds on a 429', () => {
     });
     asserts.assert(s !== undefined && s >= 25 && s <= 31, String(s));
   });
-  it('falls back to X-RateLimit-Reset-After, then to an epoch X-RateLimit-Reset in seconds or ms', async () => {
+  it('falls back to X-RateLimit-Reset-After, then an epoch-seconds X-RateLimit-Reset', async () => {
     asserts.assertEquals(
       await rateLimited({ 'x-ratelimit-reset-after': '4' }),
       4,
     );
-    const s1 = await rateLimited({
+    const s = await rateLimited({
       'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 45),
     });
-    asserts.assert(s1 !== undefined && s1 >= 40 && s1 <= 46, String(s1));
-    const s2 = await rateLimited({
-      'x-ratelimit-reset': String(Date.now() + 20_000),
-    });
-    asserts.assert(s2 !== undefined && s2 >= 15 && s2 <= 21, String(s2));
+    asserts.assert(s !== undefined && s >= 40 && s <= 46, String(s));
   });
   it('is undefined — never a guess — when the vendor sent no usable hint', async () => {
     asserts.assertEquals(await rateLimited({}), undefined);
@@ -1023,6 +1021,67 @@ describe('DodoPayments — retryAfterSeconds on a 429', () => {
       await rateLimited({ 'retry-after': 'soon' }),
       undefined,
     );
+  });
+});
+
+describe('DodoPayments — maxRetryWait (RESTler retries once)', () => {
+  class RetryingMock extends MockDodo {
+    public slept: number[] = [];
+    protected override _sleep(ms: number): Promise<void> {
+      this.slept.push(ms);
+      return Promise.resolve();
+    }
+  }
+  it('waits the hinted time and succeeds on the second attempt', async () => {
+    const c = new RetryingMock({ auth: AUTH, maxRetryWait: 60 });
+    let calls = 0;
+    c.setResponseWithHeaders(
+      { code: 'RATE_LIMITED', message: 'slow down' },
+      429,
+      { 'retry-after': '2' },
+    );
+    const first = c['_fetch'];
+    c['_fetch'] = (input, init) => {
+      calls++;
+      return calls === 1 ? first(input, init) : Promise.resolve(
+        new Response(JSON.stringify(PAYMENT), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    };
+    const payment = await c.getPayment('pay_1');
+    asserts.assertEquals(payment.payment_id, 'pay_1');
+    asserts.assertEquals(calls, 2);
+    asserts.assertEquals(c.slept, [2000]);
+  });
+  it("surfaces an exhausted retry as this connect's RATE_LIMITED, with retried: true", async () => {
+    const c = new RetryingMock({ auth: AUTH, maxRetryWait: 60 });
+    c.setResponseWithHeaders({ code: 'RATE_LIMITED', message: 'still' }, 429, {
+      'retry-after': '1',
+    });
+    const err = await asserts.assertRejects(
+      () => c.getPayment('pay_1'),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(c.slept, [1000]);
+  });
+  it('refuses to wait longer than the cap and throws immediately, retried: false', async () => {
+    const c = new RetryingMock({ auth: AUTH, maxRetryWait: 5 });
+    c.setResponseWithHeaders({ code: 'RATE_LIMITED', message: 'long' }, 429, {
+      'retry-after': '120',
+    });
+    const err = await asserts.assertRejects(
+      () => c.getPayment('pay_1'),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(c.slept, []);
   });
 });
 

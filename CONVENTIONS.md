@@ -422,3 +422,14 @@ ships no standalone codec and `signHMAC` is hex-only — re-encode with
 `@encoding` rather than by hand. And UUID v4, where a vendor mandates it
 (Kalshi's `client_order_id`), is `crypto.randomUUID()` — the platform
 primitive is the sanctioned choice, not a gap in `@id`.
+
+## Rate limits
+
+Do not parse `Retry-After`-style headers in a connect. RESTler (>= 1.3.0)
+owns that: read the hint with `this._parseRetryAfter(response.headers)` in
+`__toError` and attach it as `retryAfterSeconds` on the `RATE_LIMITED`
+error. A caller opts into RESTler's single retry with `maxRetryWait`; when
+that retry is exhausted (or the hint exceeds the cap) RESTler throws
+`RESTlerRateLimitError` _before_ `_responseHandler`, so `__requestAndValidate`
+must rewrap it as the connect's own `RATE_LIMITED` (with `retryAfterSeconds`
+and `retried`) — every connect still throws exactly one error class.

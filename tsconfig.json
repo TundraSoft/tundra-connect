@@ -46,6 +46,9 @@
       ],
       "@encoding": [
         "./node_modules/@std/encoding/mod.ts"
+      ],
+      "@restler/errors": [
+        "./node_modules/@tundralibs/restler/errors/mod.ts"
       ]
     }
   },
