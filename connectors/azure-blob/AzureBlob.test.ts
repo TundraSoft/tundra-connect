@@ -1331,6 +1331,28 @@ describe('AzureBlob — config, validation and guards', () => {
   });
 });
 
+describe('AzureBlob — reconfiguration', () => {
+  it('re-validates auth set after construction (a subclass calling _setOption)', () => {
+    class Reconfigurable extends MockAzureBlob {
+      reconfigure(account: string): void {
+        this._setOption('auth', {
+          type: 'CUSTOM',
+          account,
+          accountKey: ACCOUNT_KEY,
+        });
+      }
+    }
+    const c = new Reconfigurable({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+    });
+    const err = asserts.assertThrows(
+      () => c.reconfigure('   '),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_ACCOUNT');
+  });
+});
+
 describe({
   name: 'AzureBlob — live',
   // Deno only: Bun/Node each get their own connect-wide live-test job

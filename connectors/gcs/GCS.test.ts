@@ -1800,6 +1800,43 @@ describe('GCS — response validation', () => {
   });
 });
 
+describe('GCS — service-account token exchange failures', () => {
+  const serviceAccount = () =>
+    new MockGCS({
+      auth: {
+        type: 'CUSTOM',
+        clientEmail: 'svc@x.iam.gserviceaccount.com',
+        privateKey: TEST_PRIVATE_KEY_PEM,
+      },
+    });
+  it('reports a malformed token response as TOKEN_EXCHANGE_FAILED with the validation detail', async () => {
+    const c = serviceAccount();
+    c['_fetch'] = () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ unexpected: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    const err = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'b', key: 'a' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'TOKEN_EXCHANGE_FAILED');
+    asserts.assertExists(err.getContextValue('responseError'));
+  });
+  it('reports a transport failure as TOKEN_EXCHANGE_FAILED ("request failed")', async () => {
+    const c = serviceAccount();
+    c['_fetch'] = () => Promise.reject(new TypeError('network down'));
+    const err = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'b', key: 'a' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'TOKEN_EXCHANGE_FAILED');
+    asserts.assertEquals(err.getContextValue('reason'), 'request failed');
+  });
+});
+
 describe({
   name: 'GCS — live',
   // Deno only: Bun/Node each get their own connect-wide live-test job

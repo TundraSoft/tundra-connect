@@ -1599,6 +1599,48 @@ describe('Polymarket — order-path validation and rate limiting', () => {
     );
     asserts.assertEquals(err.code, 'RESPONSE_ERROR');
   });
+  it('fails RESPONSE_ERROR when a 2xx order response is not an object', async () => {
+    const c = routed(() =>
+      new Response(JSON.stringify('not an object'), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    const err = await asserts.assertRejects(
+      () => c.submitOrder(order),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+});
+
+describe('Polymarket — status mapping and the order() dispatcher', () => {
+  it('maps 401 to AUTH_FAILED and an undocumented non-5xx status to UNKNOWN_ERROR', async () => {
+    for (
+      const [status, code] of [[401, 'AUTH_FAILED'], [
+        418,
+        'UNKNOWN_ERROR',
+      ]] as const
+    ) {
+      const c = new MockPolymarket();
+      c.setResponse({ error: 'nope' }, status);
+      const err = await asserts.assertRejects(
+        () => c.getMarkets(),
+        PolymarketError,
+      );
+      asserts.assertEquals(err.code, code);
+    }
+  });
+
+  it('names an unknown action instead of failing anonymously (plain-JS callers)', async () => {
+    const c = new MockPolymarket();
+    const err = await asserts.assertRejects(
+      () => c.order({ action: 'HOLD' } as never),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'UNKNOWN_ERROR');
+    asserts.assertEquals(err.getContextValue('action'), 'HOLD');
+  });
 });
 
 describe({

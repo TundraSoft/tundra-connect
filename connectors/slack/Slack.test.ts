@@ -738,6 +738,43 @@ describe('Slack — maxRetryWait (RESTler rate-limit retry)', () => {
   });
 });
 
+describe('Slack — local request validation', () => {
+  const guarded = () => {
+    const c = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    c['_fetch'] = () => {
+      throw new Error('validation should have rejected before any request');
+    };
+    return c;
+  };
+  type Client = ReturnType<typeof guarded>;
+  const cases: Array<[string, (c: Client) => Promise<unknown>]> = [
+    [
+      'updateMessage with a blank channel',
+      (c) => c.updateMessage({ channel: '', ts: '1.2', text: 'x' }),
+    ],
+    [
+      'deleteMessage with a blank channel',
+      (c) => c.deleteMessage({ channel: '', ts: '1.2' }),
+    ],
+    [
+      'listConversations with limit 0',
+      (c) => c.listConversations({ limit: 0 }),
+    ],
+    ['getUserInfo with a blank user', (c) => c.getUserInfo('')],
+  ];
+  for (const [name, call] of cases) {
+    it(`rejects ${name} as INVALID_REQUEST, sending nothing`, async () => {
+      const err = await asserts.assertRejects(
+        () => call(guarded()),
+        SlackError,
+      );
+      asserts.assertEquals(err.code, 'INVALID_REQUEST');
+    });
+  }
+});
+
 describe({
   name: 'Slack — live (read-only)',
   // Deno only: Bun/Node each get their own connect-wide live-test job (see

@@ -1112,6 +1112,34 @@ describe('Kalshi — response validation', () => {
   });
 });
 
+describe('Kalshi — unmapped statuses and off-tick prices', () => {
+  it('maps an undocumented non-5xx status to UNKNOWN_ERROR', async () => {
+    const c = new MockKalshi();
+    c.setResponse({}, 418);
+    const err = await asserts.assertRejects(() => c.getMarkets(), KalshiError);
+    asserts.assertEquals(err.code, 'UNKNOWN_ERROR');
+  });
+
+  it('rejects an off-tick price as ORDER_REJECTED before sending', async () => {
+    const c = authedClient();
+    c['_fetch'] = () => {
+      throw new Error('validation should have rejected before any request');
+    };
+    const err = await asserts.assertRejects(
+      () =>
+        c.submitOrder({
+          ticker: 'T',
+          side: 'BUY',
+          price: 0.555,
+          count: 1,
+          orderType: 'GTC',
+        }),
+      KalshiError,
+    );
+    asserts.assertEquals(err.code, 'ORDER_REJECTED');
+  });
+});
+
 describe({
   name: 'Kalshi — live',
   ignore: !liveTestsEnabled,

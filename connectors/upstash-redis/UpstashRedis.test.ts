@@ -660,6 +660,35 @@ describe('UpstashRedis — maxRetryWait (RESTler rate-limit retry)', () => {
   });
 });
 
+describe('UpstashRedis — local validation and unparseable errors', () => {
+  it('rejects exists() with no keys as INVALID_REQUEST, sending nothing', async () => {
+    const c = client();
+    c['_fetch'] = () => {
+      throw new Error('validation should have rejected before any request');
+    };
+    const err = await asserts.assertRejects(
+      () => c.exists([]),
+      UpstashRedisError,
+    );
+    asserts.assertEquals(err.code, 'INVALID_REQUEST');
+  });
+
+  it('still reports a 400 as COMMAND_ERROR when its body is not the error envelope', async () => {
+    const c = client();
+    c.setResponse('not the envelope', 400, { 'content-type': 'text/plain' });
+    const err = await asserts.assertRejects(
+      () => c.get('foo'),
+      UpstashRedisError,
+    );
+    asserts.assertEquals(err.code, 'COMMAND_ERROR');
+    asserts.assertEquals(
+      err.getContextValue('reason'),
+      'unrecognized error body',
+    );
+    asserts.assertEquals(err.getContextValue('body'), 'not the envelope');
+  });
+});
+
 describe({
   name: 'UpstashRedis — live',
   ignore: !liveTestsEnabled,

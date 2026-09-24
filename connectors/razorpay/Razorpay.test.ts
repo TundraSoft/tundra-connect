@@ -877,6 +877,33 @@ describe('Razorpay — maxRetryWait (RESTler rate-limit retry)', () => {
   });
 });
 
+describe('Razorpay — unknown error codes', () => {
+  const envelope = {
+    error: {
+      code: 'A_CODE_RAZORPAY_ADDS_LATER',
+      description: 'Something new.',
+    },
+  };
+  it('falls back to SERVER_ERROR for an unknown code on an unmapped 5xx', async () => {
+    const c = new MockRazorpay({ auth: validAuth });
+    c.setResponse(envelope, 599);
+    const err = await asserts.assertRejects(
+      () => c.getPayment('pay_29QQoUBi66xm2f'),
+      RazorpayError,
+    );
+    asserts.assertEquals(err.code, 'SERVER_ERROR');
+  });
+  it('falls back to BAD_REQUEST_ERROR for an unknown code on an unmapped 4xx', async () => {
+    const c = new MockRazorpay({ auth: validAuth });
+    c.setResponse(envelope, 418);
+    const err = await asserts.assertRejects(
+      () => c.getPayment('pay_29QQoUBi66xm2f'),
+      RazorpayError,
+    );
+    asserts.assertEquals(err.code, 'BAD_REQUEST_ERROR');
+  });
+});
+
 describe({
   name: 'Razorpay — live',
   ignore: !liveTestsEnabled,

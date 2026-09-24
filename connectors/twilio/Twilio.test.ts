@@ -1299,6 +1299,25 @@ describe('Twilio — config validation', () => {
   });
 });
 
+describe('Twilio — reconfiguration', () => {
+  it('re-validates accountSid set after construction (a subclass calling _setOption)', () => {
+    class Reconfigurable extends MockTwilio {
+      reconfigure(accountSid: string): void {
+        this._setOption('accountSid', accountSid);
+      }
+    }
+    const c = new Reconfigurable({
+      accountSid: ACCOUNT_SID,
+      authToken: 'token',
+    });
+    const err = asserts.assertThrows(
+      () => c.reconfigure('not-a-sid'),
+      TwilioError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_ACCOUNT_SID');
+  });
+});
+
 describe({
   name: 'Twilio — live (read-only)',
   // Deno only: Bun/Node each get their own connect-wide live-test job (see

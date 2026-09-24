@@ -1027,6 +1027,36 @@ describe('PayPal — maxRetryWait (RESTler rate-limit retry)', () => {
   });
 });
 
+describe('PayPal — token exchange failures', () => {
+  it('times out a hung token exchange as TOKEN_EXCHANGE_FAILED ("timeout")', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(
+            init.signal?.reason ?? new DOMException('Aborted', 'AbortError'),
+          );
+        });
+      });
+    const err = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
+    asserts.assertEquals(err.code, 'TOKEN_EXCHANGE_FAILED');
+    asserts.assertEquals(err.getContextValue('reason'), 'timeout');
+  });
+  it('reports a transport failure as TOKEN_EXCHANGE_FAILED ("request failed")', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH });
+    c['_fetch'] = () => Promise.reject(new TypeError('network down'));
+    const err = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
+    asserts.assertEquals(err.code, 'TOKEN_EXCHANGE_FAILED');
+    asserts.assertEquals(err.getContextValue('reason'), 'request failed');
+  });
+});
+
 describe({
   name: 'PayPal — live',
   ignore: !liveTestsEnabled,

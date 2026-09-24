@@ -635,6 +635,46 @@ describe('Algolia — config validation', () => {
   });
 });
 
+describe('Algolia — local validation and reconfiguration', () => {
+  it('rejects a browse request with hitsPerPage < 1 as INVALID_REQUEST, sending nothing', async () => {
+    const c = new MockAlgolia({ auth: AUTH });
+    c['_fetch'] = () => {
+      throw new Error('validation should have rejected before any request');
+    };
+    const err = await asserts.assertRejects(
+      () => c.browseObjects('products', { hitsPerPage: 0 }),
+      AlgoliaError,
+    );
+    asserts.assertEquals(err.code, 'INVALID_REQUEST');
+  });
+
+  it('rejects a negative taskID as INVALID_REQUEST, sending nothing', async () => {
+    const c = new MockAlgolia({ auth: AUTH });
+    c['_fetch'] = () => {
+      throw new Error('validation should have rejected before any request');
+    };
+    const err = await asserts.assertRejects(
+      () => c.waitTask('products', -1),
+      AlgoliaError,
+    );
+    asserts.assertEquals(err.code, 'INVALID_REQUEST');
+  });
+
+  it('re-validates auth set after construction (a subclass calling _setOption)', () => {
+    class Reconfigurable extends MockAlgolia {
+      reconfigure(auth: typeof AUTH): void {
+        this._setOption('auth', auth);
+      }
+    }
+    const c = new Reconfigurable({ auth: AUTH });
+    const err = asserts.assertThrows(
+      () => c.reconfigure({ ...AUTH, applicationId: '   ' }),
+      AlgoliaError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_APPLICATION_ID');
+  });
+});
+
 describe({
   name: 'Algolia — live',
   // Deno only: Bun/Node each get their own connect-wide live-test job
