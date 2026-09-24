@@ -1237,6 +1237,23 @@ describe('AzureBlob — config, validation and guards', () => {
     }
   });
 
+  it('fails RESPONSE_ERROR instead of returning an empty listing for a body with no EnumerationResults root', async () => {
+    const c = new MockAzureBlob({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+    });
+    c.setResponseFactory(() =>
+      new Response(JSON.stringify({ unexpected: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'my-container' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
   it('fails RESPONSE_ERROR when a listed blob is missing its required Name', async () => {
     const c = new MockAzureBlob({
       auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },

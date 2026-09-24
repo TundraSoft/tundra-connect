@@ -55,6 +55,11 @@ export type ListBlobsResponseSchema = {
 /**
  * Schema for a normalized Azure Blob Storage List Blobs response.
  *
+ * Tolerant of the elements the XML parser drops or nulls (an empty
+ * `<Blobs/>`, a single `<Blob>` parsed as a bare object, an empty
+ * `<NextMarker/>`), but strict about the `<EnumerationResults>` root: a body
+ * without one fails validation instead of reading as an empty container.
+ *
  * @example
  * ```typescript
  * import { ListBlobsResponseSchemaObject } from '@tundraconnect/azure-blob/schemas';
@@ -68,7 +73,18 @@ export const ListBlobsResponseSchemaObject: BaseGuardian<
   ListBlobsResponseSchema
 > = Guardian.preprocess(
   (raw) => {
-    const doc = (raw ?? {}) as Record<string, unknown>;
+    // Every List Blobs response has an <EnumerationResults> root — even an
+    // empty container's (the XML parser turns an empty root into `null`,
+    // which is fine). A body with no such root at all is not a List Blobs
+    // response: pass it through untouched so the schema rejects it, rather
+    // than letting the defaults below read it as an empty container.
+    if (
+      raw === null || typeof raw !== 'object' ||
+      !('EnumerationResults' in raw)
+    ) {
+      return raw;
+    }
+    const doc = raw as Record<string, unknown>;
     const enumeration = (doc.EnumerationResults ?? {}) as Record<
       string,
       unknown

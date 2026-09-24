@@ -122,4 +122,19 @@ describe('AzureBlob.schema.response.ListBlobsResponse', () => {
     asserts.assertEquals(error, null);
     asserts.assertEquals(parsed?.nextMarker, 'abc123==');
   });
+  it('reads a present-but-empty <EnumerationResults/> root as an empty listing', () => {
+    // The XML parser turns an empty root element into `null`.
+    const result = ListBlobsResponseSchemaObject.parse({
+      EnumerationResults: null,
+    });
+    asserts.assertEquals(result.blobs, []);
+    asserts.assertEquals(result.nextMarker, undefined);
+  });
+
+  it('rejects a body with no <EnumerationResults> root instead of reading it as an empty container', () => {
+    for (const body of [{}, { unexpected: true }, 'not xml', null, undefined]) {
+      const [error] = ListBlobsResponseSchemaObject.safeParse(body);
+      asserts.assertExists(error, `accepted ${JSON.stringify(body)}`);
+    }
+  });
 });

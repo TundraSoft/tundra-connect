@@ -56,6 +56,12 @@ nextMarker?: string }` before validating the normalized fields — see
 its co-located test for fixtures verified directly against the XML parser's
 real output.
 
+The normalization is tolerant of elements the parser drops or nulls (an
+empty `<Blobs/>` or `<NextMarker/>`, even an empty root), but it requires
+the `<EnumerationResults>` root itself: a body without one is rejected with
+`RESPONSE_ERROR` rather than being read as an empty container, so a
+malformed response can never pass for "no blobs".
+
 `Get Blob`'s binary body is requested with `responseType: 'BLOB'` and
 validated with `Guardian.instanceof(Blob)`.
 
