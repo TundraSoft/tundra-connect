@@ -1,8 +1,10 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
+  type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
   RESTlerTimeoutError,
@@ -1339,6 +1341,45 @@ export class GCS extends RESTler<GCSOptions> {
   }
 
   /**
+   * Single choke point for turning RESTler's `RESTlerRateLimitError` (thrown
+   * when `maxRetryWait` is set and the retry was exhausted, or the vendor's
+   * hint exceeded the cap) into this connect's own `RATE_LIMIT_EXCEEDED`. Every request
+   * path goes through here — including methods whose result comes from
+   * response headers and so call `_makeRequest` directly instead of
+   * {@link __requestAndValidate}. Rewrapping only inside that helper
+   * leaked the raw RESTler error from those methods.
+   *
+   * `_makeStreamRequest` needs no counterpart: as of
+   * `@tundralibs/restler@1.3.0` the stream path never consults
+   * `maxRetryWait` — a 429 there goes straight to {@link __toError}, which
+   * maps it by status.
+   */
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__rateLimitError(err);
+    }
+  }
+
+  /**
+   * `err` rewrapped as `RATE_LIMIT_EXCEEDED` when it is a `RESTlerRateLimitError` — with
+   * the vendor's hint and whether RESTler already waited once — or returned
+   * unchanged otherwise.
+   */
+  private __rateLimitError(err: unknown): unknown {
+    if (!(err instanceof RESTlerRateLimitError)) return err;
+    return new GCSError('RATE_LIMIT_EXCEEDED', {
+      status: 429,
+      retryAfterSeconds: err.getContextValue('retryAfter'),
+      retried: err.getContextValue('retried'),
+    }, err);
+  }
+
+  /**
    * Makes a request and validates its response body against `guard`,
    * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
    * into a {@link GCSError} — so `GCSError` stays the only thing a public
@@ -1372,16 +1413,6 @@ export class GCS extends RESTler<GCSOptions> {
       if (err instanceof RESTlerResponseValidationError) {
         throw new GCSError('RESPONSE_ERROR', {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
-        }, err);
-      }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new GCSError('RATE_LIMIT_EXCEEDED', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
         }, err);
       }
       throw err;

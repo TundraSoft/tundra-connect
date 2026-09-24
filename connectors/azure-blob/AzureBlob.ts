@@ -1,4 +1,5 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerEndpoint,
   type RESTlerEvents,
@@ -49,6 +50,18 @@ const VENDOR_ERROR_CODE_MAP: Record<string, AzureBlobErrorCode> = {
   RequestBodyTooLarge: 'REQUEST_BODY_TOO_LARGE',
   ServerBusy: 'SERVER_BUSY',
   InternalError: 'INTERNAL_ERROR',
+};
+
+/**
+ * Throttle statuses mapped when the response carries no `x-ms-error-code`
+ * (and no parseable error body) — e.g. a streamed download, where RESTler
+ * does not apply `maxRetryWait` and the raw status is all there is. Azure
+ * documents throttling as `503 ServerBusy`; some front ends send a bare 429.
+ * Other statuses stay `RESPONSE_ERROR` rather than being guessed at.
+ */
+const THROTTLE_STATUS_FALLBACK: Record<number, AzureBlobErrorCode> = {
+  429: 'SERVER_BUSY',
+  503: 'SERVER_BUSY',
 };
 
 /**
@@ -276,6 +289,12 @@ async function* chunked(
 export class AzureBlob extends RESTler<AzureBlobOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'AzureBlob';
+
+  /**
+   * Block cap enforced by {@link putObjectStream} — Azure's own 50,000-block
+   * limit. Protected so a test can lower it rather than push 50,000 blocks.
+   */
+  protected readonly _maxBlocks: number = MAX_BLOCKS;
 
   /** Azure Storage account name configured for this client. */
   get account(): string {
@@ -864,9 +883,10 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
     const path = this.__blobPath(bucket, key);
     const ids: string[] = [];
     for await (const block of chunked(source, blockSize)) {
-      if (ids.length >= MAX_BLOCKS) {
+      if (ids.length >= this._maxBlocks) {
         throw new AzureBlobError('REQUEST_BODY_TOO_LARGE', {
-          reason: `blob needs more than ${MAX_BLOCKS} blocks — raise blockSize`,
+          reason:
+            `blob needs more than ${this._maxBlocks} blocks — raise blockSize`,
         });
       }
       const blockId = encodeBase64(String(ids.length).padStart(6, '0'));
@@ -966,6 +986,45 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
   }
 
   /**
+   * Single choke point for turning RESTler's `RESTlerRateLimitError` (thrown
+   * when `maxRetryWait` is set and the retry was exhausted, or the vendor's
+   * hint exceeded the cap) into this connect's own `SERVER_BUSY`. Every request
+   * path goes through here — including methods whose result comes from
+   * response headers and so call `_makeRequest` directly instead of
+   * {@link __requestAndValidate}. Rewrapping only inside that helper
+   * leaked the raw RESTler error from those methods.
+   *
+   * `_makeStreamRequest` needs no counterpart: as of
+   * `@tundralibs/restler@1.3.0` the stream path never consults
+   * `maxRetryWait` — a 429 there goes straight to {@link __toError}, which
+   * maps it by status.
+   */
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__rateLimitError(err);
+    }
+  }
+
+  /**
+   * `err` rewrapped as `SERVER_BUSY` when it is a `RESTlerRateLimitError` — with
+   * the vendor's hint and whether RESTler already waited once — or returned
+   * unchanged otherwise.
+   */
+  private __rateLimitError(err: unknown): unknown {
+    if (!(err instanceof RESTlerRateLimitError)) return err;
+    return new AzureBlobError('SERVER_BUSY', {
+      status: 429,
+      retryAfterSeconds: err.getContextValue('retryAfter'),
+      retried: err.getContextValue('retried'),
+    }, err);
+  }
+
+  /**
    * Makes a request and validates its response BODY against `guard`,
    * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
    * into an {@link AzureBlobError} — so `AzureBlobError` stays the only
@@ -1008,16 +1067,6 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
         }, err);
       }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new AzureBlobError('SERVER_BUSY', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
-        }, err);
-      }
       throw err;
     }
   }
@@ -1057,7 +1106,9 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
       vendorMessage = envelope?.message;
     }
 
-    const mapped = vendorCode ? VENDOR_ERROR_CODE_MAP[vendorCode] : undefined;
+    const mapped =
+      (vendorCode ? VENDOR_ERROR_CODE_MAP[vendorCode] : undefined) ??
+        (status !== null ? THROTTLE_STATUS_FALLBACK[status] : undefined);
     throw new AzureBlobError(mapped ?? 'RESPONSE_ERROR', {
       status,
       retryAfterSeconds: this._parseRetryAfter(response.headers),

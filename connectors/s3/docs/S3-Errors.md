@@ -38,7 +38,7 @@ console.log(S3ErrorCodes.NO_SUCH_KEY);
 | `INVALID_PART_ORDER`              | Vendor `InvalidPartOrder` (400) — the completion manifest wasn't in ascending part order.                                 |
 | `METHOD_NOT_ALLOWED`              | Vendor `MethodNotAllowed` (405).                                                                                          |
 | `INTERNAL_ERROR`                  | Vendor `InternalError` (500).                                                                                             |
-| `SLOW_DOWN`                       | Vendor `SlowDown` (503) — back off and retry.                                                                             |
+| `SLOW_DOWN`                       | Vendor `SlowDown` (503), or a bare 429 from an S3-compatible store (R2, MinIO, Spaces) — back off and retry.              |
 | `SERVICE_UNAVAILABLE`             | Vendor `ServiceUnavailable` (503), or the fallback when no error body/status is recognized.                               |
 | `UNKNOWN_ERROR`                   | An undocumented vendor `<Error><Code>` or an unrecognized constructor code — the original is preserved as `originalCode`. |
 
@@ -76,3 +76,8 @@ documented `<Error>` XML body and maps from the actual vendor `Code`.
 ## Backing off after a 429
 
 `getContextValue('retryAfterSeconds')` — seconds to wait before retrying, parsed by RESTler (`_parseRetryAfter`) from `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, `RateLimit-Reset`, or an epoch-seconds `X-RateLimit-Reset`; `undefined` when none was present — never a guess. Pass `maxRetryWait` (seconds) at construction to have RESTler wait the hinted time and retry **once**; if that attempt is throttled too, or the hint exceeds the cap, the error is raised with `retried` set so you know whether a wait already happened. Present on `RATE_LIMITED` when the vendor sent a usable hint.
+
+**Streamed downloads are not retried.** As of `@tundralibs/restler@1.3.0`,
+`getObjectStream()` never consults `maxRetryWait`: a throttled stream
+fails immediately with `SLOW_DOWN` (mapped by status), with no wait and no
+`retried` context. Retry it yourself using `retryAfterSeconds`.

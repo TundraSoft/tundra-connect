@@ -1,8 +1,10 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
+  type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
 } from '@restler';
@@ -101,12 +103,12 @@ export type VerifyWebhookOptions = {
 
 export class SendGrid extends RESTler<SendGridOptions> {
   /** Vendor identifier for this API client. */
-  public readonly vendor: string = 'SendGrid';
-
   /** The configured SendGrid API key, read from `auth.token`. */
   get apiKey(): string {
     return this._getOption('auth').token;
   }
+
+  public readonly vendor: string = 'SendGrid';
 
   /**
    * Creates a new SendGrid client instance.
@@ -291,6 +293,40 @@ export class SendGrid extends RESTler<SendGridOptions> {
   }
 
   /**
+   * Single choke point for turning RESTler's `RESTlerRateLimitError` (thrown
+   * when `maxRetryWait` is set and the retry was exhausted, or the vendor's
+   * hint exceeded the cap) into this connect's own `RATE_LIMITED`. Every request
+   * path goes through here — including methods whose result comes from
+   * response headers and so call `_makeRequest` directly instead of
+   * {@link __requestAndValidate}. Rewrapping only inside that helper
+   * leaked the raw RESTler error from those methods.
+   */
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__rateLimitError(err);
+    }
+  }
+
+  /**
+   * `err` rewrapped as `RATE_LIMITED` when it is a `RESTlerRateLimitError` — with
+   * the vendor's hint and whether RESTler already waited once — or returned
+   * unchanged otherwise.
+   */
+  private __rateLimitError(err: unknown): unknown {
+    if (!(err instanceof RESTlerRateLimitError)) return err;
+    return new SendGridError('RATE_LIMITED', {
+      status: 429,
+      retryAfterSeconds: err.getContextValue('retryAfter'),
+      retried: err.getContextValue('retried'),
+    }, err);
+  }
+
+  /**
    * Verifies a SendGrid Event Webhook delivery and returns the PARSED event
    * array.
    *
@@ -404,16 +440,6 @@ export class SendGrid extends RESTler<SendGridOptions> {
       if (err instanceof RESTlerResponseValidationError) {
         throw new SendGridError('RESPONSE_ERROR', {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
-        }, err);
-      }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new SendGridError('RATE_LIMITED', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
         }, err);
       }
       throw err;

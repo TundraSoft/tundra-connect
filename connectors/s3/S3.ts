@@ -1,4 +1,5 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerEndpoint,
   type RESTlerEvents,
@@ -224,6 +225,9 @@ const STATUS_FALLBACK: Record<number, S3ErrorCode> = {
   405: 'METHOD_NOT_ALLOWED',
   412: 'PRECONDITION_FAILED',
   416: 'INVALID_RANGE',
+  // S3 itself throttles with `503 SlowDown` (mapped above via the <Error>
+  // body), but S3-compatible stores (R2, MinIO, Spaces) may send a bare 429.
+  429: 'SLOW_DOWN',
   500: 'INTERNAL_ERROR',
   503: 'SERVICE_UNAVAILABLE',
 };
@@ -281,6 +285,13 @@ const STATUS_FALLBACK: Record<number, S3ErrorCode> = {
 export class S3 extends RESTler<S3Options> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'S3';
+
+  /**
+   * Part cap enforced by {@link putObjectStream} — S3's own 10,000-part
+   * limit. Protected so a test can lower it: reaching the real cap needs
+   * 50 GB of 5 MiB parts.
+   */
+  protected readonly _maxParts: number = MAX_PARTS;
 
   /** Signing region configured for this client. */
   get region(): string {
@@ -686,11 +697,12 @@ export class S3 extends RESTler<S3Options> {
 
     const etags: string[] = [];
     const uploadPart = async (bytes: Uint8Array): Promise<void> => {
-      if (etags.length >= MAX_PARTS) {
+      if (etags.length >= this._maxParts) {
         throw new S3Error('ENTITY_TOO_LARGE', {
           bucket,
           key,
-          reason: `object needs more than ${MAX_PARTS} parts — raise partSize`,
+          reason:
+            `object needs more than ${this._maxParts} parts — raise partSize`,
         });
       }
       const partNumber = String(etags.length + 1);
@@ -1149,6 +1161,45 @@ export class S3 extends RESTler<S3Options> {
   }
 
   /**
+   * Single choke point for turning RESTler's `RESTlerRateLimitError` (thrown
+   * when `maxRetryWait` is set and the retry was exhausted, or the vendor's
+   * hint exceeded the cap) into this connect's own `SLOW_DOWN`. Every request
+   * path goes through here — including methods whose result comes from
+   * response headers and so call `_makeRequest` directly instead of
+   * {@link __requestAndValidate}. Rewrapping only inside that helper
+   * leaked the raw RESTler error from those methods.
+   *
+   * `_makeStreamRequest` needs no counterpart: as of
+   * `@tundralibs/restler@1.3.0` the stream path never consults
+   * `maxRetryWait` — a 429 there goes straight to {@link __toError}, which
+   * maps it by status.
+   */
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__rateLimitError(err);
+    }
+  }
+
+  /**
+   * `err` rewrapped as `SLOW_DOWN` when it is a `RESTlerRateLimitError` — with
+   * the vendor's hint and whether RESTler already waited once — or returned
+   * unchanged otherwise.
+   */
+  private __rateLimitError(err: unknown): unknown {
+    if (!(err instanceof RESTlerRateLimitError)) return err;
+    return new S3Error('SLOW_DOWN', {
+      status: 429,
+      retryAfterSeconds: err.getContextValue('retryAfter'),
+      retried: err.getContextValue('retried'),
+    }, err);
+  }
+
+  /**
    * Makes a request and validates its response BODY against `guard`,
    * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
    * into an {@link S3Error} — so `S3Error` stays the only thing a public
@@ -1198,16 +1249,6 @@ export class S3 extends RESTler<S3Options> {
       if (err instanceof RESTlerResponseValidationError) {
         throw new S3Error('RESPONSE_ERROR', {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
-        }, err);
-      }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new S3Error('SLOW_DOWN', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
         }, err);
       }
       throw err;
