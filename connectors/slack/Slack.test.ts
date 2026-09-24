@@ -48,7 +48,11 @@ describe('Slack', () => {
       auth: { type: 'BEARER', token: 'xoxb-test-token' },
     });
     asserts.assertEquals(client.vendor, 'Slack');
-    asserts.assertEquals(client.botToken, 'xoxb-test-token');
+    // The bot token is deliberately NOT readable back off the client.
+    asserts.assertEquals(
+      (client as unknown as Record<string, unknown>).botToken,
+      undefined,
+    );
   });
 
   it('rejects a blank bot token', () => {

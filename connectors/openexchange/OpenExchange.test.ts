@@ -56,7 +56,11 @@ describe('OpenExchange', () => {
     });
 
     asserts.assertEquals(client.vendor, 'OpenExchange');
-    asserts.assertEquals(client.appId, 'test-app-id');
+    // The App ID is deliberately NOT readable back off the client.
+    asserts.assertEquals(
+      (client as unknown as Record<string, unknown>).appId,
+      undefined,
+    );
     asserts.assertEquals(client.baseCurrency, 'EUR');
     asserts.assertEquals(client.timeout, 30);
   });

@@ -73,11 +73,6 @@ export class OpenExchange extends RESTler<OpenExchangeOptions> {
   /** Vendor identifier for this API client */
   public readonly vendor: string = 'OpenExchange';
 
-  /** Open Exchange Rates App ID used to authenticate requests. */
-  get appId(): string {
-    return this._getOption('auth').appId;
-  }
-
   /** Default ISO 4217 base currency for rate requests. */
   get baseCurrency(): string {
     return this._getOption('baseCurrency') ?? 'USD';

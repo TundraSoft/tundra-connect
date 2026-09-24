@@ -48,7 +48,11 @@ describe('Telegram', () => {
   it('exposes validated configuration through named getters', () => {
     const client = new MockTelegram({ botToken: TEST_TOKEN });
     asserts.assertEquals(client.vendor, 'Telegram');
-    asserts.assertEquals(client.botToken, TEST_TOKEN);
+    // The bot token is deliberately NOT readable back off the client.
+    asserts.assertEquals(
+      (client as unknown as Record<string, unknown>).botToken,
+      undefined,
+    );
   });
 
   it('folds the bot token into baseURL', () => {

@@ -176,11 +176,6 @@ export class Slack extends RESTler<SlackOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Slack';
 
-  /** The configured Slack bot (or user) token, read from `auth.token`. */
-  get botToken(): string {
-    return this._getOption('auth').token;
-  }
-
   /**
    * Creates a new Slack client instance.
    *

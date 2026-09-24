@@ -102,7 +102,11 @@ describe('OpenWeatherMap', () => {
     });
 
     asserts.assertEquals(client.vendor, 'OpenWeatherMap');
-    asserts.assertEquals(client.apiKey, 'test-api-key');
+    // The API key is deliberately NOT readable back off the client.
+    asserts.assertEquals(
+      (client as unknown as Record<string, unknown>).apiKey,
+      undefined,
+    );
     asserts.assertEquals(client.timeout, 30);
   });
 

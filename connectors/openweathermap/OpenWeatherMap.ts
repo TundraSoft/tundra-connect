@@ -90,11 +90,6 @@ export class OpenWeatherMap extends RESTler<OpenWeatherMapOptions> {
   /** Vendor identifier for this API client */
   public readonly vendor: string = 'OpenWeatherMap';
 
-  /** OpenWeatherMap API key used to authenticate requests. */
-  get apiKey(): string {
-    return this._getOption('auth').apiKey;
-  }
-
   /** Default request timeout in seconds. */
   get timeout(): number {
     return this._getOption('timeout') ?? 10;

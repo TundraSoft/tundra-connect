@@ -66,7 +66,7 @@ describe('CoinGecko', () => {
     const client = new MockCoinGecko();
     asserts.assertEquals(client.vendor, 'CoinGecko');
     asserts.assertEquals(client.environment, 'demo');
-    asserts.assertEquals(client.apiKey, undefined);
+    asserts.assertEquals(client.hasApiKey, false);
   });
 
   it('exposes validated configuration through named getters', () => {
@@ -74,7 +74,7 @@ describe('CoinGecko', () => {
       auth: { type: 'CUSTOM', environment: 'pro', apiKey: 'my-pro-key' },
     });
     asserts.assertEquals(client.environment, 'pro');
-    asserts.assertEquals(client.apiKey, 'my-pro-key');
+    asserts.assertEquals(client.hasApiKey, true);
   });
 
   it('rejects an invalid environment value', () => {

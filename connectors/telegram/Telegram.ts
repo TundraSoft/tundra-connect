@@ -91,11 +91,6 @@ export class Telegram extends RESTler<TelegramOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Telegram';
 
-  /** The configured bot token. */
-  get botToken(): string {
-    return this._getOption('botToken');
-  }
-
   /**
    * Creates a new Telegram client instance.
    *

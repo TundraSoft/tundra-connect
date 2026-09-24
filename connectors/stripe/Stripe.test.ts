@@ -96,14 +96,22 @@ describe('Stripe', () => {
       auth: { type: 'BASIC', username: 'sk_test_abc123', password: '' },
     });
     asserts.assertEquals(client.vendor, 'Stripe');
-    asserts.assertEquals(client.secretKey, 'sk_test_abc123');
+    // The secret key is deliberately NOT readable back off the client —
+    // see Stripe.ts's credential-custody note.
+    asserts.assertEquals(
+      (client as unknown as Record<string, unknown>).secretKey,
+      undefined,
+    );
   });
 
   it('accepts a restricted key', () => {
     const client = new MockStripe({
       auth: { type: 'BASIC', username: 'rk_live_abc123', password: '' },
     });
-    asserts.assertEquals(client.secretKey, 'rk_live_abc123');
+    asserts.assertEquals(
+      (client as unknown as Record<string, unknown>).secretKey,
+      undefined,
+    );
   });
 
   it('rejects a missing auth option', () => {

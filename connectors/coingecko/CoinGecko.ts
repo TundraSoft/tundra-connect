@@ -150,9 +150,15 @@ export class CoinGecko extends RESTler<CoinGeckoOptions> {
       : 'demo';
   }
 
-  /** Configured API key, if any. */
-  get apiKey(): string | undefined {
-    return this._hasOption('auth') ? this._getOption('auth').apiKey : undefined;
+  /**
+   * Whether a credential is configured. Deliberately a boolean, not the
+   * credential itself: a consumer already holds the value it passed in, so
+   * a getter that hands the secret back only widens the leak surface
+   * (matching `Kalshi.hasCredentials` / `Polymarket.hasApiCredentials`).
+   */
+  get hasApiKey(): boolean {
+    return this._hasOption('auth') &&
+      this._getOption('auth').apiKey !== undefined;
   }
 
   /**
@@ -190,7 +196,7 @@ export class CoinGecko extends RESTler<CoinGeckoOptions> {
     // every path into this instance — this explicit post-`super()` check,
     // mirroring OpenExchange's `hasOption` guard, is what actually enforces
     // it, regardless of how `auth` got here.
-    if (this.environment === 'pro' && !this.apiKey) {
+    if (this.environment === 'pro' && !this.hasApiKey) {
       throw new CoinGeckoError('CONFIG_MISSING_API_KEY', {
         environment: this.environment,
       });

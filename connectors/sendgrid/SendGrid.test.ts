@@ -52,7 +52,12 @@ describe('SendGrid', () => {
       auth: { type: 'BEARER', token: 'SG.test-key', prefix: 'Bearer' },
     });
     asserts.assertEquals(client.vendor, 'SendGrid');
-    asserts.assertEquals(client.apiKey, 'SG.test-key');
+    // The API key is deliberately NOT readable back off the client —
+    // see SendGrid.ts's credential-custody note.
+    asserts.assertEquals(
+      (client as unknown as Record<string, unknown>).apiKey,
+      undefined,
+    );
   });
 
   it('rejects a blank API key', () => {

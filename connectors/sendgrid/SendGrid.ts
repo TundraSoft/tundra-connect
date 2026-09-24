@@ -103,11 +103,6 @@ export type VerifyWebhookOptions = {
 
 export class SendGrid extends RESTler<SendGridOptions> {
   /** Vendor identifier for this API client. */
-  /** The configured SendGrid API key, read from `auth.token`. */
-  get apiKey(): string {
-    return this._getOption('auth').token;
-  }
-
   public readonly vendor: string = 'SendGrid';
 
   /**

@@ -30,6 +30,13 @@ environment, apiKey? }`:
 `auth.environment: 'pro'` without an `apiKey` throws `CONFIG_MISSING_API_KEY`
 at construction time — see [Errors](CoinGecko-Errors.md).
 
+The configured key is never readable back off the client. `client.environment`
+reports the tier and `client.hasApiKey` whether a key was supplied:
+
+```ts
+console.log(client.environment, client.hasApiKey); // 'demo' false
+```
+
 | `environment` | Base URL                               | Auth header (sent only when `apiKey` is set) |
 | ------------- | -------------------------------------- | -------------------------------------------- |
 | `'demo'`      | `https://api.coingecko.com/api/v3`     | `x-cg-demo-api-key`                          |

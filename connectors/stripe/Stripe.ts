@@ -249,17 +249,6 @@ export class Stripe extends RESTler<StripeOptions> {
   public readonly vendor: string = 'Stripe';
 
   /**
-   * Stripe secret/restricted key configured for this client — `auth`'s
-   * `username`. `auth` is guaranteed to be `{ type: 'BASIC', ... }` here:
-   * {@link _processOption} rejects any other shape at configuration time,
-   * so the `'BASIC'` branch is the only one ever reachable.
-   */
-  get secretKey(): string {
-    const auth = this._getOption('auth');
-    return auth.type === 'BASIC' ? auth.username : '';
-  }
-
-  /**
    * Creates a new Stripe client instance
    *
    * `auth` is required — `EventOptionKeys` makes it optional at the
