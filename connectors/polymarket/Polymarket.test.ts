@@ -1,7 +1,7 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { envArgs } from '@utils';
-import { CLOB_API, GAMMA_API, Polymarket } from './Polymarket.ts';
+import { CLOB_API, DATA_API, GAMMA_API, Polymarket } from './Polymarket.ts';
 import { PolymarketError } from './errors/mod.ts';
 
 // Publicly-known Hardhat/Anvil test key — safe to hardcode; the same key
@@ -288,9 +288,12 @@ describe('Polymarket — L2 authenticated reads', () => {
         apiCredentials: CREDS,
       },
     });
-    client.setResponse({ balance: '125.50' });
+    client.setResponse({ balance: '125500000' }); // 6-decimal base units
     const balance = await client.getBalance();
     asserts.assertEquals(balance.balance, 125.5);
+    asserts.assertEquals(balance.balanceRaw, '125500000');
+    asserts.assert(client.lastRequest!.url.includes('asset_type=COLLATERAL'));
+    asserts.assertEquals(client.lastRequest!.url.includes('token_id'), false);
     asserts.assertEquals(
       client.lastRequest!.headers['POLY_ADDRESS'],
       TEST_ADDR,
@@ -765,6 +768,356 @@ describe('Polymarket — cancel', () => {
     asserts.assertEquals(
       client.lastRequest!.body,
       JSON.stringify({ market: '0xcond', asset_id: TOKEN }),
+    );
+  });
+});
+
+describe('Polymarket — portfolio reads (L2) and cancel-all', () => {
+  const authed = () =>
+    new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        privateKey: TEST_KEY,
+        funder: PROXY,
+        apiCredentials: CREDS,
+      },
+    });
+  const OPEN_ORDER = {
+    id: '0xo1',
+    status: 'LIVE',
+    owner: 'uuid',
+    maker_address: PROXY,
+    market: '0xcond',
+    asset_id: TOKEN,
+    side: 'BUY',
+    price: '0.52',
+    original_size: '10',
+    size_matched: '2.5',
+    outcome: 'Yes',
+    order_type: 'GTC',
+    associate_trades: ['t1'],
+    created_at: 1748779200,
+    expiration: '0',
+  };
+  const TRADE = {
+    id: 't1',
+    taker_order_id: '0xo1',
+    market: '0xcond',
+    asset_id: TOKEN,
+    side: 'BUY',
+    trader_side: 'TAKER',
+    price: '0.52',
+    size: '10',
+    outcome: 'Yes',
+    status: 'TRADE_STATUS_MATCHED',
+    fee_rate_bps: '0',
+    bucket_index: 0,
+    owner: 'uuid',
+    maker_address: PROXY,
+    transaction_hash: '0xabc',
+    maker_orders: [{ order_id: '0xm1', matched_amount: '10' }],
+    match_time: '1748779205',
+    last_update: '1748779205',
+  };
+
+  it('reads a per-token share balance as CONDITIONAL + token_id', async () => {
+    const client = authed();
+    client.setResponse({ balance: '7000000', allowances: {} });
+    const balance = await client.getBalance({ tokenId: TOKEN });
+    asserts.assertEquals(balance.balance, 7);
+    const url = new URL(client.lastRequest!.url);
+    asserts.assertEquals(url.searchParams.get('asset_type'), 'CONDITIONAL');
+    asserts.assertEquals(url.searchParams.get('token_id'), TOKEN);
+    asserts.assertEquals(url.searchParams.get('signature_type'), '1');
+  });
+
+  it('lists open orders with L2 headers, mapping every filter and the page cursor', async () => {
+    const client = authed();
+    client.setResponse({
+      limit: 100,
+      count: 1,
+      next_cursor: 'MTAw',
+      data: [OPEN_ORDER],
+    });
+    const page = await client.getOpenOrders({
+      market: '0xcond',
+      assetId: TOKEN,
+      id: '0xo1',
+      cursor: 'MA==',
+    });
+    asserts.assertEquals(page.nextCursor, 'MTAw');
+    asserts.assertEquals(page.count, 1);
+    const order = page.data[0]!;
+    asserts.assertEquals(order.id, '0xo1');
+    asserts.assertEquals(order.side, 'BUY');
+    asserts.assertEquals(order.price, 0.52);
+    asserts.assertEquals(order.originalSize, 10);
+    asserts.assertEquals(order.sizeMatched, 2.5);
+    asserts.assertEquals(order.expiration, 0);
+    asserts.assertEquals(order.orderType, 'GTC');
+    asserts.assertEquals(order.associateTrades, ['t1']);
+    asserts.assertEquals(order.makerAddress, PROXY);
+    const req = client.lastRequest!;
+    asserts.assert(req.url.startsWith(`${CLOB_API}/data/orders`));
+    const url = new URL(req.url);
+    asserts.assertEquals(url.searchParams.get('market'), '0xcond');
+    asserts.assertEquals(url.searchParams.get('asset_id'), TOKEN);
+    asserts.assertEquals(url.searchParams.get('id'), '0xo1');
+    asserts.assertEquals(url.searchParams.get('next_cursor'), 'MA==');
+    asserts.assertEquals(req.headers['POLY_API_KEY'], CREDS.apiKey);
+    asserts.assert(req.headers['POLY_SIGNATURE']!.length > 0);
+  });
+
+  it('treats a bare-array orders body and an LTE= cursor as a single final page', async () => {
+    const client = authed();
+    client.setResponse([OPEN_ORDER]);
+    const bare = await client.getOpenOrders();
+    asserts.assertEquals(bare.data.length, 1);
+    asserts.assertEquals(bare.nextCursor, undefined);
+    client.setResponse({ data: [], next_cursor: 'LTE=', count: 0 });
+    const last = await client.getOpenOrders();
+    asserts.assertEquals(last.data, []);
+    asserts.assertEquals(last.nextCursor, undefined);
+  });
+
+  it('lists fills with every filter mapped to the vendor names', async () => {
+    const client = authed();
+    client.setResponse({ data: [TRADE], next_cursor: '' });
+    const page = await client.getFills({
+      market: '0xcond',
+      assetId: TOKEN,
+      makerAddress: PROXY,
+      before: 1800000000,
+      after: 1700000000,
+      id: 't1',
+      cursor: 'MA==',
+    });
+    asserts.assertEquals(page.nextCursor, undefined);
+    const fill = page.data[0]!;
+    asserts.assertEquals(fill.traderSide, 'TAKER');
+    asserts.assertEquals(fill.size, 10);
+    asserts.assertEquals(fill.price, 0.52);
+    asserts.assertEquals(fill.matchTime, 1748779205);
+    asserts.assertEquals(fill.transactionHash, '0xabc');
+    asserts.assertEquals(fill.makerOrders[0]!.order_id, '0xm1');
+    const url = new URL(client.lastRequest!.url);
+    asserts.assert(url.pathname.endsWith('/data/trades'));
+    asserts.assertEquals(url.searchParams.get('maker_address'), PROXY);
+    asserts.assertEquals(url.searchParams.get('before'), '1800000000');
+    asserts.assertEquals(url.searchParams.get('after'), '1700000000');
+    asserts.assertEquals(url.searchParams.get('id'), 't1');
+    asserts.assertEquals(url.searchParams.get('next_cursor'), 'MA==');
+    asserts.assertEquals(
+      client.lastRequest!.headers['POLY_API_KEY'],
+      CREDS.apiKey,
+    );
+  });
+
+  it('cancels every order with one bodiless signed DELETE /cancel-all', async () => {
+    const client = authed();
+    client.setResponse({
+      canceled: ['0xo1', '0xo2'],
+      not_canceled: { '0xo3': 'order already matched' },
+    });
+    const result = await client.cancelAllOrders();
+    asserts.assertEquals(result.canceled, ['0xo1', '0xo2']);
+    asserts.assertEquals(result.notCanceled, {
+      '0xo3': 'order already matched',
+    });
+    const req = client.lastRequest!;
+    asserts.assertEquals(req.method, 'DELETE');
+    asserts.assertEquals(req.url, `${CLOB_API}/cancel-all`);
+    asserts.assertEquals(req.body, undefined);
+    asserts.assertEquals(req.headers['POLY_ADDRESS'], TEST_ADDR);
+    asserts.assert(req.headers['POLY_SIGNATURE']!.length > 0);
+  });
+
+  it('requires credentials for the L2 reads and cancel-all', async () => {
+    const client = new MockPolymarket({
+      auth: { type: 'CUSTOM', privateKey: TEST_KEY, funder: PROXY },
+    });
+    for (
+      const call of [
+        () => client.getOpenOrders(),
+        () => client.getFills(),
+        () => client.cancelAllOrders(),
+        () => client.getBalance({ tokenId: TOKEN }),
+      ]
+    ) {
+      const err = await asserts.assertRejects(call, PolymarketError);
+      asserts.assertEquals(err.code, 'NO_API_CREDENTIALS');
+    }
+    asserts.assertEquals(client.requests.length, 0);
+  });
+});
+
+describe('Polymarket — order book (public)', () => {
+  it('fetches and normalizes the book for a token', async () => {
+    const client = new MockPolymarket();
+    client.setResponse({
+      market: '0xcond',
+      asset_id: TOKEN,
+      timestamp: '1782753357257',
+      hash: 'h',
+      bids: [{ price: '0.01', size: '100' }, { price: '0.50', size: '20' }],
+      asks: [{ price: '0.99', size: '50' }, { price: '0.52', size: '5' }],
+      min_order_size: '5',
+      tick_size: '0.01',
+      neg_risk: false,
+      last_trade_price: '0.51',
+    });
+    const book = await client.getOrderbook(TOKEN);
+    asserts.assertEquals(book.assetId, TOKEN);
+    asserts.assertEquals(book.timestamp, 1782753357257);
+    asserts.assertEquals(book.bids.at(-1), { price: 0.5, size: 20 });
+    asserts.assertEquals(book.asks.at(-1), { price: 0.52, size: 5 });
+    asserts.assertEquals(book.tickSize, 0.01);
+    asserts.assertEquals(book.minOrderSize, 5);
+    asserts.assertEquals(book.negRisk, false);
+    asserts.assertEquals(book.lastTradePrice, 0.51);
+    const url = new URL(client.lastRequest!.url);
+    asserts.assertEquals(url.origin + url.pathname, `${CLOB_API}/book`);
+    asserts.assertEquals(url.searchParams.get('token_id'), TOKEN);
+    asserts.assertEquals(
+      client.lastRequest!.headers['POLY_API_KEY'],
+      undefined,
+    );
+  });
+});
+
+describe('Polymarket — Data API (positions / portfolio value)', () => {
+  const POSITION = {
+    proxyWallet: PROXY.toLowerCase(),
+    asset: TOKEN,
+    conditionId: '0xcond',
+    size: 131432.468,
+    avgPrice: 0.4697,
+    initialValue: 61742.0657,
+    currentValue: 0,
+    cashPnl: -61742.0657,
+    percentPnl: -99.9999,
+    totalBought: 131432.468,
+    realizedPnl: -1297.1517,
+    percentRealizedPnl: -100,
+    curPrice: 0,
+    redeemable: true,
+    mergeable: false,
+    title: 'Orioles vs. Rockies: O/U 11.5',
+    slug: 'mlb-bal-col-2026-09-02-total-11pt5',
+    icon: 'https://example/x.jpg',
+    eventId: '920959',
+    eventSlug: 'mlb-bal-col-2026-09-02',
+    outcome: 'Over',
+    outcomeIndex: 0,
+    oppositeOutcome: 'Under',
+    oppositeAsset: '9920',
+    endDate: '2026-09-02',
+    negativeRisk: false,
+  };
+
+  it('defaults the wallet to auth.funder, sends no signing headers, and maps every filter', async () => {
+    const client = new MockPolymarket({
+      auth: { type: 'CUSTOM', privateKey: TEST_KEY, funder: PROXY },
+    });
+    client.setResponse([POSITION]);
+    const positions = await client.getPositions({
+      market: ['0xa', '0xb'],
+      sizeThreshold: 0,
+      redeemable: true,
+      mergeable: false,
+      limit: 50,
+      offset: 100,
+      sortBy: 'CASHPNL',
+      sortDirection: 'ASC',
+      title: 'Orioles',
+    });
+    asserts.assertEquals(positions.length, 1);
+    asserts.assertEquals(positions[0]!.size, 131432.468);
+    asserts.assertEquals(positions[0]!.redeemable, true);
+    // passthrough keeps unmodeled vendor fields
+    asserts.assertEquals(
+      (positions[0] as unknown as { eventId: string }).eventId,
+      '920959',
+    );
+    const req = client.lastRequest!;
+    const url = new URL(req.url);
+    asserts.assertEquals(url.origin + url.pathname, `${DATA_API}/positions`);
+    asserts.assertEquals(
+      url.searchParams.get('user')!.toLowerCase(),
+      PROXY.toLowerCase(),
+    );
+    asserts.assertEquals(url.searchParams.get('market'), '0xa,0xb');
+    asserts.assertEquals(url.searchParams.get('sizeThreshold'), '0');
+    asserts.assertEquals(url.searchParams.get('redeemable'), 'true');
+    asserts.assertEquals(url.searchParams.get('mergeable'), 'false');
+    asserts.assertEquals(url.searchParams.get('limit'), '50');
+    asserts.assertEquals(url.searchParams.get('offset'), '100');
+    asserts.assertEquals(url.searchParams.get('sortBy'), 'CASHPNL');
+    asserts.assertEquals(url.searchParams.get('sortDirection'), 'ASC');
+    asserts.assertEquals(url.searchParams.get('title'), 'Orioles');
+    asserts.assertEquals(req.headers['POLY_API_KEY'], undefined);
+    asserts.assertEquals(req.headers['POLY_SIGNATURE'], undefined);
+  });
+
+  it('reads any wallet without credentials when user is given, and normalizes null to []', async () => {
+    const client = new MockPolymarket();
+    client.setResponse(null);
+    const positions = await client.getPositions({
+      user: '0x5268527977f700f9bf9b6d5cd843859e4e70135d',
+      eventId: '920959',
+    });
+    asserts.assertEquals(positions, []);
+    const url = new URL(client.lastRequest!.url);
+    asserts.assertEquals(
+      url.searchParams.get('user'),
+      '0x5268527977f700f9bf9b6d5cd843859e4e70135d',
+    );
+    asserts.assertEquals(url.searchParams.get('eventId'), '920959');
+  });
+
+  it('throws CONFIG_MISSING_PRIVATE_KEY when neither user nor funder is available', async () => {
+    const client = new MockPolymarket();
+    const err = await asserts.assertRejects(
+      () => client.getPositions(),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_MISSING_PRIVATE_KEY');
+    await asserts.assertRejects(
+      () => client.getPortfolioValue(),
+      PolymarketError,
+    );
+    asserts.assertEquals(client.requests.length, 0);
+  });
+
+  it('returns the portfolio value as a number, 0 for an empty wallet', async () => {
+    const client = new MockPolymarket({
+      auth: { type: 'CUSTOM', privateKey: TEST_KEY, funder: PROXY },
+    });
+    client.setResponse([{ user: PROXY.toLowerCase(), value: 122392.0752 }]);
+    asserts.assertEquals(await client.getPortfolioValue(), 122392.0752);
+    const url = new URL(client.lastRequest!.url);
+    asserts.assertEquals(url.origin + url.pathname, `${DATA_API}/value`);
+
+    client.setResponse([]);
+    asserts.assertEquals(
+      await client.getPortfolioValue({ market: '0xcond' }),
+      0,
+    );
+    asserts.assertEquals(
+      new URL(client.lastRequest!.url).searchParams.get('market'),
+      '0xcond',
+    );
+  });
+
+  it('honours a dataBaseURL override', async () => {
+    const client = new MockPolymarket({
+      dataBaseURL: 'https://data.example.test',
+      auth: { type: 'CUSTOM', privateKey: TEST_KEY, funder: PROXY },
+    });
+    client.setResponse([]);
+    await client.getPositions();
+    asserts.assert(
+      client.lastRequest!.url.startsWith('https://data.example.test/positions'),
     );
   });
 });

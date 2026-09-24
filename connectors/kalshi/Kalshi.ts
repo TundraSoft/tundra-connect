@@ -63,6 +63,15 @@ export const DEMO_API = 'https://external-api.demo.kalshi.co';
 
 /** Every batch endpoint's shared body/response resource path. */
 const BATCH_ORDERS_PATH = `${API_PREFIX}/portfolio/events/orders/batched`;
+/**
+ * Default per-request cancel batch for {@link Kalshi.cancelAllOrders}. A
+ * batch is billed per row (2 write tokens each) and must fit the tier's
+ * bucket at once or the whole batch is rejected — 50 rows = 100 tokens,
+ * exactly the Basic tier's budget. Raise `batchSize` on a higher tier.
+ */
+export const DEFAULT_CANCEL_BATCH_SIZE = 50;
+/** Page size used while sweeping resting orders in {@link Kalshi.cancelAllOrders} — the vendor's documented maximum. */
+const CANCEL_ALL_PAGE_SIZE = 1000;
 
 /**
  * Kalshi credentials — RSA-PSS request signing (docs.kalshi.com). Unlike
@@ -849,6 +858,56 @@ export class Kalshi extends RESTler<KalshiOptions> {
       BatchOrdersResponseSchemaObject,
     );
     return response.orders;
+  }
+
+  /**
+   * Cancel EVERY resting order on the account — optionally narrowed to one
+   * market (`ticker`) or event (`eventTicker`). Kalshi has no single
+   * cancel-all endpoint, so this is a client-side sweep: page through
+   * `GET /portfolio/orders?status=resting` and {@link cancelOrders} each
+   * page in `batchSize` chunks as it goes, so progress is made even if a
+   * later page fails. Returns every vendor row, in cancellation order —
+   * inspect `error` per row rather than assuming all succeeded.
+   *
+   * Orders that start resting AFTER the sweep began may be missed — this
+   * is a snapshot, not a lock; call it again if that matters.
+   *
+   * @param options.batchSize - Rows per cancel request; see
+   * {@link DEFAULT_CANCEL_BATCH_SIZE} for why it defaults low.
+   * @throws {KalshiError} `CONFIG_MISSING_PRIVATE_KEY` when no credentials are configured; `AUTH_FAILED` when the venue rejects the signature; `RESPONSE_ERROR` when a body fails validation; `CONFIG_INVALID_BATCH_SIZE` when `batchSize` is not a positive integer; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const rows = await client.cancelAllOrders(); // everything
+   * const failed = rows.filter((r) => r.error);
+   * await client.cancelAllOrders({ eventTicker: 'KXBTC-25DEC31' }); // one event
+   * ```
+   */
+  public async cancelAllOrders(
+    options: { ticker?: string; eventTicker?: string; batchSize?: number } = {},
+  ): Promise<BatchOrderRow[]> {
+    this.__requireCredentials();
+    const batchSize = options.batchSize ?? DEFAULT_CANCEL_BATCH_SIZE;
+    if (!Number.isInteger(batchSize) || batchSize <= 0) {
+      throw new KalshiError('CONFIG_INVALID_BATCH_SIZE', { value: batchSize });
+    }
+    const rows: BatchOrderRow[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.getOrders({
+        ticker: options.ticker,
+        eventTicker: options.eventTicker,
+        status: 'resting',
+        limit: CANCEL_ALL_PAGE_SIZE,
+        cursor,
+      });
+      const ids = page.orders.map((order) => order.orderId);
+      for (let i = 0; i < ids.length; i += batchSize) {
+        rows.push(...await this.cancelOrders(ids.slice(i, i + batchSize)));
+      }
+      cursor = page.cursor;
+    } while (cursor);
+    return rows;
   }
 
   // ── internals ────────────────────────────────────────────────────────────

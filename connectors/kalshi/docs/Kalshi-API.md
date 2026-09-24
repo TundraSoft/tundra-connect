@@ -42,27 +42,28 @@ Read `client.hasCredentials` (`true` once `auth.accessKey`/
 
 ## Endpoints
 
-| Method                | Endpoint                                   | Auth    | Result                                         |
-| --------------------- | ------------------------------------------ | ------- | ---------------------------------------------- |
-| `getMarkets()`        | `GET /markets`                             | none    | `{ markets, cursor? }`                         |
-| `getMarket()`         | `GET /markets/{ticker}`                    | none    | A `Market`, or `null` if not found             |
-| `getOrderbook()`      | `GET /markets/{ticker}/orderbook`          | none    | `{ yes, no }` bid levels                       |
-| `getTrades()`         | `GET /markets/trades`                      | none    | `{ trades, cursor? }`                          |
-| `getEvents()`         | `GET /events`                              | none    | `{ events, cursor? }`                          |
-| `getEvent()`          | `GET /events/{event_ticker}`               | none    | An `Event`, or `null` if not found             |
-| `getSeriesList()`     | `GET /series`                              | none    | `{ series }`                                   |
-| `getSeries()`         | `GET /series/{series_ticker}`              | none    | A `Series`, or `null` if not found             |
-| `getExchangeStatus()` | `GET /exchange/status`                     | none    | `{ exchangeActive, tradingActive, ... }`       |
-| `getBalance()`        | `GET /portfolio/balance`                   | RSA-PSS | Available balance/portfolio value              |
-| `getPositions()`      | `GET /portfolio/positions`                 | RSA-PSS | `{ marketPositions, eventPositions, cursor? }` |
-| `getFills()`          | `GET /portfolio/fills`                     | RSA-PSS | `{ fills, cursor? }`                           |
-| `getOrders()`         | `GET /portfolio/orders`                    | RSA-PSS | `{ orders, cursor? }`                          |
-| `getOrder()`          | `GET /portfolio/orders/{id}`               | RSA-PSS | An `Order`                                     |
-| `submitOrder()`       | `POST /portfolio/events/orders`            | RSA-PSS | `OrderResult`                                  |
-| `submitOrders()`      | `POST /portfolio/events/orders/batched`    | RSA-PSS | `OrderResult[]`, one per input order           |
-| `amendOrder()`        | `POST /portfolio/events/orders/{id}/amend` | RSA-PSS | `OrderResult`                                  |
-| `cancelOrder()`       | `DELETE /portfolio/events/orders/{id}`     | RSA-PSS | `CancelAck` (`orderId`, `reducedBy`, ...)      |
-| `cancelOrders()`      | `DELETE /portfolio/events/orders/batched`  | RSA-PSS | `BatchOrderRow[]`                              |
+| Method                | Endpoint                                             | Auth    | Result                                           |
+| --------------------- | ---------------------------------------------------- | ------- | ------------------------------------------------ |
+| `getMarkets()`        | `GET /markets`                                       | none    | `{ markets, cursor? }`                           |
+| `getMarket()`         | `GET /markets/{ticker}`                              | none    | A `Market`, or `null` if not found               |
+| `getOrderbook()`      | `GET /markets/{ticker}/orderbook`                    | none    | `{ yes, no }` bid levels                         |
+| `getTrades()`         | `GET /markets/trades`                                | none    | `{ trades, cursor? }`                            |
+| `getEvents()`         | `GET /events`                                        | none    | `{ events, cursor? }`                            |
+| `getEvent()`          | `GET /events/{event_ticker}`                         | none    | An `Event`, or `null` if not found               |
+| `getSeriesList()`     | `GET /series`                                        | none    | `{ series }`                                     |
+| `getSeries()`         | `GET /series/{series_ticker}`                        | none    | A `Series`, or `null` if not found               |
+| `getExchangeStatus()` | `GET /exchange/status`                               | none    | `{ exchangeActive, tradingActive, ... }`         |
+| `getBalance()`        | `GET /portfolio/balance`                             | RSA-PSS | Available balance/portfolio value                |
+| `getPositions()`      | `GET /portfolio/positions`                           | RSA-PSS | `{ marketPositions, eventPositions, cursor? }`   |
+| `getFills()`          | `GET /portfolio/fills`                               | RSA-PSS | `{ fills, cursor? }`                             |
+| `getOrders()`         | `GET /portfolio/orders`                              | RSA-PSS | `{ orders, cursor? }`                            |
+| `getOrder()`          | `GET /portfolio/orders/{id}`                         | RSA-PSS | An `Order`                                       |
+| `submitOrder()`       | `POST /portfolio/events/orders`                      | RSA-PSS | `OrderResult`                                    |
+| `submitOrders()`      | `POST /portfolio/events/orders/batched`              | RSA-PSS | `OrderResult[]`, one per input order             |
+| `amendOrder()`        | `POST /portfolio/events/orders/{id}/amend`           | RSA-PSS | `OrderResult`                                    |
+| `cancelOrder()`       | `DELETE /portfolio/events/orders/{id}`               | RSA-PSS | `CancelAck` (`orderId`, `reducedBy`, ...)        |
+| `cancelOrders()`      | `DELETE /portfolio/events/orders/batched`            | RSA-PSS | `BatchOrderRow[]`                                |
+| `cancelAllOrders()`   | `GET /portfolio/orders` × N + `DELETE …/batched` × M | RSA-PSS | `BatchOrderRow[]` — client-side sweep, see below |
 
 See [Errors](Kalshi-Errors.md) for failure handling and
 [Schemas](Kalshi-Schemas.md) for request/response validation.
@@ -169,6 +170,29 @@ const rows = await client.cancelOrders([orderId1, orderId2]); // -> BatchOrderRo
 `cancelOrder()`/`cancelOrders()` return the raw vendor shape rather than
 `OrderResult` — a cancel has no price/fill concept, just
 `reducedBy` (contracts canceled) and an optional per-row `error`.
+
+### `cancelAllOrders()` — client-side sweep
+
+Kalshi has no cancel-all endpoint (Polymarket does — `DELETE /cancel-all`),
+so this is a sweep: page through `GET /portfolio/orders?status=resting`
+(1000 per page, optionally narrowed by `ticker`/`eventTicker`) and
+`cancelOrders()` each page in `batchSize` chunks as it goes, so progress
+is made even if a later page fails. Every vendor row comes back in
+cancellation order — check `error` per row rather than assuming all
+succeeded.
+
+```ts
+const rows = await client.cancelAllOrders(); // everything
+const failed = rows.filter((r) => r.error);
+await client.cancelAllOrders({ eventTicker: 'KXBTC-25DEC31' }); // one event
+await client.cancelAllOrders({ batchSize: 150 }); // Advanced tier or above
+```
+
+`batchSize` defaults to `DEFAULT_CANCEL_BATCH_SIZE` (50) on purpose: a
+batch is billed 2 write tokens per row and **must fit the tier's bucket at
+once** or the whole batch is rejected — 50 rows is exactly the Basic
+tier's 100-token budget. Raise it on a higher tier. It's a snapshot, not a
+lock: orders that start resting after the sweep began may be missed.
 
 ---
 

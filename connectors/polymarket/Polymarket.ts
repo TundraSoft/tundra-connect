@@ -42,10 +42,19 @@ import {
   type ClobCancelResponse,
   ClobCancelResponseSchemaObject,
   ClobNegRiskSchemaObject,
+  type ClobOpenOrdersPage,
+  ClobOpenOrdersPageSchemaObject,
+  type ClobOrderBook,
+  ClobOrderBookSchemaObject,
   type ClobPostOrderResponse,
   ClobPostOrderResponseSchemaObject,
   ClobTickSizeSchemaObject,
+  type ClobTradesPage,
+  ClobTradesPageSchemaObject,
   ClobVersionSchemaObject,
+  type DataPosition,
+  DataPositionListSchemaObject,
+  DataValueListSchemaObject,
   type GammaMarket,
   GammaMarketKeysetPageSchemaObject,
   GammaMarketListSchemaObject,
@@ -64,6 +73,8 @@ export const GAMMA_API = 'https://gamma-api.polymarket.com';
 export const CLOB_API = 'https://clob.polymarket.com';
 /** Production Relayer API host — gasless split/merge/redeem meta-transactions. */
 export const RELAYER_API = 'https://relayer-v2.polymarket.com';
+/** Production Data API host — public, read-only portfolio view (positions, value) keyed by wallet address. */
+export const DATA_API = 'https://data-api.polymarket.com';
 /** Polygon mainnet chain id — the CLOB rejects any other chain id in production. */
 export const POLYGON_CHAIN_ID = 137;
 
@@ -125,6 +136,70 @@ export type PolymarketOptions = Omit<RESTlerOptions, 'auth'> & {
   clobBaseURL?: string;
   /** Override the Relayer API host (default: production). */
   relayerBaseURL?: string;
+  /** Override the Data API host (default: production). */
+  dataBaseURL?: string;
+};
+
+/** Filters for {@link Polymarket.getOpenOrders}. */
+export type GetOpenOrdersOptions = {
+  /** Only this order id. */
+  id?: string;
+  /** Condition id. */
+  market?: string;
+  /** Token id. */
+  assetId?: string;
+  /** `nextCursor` from the previous page. */
+  cursor?: string;
+};
+
+/** Filters for {@link Polymarket.getFills}. */
+export type GetFillsOptions = {
+  /** Only this trade id. */
+  id?: string;
+  /** Condition id. */
+  market?: string;
+  /** Token id. */
+  assetId?: string;
+  /** Restrict to trades where this address was the maker. */
+  makerAddress?: string;
+  /** Unix seconds — only trades before this time. */
+  before?: number;
+  /** Unix seconds — only trades after this time. */
+  after?: number;
+  /** `nextCursor` from the previous page. */
+  cursor?: string;
+};
+
+/** Filters for {@link Polymarket.getPositions}. */
+export type GetPositionsOptions = {
+  /** Wallet to read. Defaults to `auth.funder` (the proxy wallet that holds positions). */
+  user?: string;
+  /** Condition id(s) to restrict to. Mutually exclusive with `eventId`. */
+  market?: string | string[];
+  /** Event id(s) to restrict to. Mutually exclusive with `market`. */
+  eventId?: string | string[];
+  /** Hide positions smaller than this many shares. Vendor default `1`. */
+  sizeThreshold?: number;
+  /** Only positions in markets resolved in the held outcome's favour. */
+  redeemable?: boolean;
+  /** Only positions where both outcomes are held. */
+  mergeable?: boolean;
+  /** Vendor default 100. */
+  limit?: number;
+  offset?: number;
+  sortBy?:
+    | 'CURRENT'
+    | 'INITIAL'
+    | 'TOKENS'
+    | 'CASHPNL'
+    | 'PERCENTPNL'
+    | 'TITLE'
+    | 'RESOLVING'
+    | 'PRICE'
+    | 'AVGPRICE';
+  sortDirection?: 'ASC' | 'DESC';
+  /** Case-insensitive market-title filter. */
+  title?: string;
 };
 
 /** Filters for {@link Polymarket.getMarkets}. */
@@ -290,6 +365,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
 
   private readonly __clobBaseURL: string;
   private readonly __relayerBaseURL: string;
+  private readonly __dataBaseURL: string;
   private readonly __chainId: number;
   private readonly __signatureType: number;
   private __signer?: PolymarketSigner;
@@ -316,6 +392,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     });
     this.__clobBaseURL = options.clobBaseURL ?? CLOB_API;
     this.__relayerBaseURL = options.relayerBaseURL ?? RELAYER_API;
+    this.__dataBaseURL = options.dataBaseURL ?? DATA_API;
     this._responseHandler = (response) => this.__toError(response);
 
     const auth = options.auth;
@@ -507,6 +584,31 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   }
 
   /**
+   * The public aggregated order book for one outcome token (`GET /book`).
+   * Levels keep the vendor's ordering — bids ascending and asks
+   * descending by price, so the touch is `bids.at(-1)` / `asks.at(-1)`.
+   *
+   * @throws {PolymarketError} `NOT_FOUND` for an unknown token; `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const book = await client.getOrderbook(tokenId);
+   * console.log('best bid', book.bids.at(-1)?.price, 'best ask', book.asks.at(-1)?.price);
+   * ```
+   */
+  public async getOrderbook(tokenId: string): Promise<ClobOrderBook> {
+    return await this.__requestAndValidate(
+      {
+        path: '/book',
+        baseURL: this.__clobBaseURL,
+        method: 'GET',
+        query: { token_id: tokenId },
+      },
+      ClobOrderBookSchemaObject,
+    );
+  }
+
+  /**
    * Connection keepalive — `GET` on the CLOB API root. Returns `false` on any failure rather than throwing.
    *
    * @throws Never — every failure, vendor or transport, resolves to `false`. Documented explicitly so the absence of a throw is visibly deliberate.
@@ -581,28 +683,213 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   // ── CLOB: L2 (authenticated) ────────────────────────────────────────────
 
   /**
-   * Available collateral (USDC) as the venue sees it — the number the CLOB
-   * actually checks before accepting an order, not an on-chain balance
-   * read.
+   * Available balance as the venue sees it — the number the CLOB actually
+   * checks before accepting an order, not an on-chain read. With no
+   * `tokenId` this is the USDC collateral balance; with one it is the
+   * share balance of that outcome token (what a SELL can draw on).
    *
+   * @param options.tokenId - Outcome token id for a share balance; omit for USDC.
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`.
+   *
+   * @example
+   * ```typescript
+   * const { balance } = await client.getBalance(); // USDC, e.g. 125.5
+   * const shares = await client.getBalance({ tokenId }); // shares of one outcome
+   * ```
    */
-  public async getBalance(): Promise<ClobBalance> {
+  public async getBalance(
+    options: { tokenId?: string } = {},
+  ): Promise<ClobBalance> {
     const signer = this.__requireSigner();
     const creds = this.__requireApiCreds();
+    const query: Record<string, string> = {
+      asset_type: options.tokenId ? 'CONDITIONAL' : 'COLLATERAL',
+      signature_type: String(this.__signatureType),
+    };
+    if (options.tokenId) query.token_id = options.tokenId;
     return await this.__requestAndValidate(
       {
         path: '/balance-allowance',
         baseURL: this.__clobBaseURL,
         method: 'GET',
-        query: {
-          asset_type: 'COLLATERAL',
-          signature_type: String(this.__signatureType),
-        },
+        query,
         auth: this.__l2Auth(signer, creds),
       },
       ClobBalanceSchemaObject,
     );
+  }
+
+  /**
+   * The account's orders on the venue — resting ones by default, plus
+   * recently settled ones the venue still lists — for restart
+   * reconciliation or checking on a resting order. One page per call;
+   * pass `nextCursor` back as `cursor` for the next.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`;
+   * `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * let cursor: string | undefined;
+   * do {
+   *   const page = await client.getOpenOrders({ market: conditionId, cursor });
+   *   for (const order of page.data) console.log(order.id, order.status, order.price);
+   *   cursor = page.nextCursor;
+   * } while (cursor);
+   * ```
+   */
+  public async getOpenOrders(
+    options: GetOpenOrdersOptions = {},
+  ): Promise<ClobOpenOrdersPage> {
+    const signer = this.__requireSigner();
+    const creds = this.__requireApiCreds();
+    const query: Record<string, string> = {};
+    if (options.id) query.id = options.id;
+    if (options.market) query.market = options.market;
+    if (options.assetId) query.asset_id = options.assetId;
+    if (options.cursor) query.next_cursor = options.cursor;
+    return await this.__requestAndValidate(
+      {
+        path: '/data/orders',
+        baseURL: this.__clobBaseURL,
+        method: 'GET',
+        query,
+        auth: this.__l2Auth(signer, creds),
+      },
+      ClobOpenOrdersPageSchemaObject,
+    );
+  }
+
+  /**
+   * The account's own executions (fills), newest first. One page per
+   * call; pass `nextCursor` back as `cursor` for the next.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`;
+   * `RESPONSE_ERROR` when the body fails validation; or `RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const { data: fills } = await client.getFills({ market: conditionId, after: sinceUnix });
+   * for (const fill of fills) console.log(fill.side, fill.size, fill.price, fill.traderSide);
+   * ```
+   */
+  public async getFills(
+    options: GetFillsOptions = {},
+  ): Promise<ClobTradesPage> {
+    const signer = this.__requireSigner();
+    const creds = this.__requireApiCreds();
+    const query: Record<string, string> = {};
+    if (options.id) query.id = options.id;
+    if (options.market) query.market = options.market;
+    if (options.assetId) query.asset_id = options.assetId;
+    if (options.makerAddress) query.maker_address = options.makerAddress;
+    if (options.before !== undefined) query.before = String(options.before);
+    if (options.after !== undefined) query.after = String(options.after);
+    if (options.cursor) query.next_cursor = options.cursor;
+    return await this.__requestAndValidate(
+      {
+        path: '/data/trades',
+        baseURL: this.__clobBaseURL,
+        method: 'GET',
+        query,
+        auth: this.__l2Auth(signer, creds),
+      },
+      ClobTradesPageSchemaObject,
+    );
+  }
+
+  // ── Data API (public portfolio view) ────────────────────────────────────
+
+  /**
+   * Open positions of a wallet with mark-to-market value and PnL, from
+   * the public Data API — no signing involved. Defaults to `auth.funder`
+   * (the proxy wallet that actually holds positions), so a client built
+   * with trading credentials reads its own book; pass `user` to read any
+   * other wallet.
+   *
+   * Offset-paginated: the vendor returns up to `limit` (default 100) rows
+   * starting at `offset`; a page shorter than `limit` is the last.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when neither
+   * `user` nor `auth.funder` is available; `RESPONSE_ERROR` when the body
+   * fails validation; or `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const positions = await client.getPositions({ redeemable: true });
+   * for (const p of positions) console.log(p.title, p.outcome, p.size, p.cashPnl);
+   * ```
+   */
+  public async getPositions(
+    options: GetPositionsOptions = {},
+  ): Promise<DataPosition[]> {
+    const user = options.user ?? this.__requireFunder();
+    const query: Record<string, string> = { user };
+    const list = (value: string | string[]) =>
+      Array.isArray(value) ? value.join(',') : value;
+    if (options.market !== undefined) query.market = list(options.market);
+    if (options.eventId !== undefined) query.eventId = list(options.eventId);
+    if (options.sizeThreshold !== undefined) {
+      query.sizeThreshold = String(options.sizeThreshold);
+    }
+    if (options.redeemable !== undefined) {
+      query.redeemable = String(options.redeemable);
+    }
+    if (options.mergeable !== undefined) {
+      query.mergeable = String(options.mergeable);
+    }
+    if (options.limit !== undefined) query.limit = String(options.limit);
+    if (options.offset !== undefined) query.offset = String(options.offset);
+    if (options.sortBy) query.sortBy = options.sortBy;
+    if (options.sortDirection) query.sortDirection = options.sortDirection;
+    if (options.title) query.title = options.title;
+    return await this.__requestAndValidate(
+      {
+        path: '/positions',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataPositionListSchemaObject,
+    );
+  }
+
+  /**
+   * Total mark-to-market value of a wallet's positions in USDC, from the
+   * public Data API. Defaults to `auth.funder`; `market` narrows it to
+   * one or more condition ids. Returns `0` for a wallet with no positions.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when neither
+   * `user` nor `auth.funder` is available; `RESPONSE_ERROR` when the body
+   * fails validation; or `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const value = await client.getPortfolioValue();
+   * const cash = (await client.getBalance()).balance;
+   * console.log('equity', value + cash);
+   * ```
+   */
+  public async getPortfolioValue(
+    options: { user?: string; market?: string | string[] } = {},
+  ): Promise<number> {
+    const user = options.user ?? this.__requireFunder();
+    const query: Record<string, string> = { user };
+    if (options.market !== undefined) {
+      query.market = Array.isArray(options.market)
+        ? options.market.join(',')
+        : options.market;
+    }
+    const values = await this.__requestAndValidate(
+      {
+        path: '/value',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataValueListSchemaObject,
+    );
+    return values[0]?.value ?? 0;
   }
 
   /**
@@ -854,6 +1141,32 @@ export class Polymarket extends RESTler<PolymarketOptions> {
         payload,
         this.__l2Auth(signer, creds),
       ),
+      ClobCancelResponseSchemaObject,
+    );
+  }
+
+  /**
+   * Cancel EVERY resting order on the account, across all markets, in one
+   * request (`DELETE /cancel-all`). The kill switch — prefer
+   * {@link cancelMarketOrders} when only one market needs flattening.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`.
+   *
+   * @example
+   * ```typescript
+   * const { canceled, notCanceled } = await client.cancelAllOrders();
+   * ```
+   */
+  public async cancelAllOrders(): Promise<ClobCancelResponse> {
+    const signer = this.__requireSigner();
+    const creds = this.__requireApiCreds();
+    return await this.__requestAndValidate(
+      {
+        path: '/cancel-all',
+        baseURL: this.__clobBaseURL,
+        method: 'DELETE',
+        auth: this.__l2Auth(signer, creds),
+      },
       ClobCancelResponseSchemaObject,
     );
   }

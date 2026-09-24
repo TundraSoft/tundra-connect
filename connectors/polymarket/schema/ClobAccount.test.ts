@@ -47,8 +47,16 @@ describe('ClobAccount schemas', () => {
   });
 
   it('coerces the balance to a number', () => {
-    const balance = ClobBalanceSchemaObject.parse({ balance: '125.50' });
+    // The vendor reports 6-decimal fixed-point base units: '125500000' is $125.50.
+    const balance = ClobBalanceSchemaObject.parse({ balance: '125500000' });
     asserts.assertEquals(balance.balance, 125.5);
+    asserts.assertEquals(balance.balanceRaw, '125500000');
+    const shares = ClobBalanceSchemaObject.parse({ balance: 7000000 });
+    asserts.assertEquals(shares.balance, 7);
+    asserts.assertEquals(shares.balanceRaw, '7000000');
+    asserts.assertExists(
+      ClobBalanceSchemaObject.safeParse({ balance: 'abc' })[0],
+    );
   });
 
   it('parses balance allowances when present', () => {

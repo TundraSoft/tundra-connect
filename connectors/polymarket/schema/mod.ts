@@ -20,6 +20,28 @@ export {
   ClobPostOrdersResponseSchemaObject,
 } from './ClobOrder.ts';
 export {
+  type ClobOpenOrder,
+  ClobOpenOrderSchemaObject,
+  type ClobOpenOrdersPage,
+  ClobOpenOrdersPageSchemaObject,
+  type ClobOrderBook,
+  type ClobOrderBookLevel,
+  ClobOrderBookSchemaObject,
+  type ClobTrade,
+  ClobTradeSchemaObject,
+  type ClobTradesPage,
+  ClobTradesPageSchemaObject,
+} from './ClobData.ts';
+export {
+  type DataPosition,
+  type DataPositionList,
+  DataPositionListSchemaObject,
+  DataPositionSchemaObject,
+  type DataValue,
+  type DataValueList,
+  DataValueListSchemaObject,
+} from './DataApi.ts';
+export {
   type FeeSchedule,
   FeeScheduleSchemaObject,
   type GammaMarket,

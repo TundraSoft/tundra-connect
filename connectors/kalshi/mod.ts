@@ -3,7 +3,11 @@
  */
 
 // Export main client class
-export { Kalshi, type KalshiOptions } from './Kalshi.ts';
+export {
+  DEFAULT_CANCEL_BATCH_SIZE,
+  Kalshi,
+  type KalshiOptions,
+} from './Kalshi.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

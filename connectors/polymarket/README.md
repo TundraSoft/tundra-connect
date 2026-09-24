@@ -69,11 +69,9 @@ client with these calls, the same way you would for order signing.
   are real-time push channels, a different integration shape than this
   repo's REST-only connects; whether/how to add one is an open decision,
   not yet built.
-- **`DELETE /cancel-all`** (cancel every resting order for the account) isn't
-  wired up — `cancelOrder()`/`cancelOrders()`/`cancelMarketOrders()` cover
-  cancellation by id, batch of ids, or market/token.
-- The Data-API (`data-api.polymarket.com`, positions/portfolio value) isn't
-  covered.
+- Data API **activity/leaderboard/holders** feeds — only the portfolio
+  half (`/positions`, `/value`) is wired up, via `getPositions()` /
+  `getPortfolioValue()`.
 
 ## Documentation
 
@@ -132,6 +130,16 @@ await clob.deriveApiCredentials();
 const balance = await clob.getBalance();
 console.log('USDC available:', balance.balance);
 
+// Portfolio: open orders and fills (CLOB), positions and value (Data API).
+const { data: openOrders } = await clob.getOpenOrders();
+const positions = await clob.getPositions();
+console.log(
+  openOrders.length,
+  'resting orders,',
+  positions.length,
+  'positions',
+);
+
 const tokenId = market!.clobTokenIds[0]!;
 const result = await clob.submitOrder({
   tokenId,
@@ -148,6 +156,9 @@ if (result.filled) {
 } else if (result.noMatch) {
   console.log('no resting liquidity matched — nothing was spent');
 }
+
+// Kill switch: every resting order, all markets, one request.
+await clob.cancelAllOrders();
 
 // order() dispatches BUY/SELL/SPLIT/MERGE/REDEEM to the right call above and
 // always returns the same OrderResult shape.

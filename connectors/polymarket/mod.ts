@@ -3,7 +3,17 @@
  */
 
 // Export main client class
-export { Polymarket, type PolymarketOptions } from './Polymarket.ts';
+export {
+  CLOB_API,
+  DATA_API,
+  GAMMA_API,
+  type GetFillsOptions,
+  type GetOpenOrdersOptions,
+  type GetPositionsOptions,
+  Polymarket,
+  type PolymarketOptions,
+  RELAYER_API,
+} from './Polymarket.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

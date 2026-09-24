@@ -20,7 +20,8 @@ One `Kalshi` client covers both halves of the API:
   `getPositions()`, `getFills()`, `getOrders()`/`getOrder()`,
   `submitOrder()`/`submitOrders()` (single/bulk — no fixed per-request
   cap, unlike Polymarket's 15), `amendOrder()`, `cancelOrder()`/
-  `cancelOrders()`.
+  `cancelOrders()`, and `cancelAllOrders()` (a client-side sweep — Kalshi
+  has no cancel-all endpoint).
 
 Construct with `auth.accessKey` + `auth.privateKeyPem` to trade; omit
 `auth` entirely for market-data-only, credential-free usage.

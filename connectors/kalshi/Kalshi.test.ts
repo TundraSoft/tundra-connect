@@ -568,6 +568,98 @@ describe('Kalshi — amendOrder / cancelOrder / cancelOrders', () => {
   });
 });
 
+describe('Kalshi — cancelAllOrders (client-side sweep)', () => {
+  const resting = (ids: string[]) =>
+    ids.map((id) => ({ order_id: id, ticker: 'T', status: 'resting' }));
+  const rows = (ids: string[]) => ({
+    orders: ids.map((id) => ({ order_id: id, reduced_by: '1.00' })),
+  });
+
+  it('pages through resting orders and cancels each page in batchSize chunks', async () => {
+    const client = authedClient();
+    client.setResponseQueue([
+      { body: { orders: resting(['a', 'b', 'c']), cursor: 'p2' } },
+      { body: rows(['a', 'b']) },
+      { body: rows(['c']) },
+      { body: { orders: resting(['d']) } },
+      { body: rows(['d']) },
+    ]);
+    const result = await client.cancelAllOrders({ batchSize: 2 });
+    asserts.assertEquals(result.map((r) => r.orderId), ['a', 'b', 'c', 'd']);
+    asserts.assertEquals(
+      client.requests.map((r) => r.method),
+      ['GET', 'DELETE', 'DELETE', 'GET', 'DELETE'],
+    );
+    const list1 = new URL(client.requests[0]!.url);
+    asserts.assertEquals(list1.searchParams.get('status'), 'resting');
+    asserts.assertEquals(list1.searchParams.get('limit'), '1000');
+    asserts.assertEquals(list1.searchParams.get('cursor'), null);
+    asserts.assertEquals(
+      new URL(client.requests[3]!.url).searchParams.get('cursor'),
+      'p2',
+    );
+    asserts.assertEquals(
+      JSON.parse(client.requests[1]!.body!).orders,
+      [{ order_id: 'a' }, { order_id: 'b' }],
+    );
+    asserts.assertEquals(
+      JSON.parse(client.requests[2]!.body!).orders,
+      [{ order_id: 'c' }],
+    );
+  });
+
+  it('issues no cancel request when nothing is resting', async () => {
+    const client = authedClient();
+    client.setResponse({ orders: [] });
+    asserts.assertEquals(await client.cancelAllOrders(), []);
+    asserts.assertEquals(client.requests.length, 1);
+    asserts.assertEquals(client.requests[0]!.method, 'GET');
+  });
+
+  it('narrows the sweep by ticker / eventTicker and defaults to 50-row batches', async () => {
+    const client = authedClient();
+    const ids = Array.from({ length: 60 }, (_, i) => `o${i}`);
+    client.setResponseQueue([
+      { body: { orders: resting(ids) } },
+      { body: rows(ids.slice(0, 50)) },
+      { body: rows(ids.slice(50)) },
+    ]);
+    const result = await client.cancelAllOrders({
+      ticker: 'T',
+      eventTicker: 'E',
+    });
+    asserts.assertEquals(result.length, 60);
+    const list = new URL(client.requests[0]!.url);
+    asserts.assertEquals(list.searchParams.get('ticker'), 'T');
+    asserts.assertEquals(list.searchParams.get('event_ticker'), 'E');
+    asserts.assertEquals(
+      JSON.parse(client.requests[1]!.body!).orders.length,
+      50,
+    );
+    asserts.assertEquals(
+      JSON.parse(client.requests[2]!.body!).orders.length,
+      10,
+    );
+  });
+
+  it('rejects a non-positive or fractional batchSize before any request', async () => {
+    const client = authedClient();
+    for (const batchSize of [0, -1, 1.5]) {
+      const err = await asserts.assertRejects(
+        () => client.cancelAllOrders({ batchSize }),
+        KalshiError,
+      );
+      asserts.assertEquals(err.code, 'CONFIG_INVALID_BATCH_SIZE');
+    }
+    asserts.assertEquals(client.requests.length, 0);
+  });
+
+  it('throws CONFIG_MISSING_PRIVATE_KEY without credentials', async () => {
+    const client = new MockKalshi();
+    await asserts.assertRejects(() => client.cancelAllOrders(), KalshiError);
+  });
+});
+
 describe('Kalshi — error mapping', () => {
   it('maps 404 to NOT_FOUND', async () => {
     const client = new MockKalshi();

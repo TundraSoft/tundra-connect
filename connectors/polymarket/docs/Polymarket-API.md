@@ -42,25 +42,31 @@ credential separate from the CLOB's L2 `apiCredentials`, required only for
 
 ## Endpoints
 
-| Method                   | Endpoint                                                        | Auth                                  | Result                                           |
-| ------------------------ | --------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------ |
-| `getMarkets()`           | `GET /markets` or `GET /markets/keyset`                         | none                                  | `{ markets, nextCursor? }`                       |
-| `getMarketBySlug()`      | `GET /markets/slug/{slug}`                                      | none                                  | A `GammaMarket`, or `null` if not found          |
-| `getVersion()`           | `GET /version`                                                  | none                                  | The active order-signing protocol (1\|2), cached |
-| `getTickSize()`          | `GET /tick-size`                                                | none                                  | Minimum price tick for a token, cached           |
-| `getNegRisk()`           | `GET /neg-risk`                                                 | none                                  | Whether a token trades neg-risk, cached          |
-| `keepalive()`            | `GET /`                                                         | none                                  | `boolean` — never throws                         |
-| `deriveApiCredentials()` | `POST /auth/api-key` (falls back to `GET /auth/derive-api-key`) | L1 (EIP-712)                          | `{ apiKey, secret, passphrase }`                 |
-| `getBalance()`           | `GET /balance-allowance`                                        | L2 (HMAC)                             | Available USDC as the venue sees it              |
-| `submitOrder()`          | `POST /order`                                                   | L2 (HMAC) + order signature (EIP-712) | Fill/no-match/rejection outcome                  |
-| `submitOrders()`         | `POST /orders` (chunked at 15)                                  | L2 (HMAC) + order signature (EIP-712) | One outcome per input order, same order          |
-| `cancelOrder()`          | `DELETE /order`                                                 | L2 (HMAC)                             | `{ canceled, notCanceled }`                      |
-| `cancelOrders()`         | `DELETE /orders`                                                | L2 (HMAC)                             | `{ canceled, notCanceled }`                      |
-| `cancelMarketOrders()`   | `DELETE /cancel-market-orders`                                  | L2 (HMAC)                             | `{ canceled, notCanceled }`                      |
-| `split()`                | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                    |
-| `merge()`                | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                    |
-| `redeem()`               | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                    |
-| `order()`                | dispatches to one of the above by `request.action`              | (whichever the dispatched call needs) | `OrderResult`                                    |
+| Method                   | Endpoint                                                        | Auth                                  | Result                                                       |
+| ------------------------ | --------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------ |
+| `getMarkets()`           | `GET /markets` or `GET /markets/keyset`                         | none                                  | `{ markets, nextCursor? }`                                   |
+| `getMarketBySlug()`      | `GET /markets/slug/{slug}`                                      | none                                  | A `GammaMarket`, or `null` if not found                      |
+| `getVersion()`           | `GET /version`                                                  | none                                  | The active order-signing protocol (1\|2), cached             |
+| `getTickSize()`          | `GET /tick-size`                                                | none                                  | Minimum price tick for a token, cached                       |
+| `getNegRisk()`           | `GET /neg-risk`                                                 | none                                  | Whether a token trades neg-risk, cached                      |
+| `getOrderbook()`         | `GET /book`                                                     | none                                  | Aggregated bid/ask levels for one token                      |
+| `keepalive()`            | `GET /`                                                         | none                                  | `boolean` — never throws                                     |
+| `deriveApiCredentials()` | `POST /auth/api-key` (falls back to `GET /auth/derive-api-key`) | L1 (EIP-712)                          | `{ apiKey, secret, passphrase }`                             |
+| `getBalance()`           | `GET /balance-allowance`                                        | L2 (HMAC)                             | Available USDC (or shares of one token) as the venue sees it |
+| `getOpenOrders()`        | `GET /data/orders`                                              | L2 (HMAC)                             | `{ data, nextCursor? }` of the account's orders              |
+| `getFills()`             | `GET /data/trades`                                              | L2 (HMAC)                             | `{ data, nextCursor? }` of the account's fills               |
+| `submitOrder()`          | `POST /order`                                                   | L2 (HMAC) + order signature (EIP-712) | Fill/no-match/rejection outcome                              |
+| `submitOrders()`         | `POST /orders` (chunked at 15)                                  | L2 (HMAC) + order signature (EIP-712) | One outcome per input order, same order                      |
+| `cancelOrder()`          | `DELETE /order`                                                 | L2 (HMAC)                             | `{ canceled, notCanceled }`                                  |
+| `cancelOrders()`         | `DELETE /orders`                                                | L2 (HMAC)                             | `{ canceled, notCanceled }`                                  |
+| `cancelMarketOrders()`   | `DELETE /cancel-market-orders`                                  | L2 (HMAC)                             | `{ canceled, notCanceled }`                                  |
+| `cancelAllOrders()`      | `DELETE /cancel-all`                                            | L2 (HMAC)                             | `{ canceled, notCanceled }`                                  |
+| `getPositions()`         | `GET /positions` (Data API)                                     | none                                  | `DataPosition[]` with mark-to-market and PnL                 |
+| `getPortfolioValue()`    | `GET /value` (Data API)                                         | none                                  | Total position value in USDC                                 |
+| `split()`                | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                                |
+| `merge()`                | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                                |
+| `redeem()`               | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                                |
+| `order()`                | dispatches to one of the above by `request.action`              | (whichever the dispatched call needs) | `OrderResult`                                                |
 
 `submitOrder()`/`submitOrders()`/`split()`/`merge()`/`redeem()`/`order()` all
 resolve to the same `OrderResult` shape — see
@@ -196,7 +202,7 @@ mismatch) rather than one order within it — there is no per-order outcome
 to report in that case, so it surfaces as `ORDER_REJECTED` /
 `ORDER_VERSION_MISMATCH_PERSISTED` like a single-order failure would.
 
-### `cancelOrder()` / `cancelOrders()` / `cancelMarketOrders()`
+### `cancelOrder()` / `cancelOrders()` / `cancelMarketOrders()` / `cancelAllOrders()`
 
 ```ts
 await client.cancelOrder('0xabc...');
@@ -206,6 +212,67 @@ console.log(result.canceled, result.notCanceled); // notCanceled: { orderId: rea
 // Every resting order across a market, or narrowed to one outcome token.
 await client.cancelMarketOrders({ market: conditionId });
 await client.cancelMarketOrders({ market: conditionId, assetId: tokenId });
+
+// The kill switch: every resting order on the account, all markets, one request.
+await client.cancelAllOrders();
+```
+
+### Portfolio: `getBalance()` / `getOpenOrders()` / `getFills()` / `getPositions()` / `getPortfolioValue()`
+
+Three sources feed the portfolio view, and they differ in auth and units:
+
+| Method                | Source              | Auth | Notes                                                                                                                                                                                                            |
+| --------------------- | ------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getBalance()`        | CLOB                | L2   | USDC collateral by default; `{ tokenId }` for the share balance of one outcome. The vendor sends 6-decimal base units — `balance` is already divided (`125.5`), `balanceRaw` is the wire string (`'125500000'`). |
+| `getOpenOrders()`     | CLOB `/data/orders` | L2   | Cursor-paginated; filter by `market`, `assetId` or `id`. `expiration === 0` means GTC.                                                                                                                           |
+| `getFills()`          | CLOB `/data/trades` | L2   | Cursor-paginated; filter by `market`, `assetId`, `makerAddress`, `before`/`after` (Unix seconds). `traderSide` says whether you took or made.                                                                    |
+| `getPositions()`      | Data API            | none | Keyed by wallet — defaults to `auth.funder`, pass `user` for any wallet. Offset-paginated (`limit`/`offset`); `redeemable`/`mergeable` filters.                                                                  |
+| `getPortfolioValue()` | Data API            | none | Total mark-to-market value in USDC (`0` for an empty wallet). Equity = this + `getBalance().balance`.                                                                                                            |
+
+```ts
+// Reconcile on restart.
+let cursor: string | undefined;
+do {
+  const page = await client.getOpenOrders({ cursor });
+  for (const o of page.data) {
+    console.log(
+      o.id,
+      o.status,
+      o.side,
+      o.price,
+      o.originalSize - o.sizeMatched,
+    );
+  }
+  cursor = page.nextCursor;
+} while (cursor);
+
+// What's held, and what it's worth.
+const positions = await client.getPositions();
+const value = await client.getPortfolioValue();
+const cash = (await client.getBalance()).balance;
+console.log(positions.length, 'positions worth', value, '+', cash, 'USDC cash');
+
+// Anything to redeem?
+for (const p of await client.getPositions({ redeemable: true })) {
+  await client.redeem({
+    conditionId: p.conditionId,
+    negRisk: p.negativeRisk ?? false,
+  });
+}
+```
+
+The Data API is public and reads any wallet — it is the same data the
+Polymarket profile pages show. It lags the CLOB by a few seconds after a
+fill; for the venue's own view of what a new order can draw on, use
+`getBalance()`.
+
+### `getOrderbook()`
+
+```ts
+const book = await client.getOrderbook(tokenId);
+// The vendor sorts bids ascending and asks descending, so the touch is last on both sides.
+const bestBid = book.bids.at(-1)?.price;
+const bestAsk = book.asks.at(-1)?.price;
 ```
 
 ### `OrderResult` — one shape for every action

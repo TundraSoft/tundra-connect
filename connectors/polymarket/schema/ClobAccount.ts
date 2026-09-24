@@ -86,32 +86,60 @@ export const ClobNegRiskSchemaObject: BaseGuardian<ClobNegRisk> = Guardian
 
 /** Response schema for `GET /balance-allowance`. */
 export type ClobBalance = {
+  /**
+   * Available balance in whole units — USDC for a `COLLATERAL` query,
+   * shares for a `CONDITIONAL` (token) query. Converted from the vendor's
+   * 6-decimal fixed-point wire form (`'125500000'` -> `125.5`).
+   */
   balance: number;
+  /** The untouched 6-decimal base-unit string the vendor sent. */
+  balanceRaw: string;
+  /** Spender contract address -> allowance, in the same base units. */
   allowances?: Record<string, string>;
 };
 
+/** USDC and Polymarket conditional tokens both carry 6 decimals. */
+const BASE_UNITS_PER_WHOLE = 1_000_000;
+
 /**
- * Schema for the CLOB's `GET /balance-allowance` response. `balance` is
- * available USDC (or the requested collateral) as the venue sees it,
- * coerced from the vendor's decimal-string wire form.
+ * Schema for the CLOB's `GET /balance-allowance` response. The vendor
+ * reports `balance` as a fixed-point integer string with 6 decimals (the
+ * OpenAPI spec: "Balance amount in fixed-math with 6 decimals"), so
+ * `'125500000'` is $125.50 — `balance` is the divided whole-unit number
+ * and `balanceRaw` the original string.
  *
  * @example
  * ```typescript
  * import { ClobBalanceSchemaObject } from '@tundraconnect/polymarket/schemas';
  *
- * const [error, balance] = ClobBalanceSchemaObject.safeParse({ balance: '125.50' });
+ * const [error, balance] = ClobBalanceSchemaObject.safeParse({ balance: '125500000' });
+ * // balance.balance === 125.5, balance.balanceRaw === '125500000'
  * ```
  */
 export const ClobBalanceSchemaObject: BaseGuardian<ClobBalance> = Guardian
-  .object({
-    balance: Guardian.number(),
-    allowances: Guardian.record(Guardian.string(), Guardian.string())
-      .optional(),
-  }).describe({
-    title: 'Balance and allowance',
-    description:
-      'Available collateral and per-contract allowances, as the CLOB sees them.',
-  });
+  .preprocess(
+    (raw: unknown) => {
+      if (typeof raw !== 'object' || raw === null) return raw;
+      const obj = raw as Record<string, unknown>;
+      const balanceRaw = String(obj.balance ?? '');
+      const units = Number(balanceRaw);
+      return {
+        ...obj,
+        balanceRaw,
+        balance: Number.isFinite(units) ? units / BASE_UNITS_PER_WHOLE : NaN,
+      };
+    },
+    Guardian.object({
+      balance: Guardian.number(),
+      balanceRaw: Guardian.string(),
+      allowances: Guardian.record(Guardian.string(), Guardian.string())
+        .optional(),
+    }).describe({
+      title: 'Balance and allowance',
+      description:
+        'Available collateral (or token shares) and per-contract allowances, as the CLOB sees them.',
+    }),
+  );
 
 /** Response schema for `POST /auth/api-key` and `GET /auth/derive-api-key`. */
 export type ClobApiCredentials = {

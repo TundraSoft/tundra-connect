@@ -19,6 +19,8 @@ export const KalshiErrorCodes = {
 
   CONFIG_MISSING_PRIVATE_KEY:
     'Kalshi portfolio/order methods require `auth.privateKeyPem` and `auth.accessKey` — construct the client with `auth` set, or use only the public market-data methods.',
+  CONFIG_INVALID_BATCH_SIZE:
+    'cancelAllOrders batchSize must be a positive integer, got ${value}.',
   CONFIG_INVALID_PRIVATE_KEY:
     'Kalshi `auth.privateKeyPem` is not a valid PKCS#8 RSA private key.',
 
