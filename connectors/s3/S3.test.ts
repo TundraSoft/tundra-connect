@@ -1527,17 +1527,28 @@ describe('S3 — maxRetryWait (RESTler rate-limit retry)', () => {
       asserts.assertEquals(err.getContextValue('retried'), false);
     }
   });
-  it('maps a throttled streamed download by status — RESTler does not retry the stream path', async () => {
-    // `_makeStreamRequest` never consults `maxRetryWait` (restler 1.3.0), so
-    // there is no wait and no `retried` flag: the vendor handler sees the raw
-    // 429 and maps it to SLOW_DOWN.
+  it('retries a throttled streamed download once, then surfaces SLOW_DOWN with retried: true', async () => {
+    // restler >= 1.3.1 applies maxRetryWait to the stream path too.
     const { c, slept, calls } = throttled(60, '1');
     const err = await asserts.assertRejects(
       () => c.getObjectStream({ bucket: 'examplebucket', key: 'k' }),
       S3Error,
     );
     asserts.assertEquals(err.code, 'SLOW_DOWN');
-    asserts.assertEquals(err.getContextValue('retried'), undefined);
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(calls(), 2);
+  });
+
+  it('throws SLOW_DOWN from a streamed download immediately when the hint exceeds maxRetryWait', async () => {
+    const { c, slept, calls } = throttled(5, '120');
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'SLOW_DOWN');
+    asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(slept, []);
     asserts.assertEquals(calls(), 1);
   });

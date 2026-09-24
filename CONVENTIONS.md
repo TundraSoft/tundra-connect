@@ -460,7 +460,7 @@ primitive is the sanctioned choice, not a gap in `@id`.
 
 ## Rate limits
 
-Do not parse `Retry-After`-style headers in a connect. RESTler (>= 1.3.0)
+Do not parse `Retry-After`-style headers in a connect. RESTler (>= 1.3.1)
 owns that: read the hint with `this._parseRetryAfter(response.headers)` in
 `__toError` and attach it as `retryAfterSeconds` on the `RATE_LIMITED`
 error. A caller opts into RESTler's single retry with `maxRetryWait`; when
@@ -494,7 +494,10 @@ Rewrapping only inside `__requestAndValidate` once leaked the raw
 connect's tests carry a `maxRetryWait` suite that exercises both the
 retry-then-exhaust and the hint-exceeds-cap cases.
 
-`_makeStreamRequest` needs no counterpart: as of `@tundralibs/restler@1.3.0`
-the stream path never consults `maxRetryWait`, so a 429 on a streamed
-download reaches `__toError` and must be mapped **by status** there — make
-sure a bodiless 429 maps to the rate-limit code, not a generic fallback.
+Give `_makeStreamRequest` the same override wherever the connect streams:
+since `@tundralibs/restler@1.3.1` the stream path honours `maxRetryWait`
+and throws `RESTlerRateLimitError` just like the buffered one. Import it
+from `@restler` itself (1.3.1 re-exports it from the root; the old
+`@restler/errors` alias is gone). Without `maxRetryWait` a 429 still
+reaches `__toError`, so a bodiless 429 must also map to the rate-limit code
+**by status** there, not fall to a generic fallback.

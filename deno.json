@@ -16,12 +16,12 @@
   "imports": {
     "@asserts": "jsr:@std/assert@^1.0.0",
     "@test": "jsr:@tundralibs/compat@^1.1.4/test",
-    "@restler": "jsr:@tundralibs/restler@^1.3.0",
+    "@restler": "jsr:@tundralibs/restler@^1.3.1",
     "@guardian": "jsr:@tundralibs/guardian@^1.1.0",
     "@crypt": "jsr:@tundralibs/crypt@^1.4.1",
     "@id": "jsr:@tundralibs/id@^1.1.4",
     "@encoding": "jsr:@std/encoding@^1.0.11",
-    "@restler/errors": "jsr:@tundralibs/restler@^1.3.0/errors"
+    "@restler/errors": "jsr:@tundralibs/restler@^1.3.1/errors"
   },
   "tasks": {
     "check": "deno task check:fmt && deno task check:lint && deno task check:types",

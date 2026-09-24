@@ -4,12 +4,13 @@ import {
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
+  RESTlerRateLimitError,
   type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
+  type RESTlerStreamOptions,
   RESTlerTimeoutError,
 } from '@restler';
-import { RESTlerRateLimitError } from '@restler/errors';
 import type { EventOptionKeys } from '@utils';
 import { issueJWT } from '@crypt';
 import { type BaseGuardian, Guardian, GuardianError } from '@guardian';
@@ -1349,10 +1350,9 @@ export class GCS extends RESTler<GCSOptions> {
    * {@link __requestAndValidate}. Rewrapping only inside that helper
    * leaked the raw RESTler error from those methods.
    *
-   * `_makeStreamRequest` needs no counterpart: as of
-   * `@tundralibs/restler@1.3.0` the stream path never consults
-   * `maxRetryWait` — a 429 there goes straight to {@link __toError}, which
-   * maps it by status.
+   * {@link _makeStreamRequest} carries the same rewrap: since
+   * `@tundralibs/restler@1.3.1` a streamed download is retried under
+   * `maxRetryWait` exactly like a buffered request.
    */
   protected override async _makeRequest<H = ResponseBody, B = H>(
     endpoint: RESTlerEndpoint,
@@ -1360,6 +1360,18 @@ export class GCS extends RESTler<GCSOptions> {
   ): Promise<RESTlerResponse<B>> {
     try {
       return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__rateLimitError(err);
+    }
+  }
+
+  /** Same rate-limit rewrap as {@link _makeRequest}, for streamed downloads. */
+  protected override async _makeStreamRequest<H = ResponseBody>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerStreamOptions<H> = {},
+  ): Promise<RESTlerResponse<ReadableStream<Uint8Array>>> {
+    try {
+      return await super._makeStreamRequest<H>(endpoint, options);
     } catch (err) {
       throw this.__rateLimitError(err);
     }

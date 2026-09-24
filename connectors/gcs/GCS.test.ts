@@ -1744,34 +1744,43 @@ describe('GCS — maxRetryWait (RESTler rate-limit retry)', () => {
     }
   });
 
-  it('maps a throttled media stream by status once metadata succeeded — RESTler does not retry the stream path', async () => {
-    // `_makeStreamRequest` never consults `maxRetryWait` (restler 1.3.0), so
-    // the 429 reaches the vendor handler, which maps it by status.
+  it('retries a throttled media stream once metadata succeeded, then surfaces RATE_LIMIT_EXCEEDED with retried: true', async () => {
+    // restler >= 1.3.1 applies maxRetryWait to the stream path too.
     const c = new MockGCS({
       auth: { type: 'BEARER', token: 't' },
-      maxRetryWait: 5,
+      maxRetryWait: 60,
     });
-    c['_fetch'] = (input) =>
-      Promise.resolve(
-        String(input).includes('alt=media')
-          ? new Response('{}', {
-            status: 429,
-            headers: {
-              'content-type': 'application/json',
-              'retry-after': '120',
-            },
-          })
-          : new Response(
-            JSON.stringify({ name: 'k', bucket: 'my-bucket' }),
-            { status: 200, headers: { 'content-type': 'application/json' } },
-          ),
+    const slept: number[] = [];
+    let mediaCalls = 0;
+    c['_sleep'] = (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    };
+    c['_fetch'] = (input) => {
+      if (!String(input).includes('alt=media')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ name: 'k', bucket: 'my-bucket' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      }
+      mediaCalls++;
+      return Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '1' },
+        }),
       );
+    };
     const err = await asserts.assertRejects(
       () => c.getObjectStream({ bucket: 'my-bucket', key: 'k' }),
       GCSError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMIT_EXCEEDED');
-    asserts.assertEquals(err.getContextValue('retried'), undefined);
+    asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(slept, [1000]);
+    asserts.assertEquals(mediaCalls, 2);
   });
 });
 

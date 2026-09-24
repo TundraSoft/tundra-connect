@@ -77,7 +77,8 @@ documented `<Error>` XML body and maps from the actual vendor `Code`.
 
 `getContextValue('retryAfterSeconds')` — seconds to wait before retrying, parsed by RESTler (`_parseRetryAfter`) from `Retry-After` (delta seconds or an HTTP-date), `X-RateLimit-Reset-After`, `RateLimit-Reset`, or an epoch-seconds `X-RateLimit-Reset`; `undefined` when none was present — never a guess. Pass `maxRetryWait` (seconds) at construction to have RESTler wait the hinted time and retry **once**; if that attempt is throttled too, or the hint exceeds the cap, the error is raised with `retried` set so you know whether a wait already happened. Present on `RATE_LIMITED` when the vendor sent a usable hint.
 
-**Streamed downloads are not retried.** As of `@tundralibs/restler@1.3.0`,
-`getObjectStream()` never consults `maxRetryWait`: a throttled stream
-fails immediately with `SLOW_DOWN` (mapped by status), with no wait and no
-`retried` context. Retry it yourself using `retryAfterSeconds`.
+**Streamed downloads are retried too.** `getObjectStream()` honours
+`maxRetryWait` exactly like the buffered methods (`@tundralibs/restler`
+
+> = 1.3.1): one wait for the hinted time, then `SLOW_DOWN` with `retried: true`
+> if the stream is throttled again.
