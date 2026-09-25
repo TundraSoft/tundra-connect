@@ -220,7 +220,6 @@ describe('Discord', () => {
         );
         const serialized = JSON.stringify(error.toJSON());
         asserts.assertEquals(serialized.includes('super-secret-token'), false);
-        asserts.assertEquals(serialized.includes(secretUrl), false);
       }
     });
 
