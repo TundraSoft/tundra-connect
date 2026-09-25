@@ -1,7 +1,7 @@
 {
   "name": "@tundraconnect/kalshi",
-  "version": "0.0.0",
-  "description": "Typed Kalshi client: public market data, plus RSA-PSS-signed trading \u2014 balance, positions, fills and orders; place, amend and cancel orders.",
+  "version": "0.1.0",
+  "description": "Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/algolia",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.",
   "exports": {

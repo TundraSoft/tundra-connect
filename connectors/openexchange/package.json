@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/openexchange",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "description": "Typed Open Exchange Rates client: latest and historical rates, time series, currency conversion, OHLC data and account usage.",
   "exports": {

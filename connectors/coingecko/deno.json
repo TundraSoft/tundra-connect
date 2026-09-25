@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/coingecko",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.",
   "exports": {
     ".": "./mod.ts",

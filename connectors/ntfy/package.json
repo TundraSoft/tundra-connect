@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/ntfy",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Typed ntfy.sh client for publishing push notifications to a topic.",
   "exports": {

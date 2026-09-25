@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/cloudflare-email",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Typed Cloudflare Email Sending client: send transactional email with attachments, validated locally before the request is made.",
   "exports": {
