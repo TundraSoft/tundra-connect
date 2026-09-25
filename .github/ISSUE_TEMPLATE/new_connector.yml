@@ -1,0 +1,97 @@
+name: 🔌 New Connector Request
+description: Propose a new vendor integration
+title: '[New connector] Vendor name'
+labels: [enhancement, new-connector]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [ROADMAP.md](https://github.com/TundraSoft/tundra-connect/blob/main/ROADMAP.md) first — the vendor may already be a candidate, covered by an existing connect (e.g. R2/MinIO through `s3`), or not planned.
+
+        A connector is only implementation-ready once its public API reference, auth model, request/response shapes and a sandbox/test path are available (the ROADMAP's "Documentation gate"), so the fields below ask for exactly that.
+  - type: input
+    id: vendor
+    attributes:
+      label: Vendor
+      placeholder: 'e.g. Resend'
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Payments / billing
+        - Messaging / email / notifications
+        - Storage
+        - Markets / crypto / finance data
+        - Search / databases
+        - Observability / dev tools
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: api-docs
+    attributes:
+      label: Public API reference
+      description: Link to the vendor's API docs. It must be readable without logging in.
+      placeholder: 'https://…'
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What would you build with it, and why not use the vendor's own SDK?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Endpoints / features needed
+      description: The smallest useful first version, such as "send email, fetch delivery status, verify webhooks".
+      placeholder: |
+        - …
+    validations:
+      required: true
+  - type: dropdown
+    id: auth
+    attributes:
+      label: Authentication
+      options:
+        - API key / bearer token
+        - OAuth2 (client credentials)
+        - OAuth2 (user authorization)
+        - Request signing (HMAC, SigV4, RSA, …)
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: sandbox
+    attributes:
+      label: Test access
+      description: How could the connector be tested against the real API?
+      options:
+        - Free tier or sandbox, self-serve signup
+        - Paid account only
+        - Vendor approval / sales contact required
+        - Not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: runtimes
+    attributes:
+      label: Runtimes you need
+      options:
+        - label: Deno
+        - label: Node.js
+        - label: Bun
+        - label: Cloudflare Workers
+        - label: Browser
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to build this myself, following CONVENTIONS.md
+        - label: I can provide test credentials or sandbox access
