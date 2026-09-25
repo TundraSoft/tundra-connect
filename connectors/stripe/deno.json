@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/stripe",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Typed Stripe client: create and retrieve PaymentIntents and create customers, with idempotency keys and webhook signature verification.",
   "exports": {
     ".": "./mod.ts",

@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/slack",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Typed Slack Web API client: post, update and delete messages, list channels and read history, look up users, and verify request signatures.",
   "exports": {
     ".": "./mod.ts",

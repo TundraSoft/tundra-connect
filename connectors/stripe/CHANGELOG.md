@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/TundraSoft/tundra-connect/compare/stripe-v0.1.0...stripe-v0.1.1) (2026-09-25)
+
+
+### Documentation
+
+* make every README example compile on its own ([f9ba1e0](https://github.com/TundraSoft/tundra-connect/commit/f9ba1e05238b4ed7656e768112245c66cdc520ec))
+* **multi:** make every README example compile on its own ([ffa3f44](https://github.com/TundraSoft/tundra-connect/commit/ffa3f449ff1a0d3eab3fa4b1b63358d91369eab0))
+
 ## 0.1.0 (2026-09-25)
 
 
