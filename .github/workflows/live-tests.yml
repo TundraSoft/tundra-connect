@@ -1,0 +1,129 @@
+name: Monthly Live Vendor Tests
+
+# Runs every connect's `— live` test suite (see CONVENTIONS.md's "Tests"
+# section) against the real vendor, for whichever connectors have
+# credentials set as repo secrets below — a connector with none set simply
+# skips, same as locally. Separate from health.yml's weekly cadence:
+# GitHub Actions can't run two schedules off one workflow, and this one
+# hits real external vendors, so it stays on its own slower, opt-in-aware
+# cadence rather than riding along on every weekly run.
+#
+# Single runtime (Deno) only — the point is validating each connect's wire
+# behavior against the real vendor, not re-proving cross-runtime
+# compatibility (already covered by ci.yml/health.yml); running live on
+# all 3 runtimes would triple every real API call for no benefit. Each
+# live test also self-restricts to Deno in-code (`bun: false, node: false`)
+# as defense in depth.
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+    inputs:
+      allow_visible_effects:
+        description: >-
+          Also run tests with a real-world-visible side effect with no way
+          to undo it (an actual Discord/Slack/Telegram/ntfy message, or a
+          Twilio SMS/call) — leave off for a normal check.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  live-test:
+    name: Live vendor tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno task test
+        env:
+          LIVE_TEST_ALLOW_VISIBLE_EFFECTS: ${{ github.event.inputs.allow_visible_effects == 'true' && 'true' || '' }}
+          CONNECTOR_COINGECKO_API_KEY: ${{ secrets.CONNECTOR_COINGECKO_API_KEY }}
+          CONNECTOR_OPENEXCHANGE_APP_ID: ${{ secrets.CONNECTOR_OPENEXCHANGE_APP_ID }}
+          CONNECTOR_OPENWEATHERMAP_API_KEY: ${{ secrets.CONNECTOR_OPENWEATHERMAP_API_KEY }}
+          CONNECTOR_ALGOLIA_APPLICATION_ID: ${{ secrets.CONNECTOR_ALGOLIA_APPLICATION_ID }}
+          CONNECTOR_ALGOLIA_API_KEY: ${{ secrets.CONNECTOR_ALGOLIA_API_KEY }}
+          CONNECTOR_UPSTASH_REDIS_TOKEN: ${{ secrets.CONNECTOR_UPSTASH_REDIS_TOKEN }}
+          CONNECTOR_UPSTASH_REDIS_BASE_URL: ${{ secrets.CONNECTOR_UPSTASH_REDIS_BASE_URL }}
+          CONNECTOR_S3_ACCESS_KEY_ID: ${{ secrets.CONNECTOR_S3_ACCESS_KEY_ID }}
+          CONNECTOR_S3_SECRET_ACCESS_KEY: ${{ secrets.CONNECTOR_S3_SECRET_ACCESS_KEY }}
+          CONNECTOR_S3_REGION: ${{ secrets.CONNECTOR_S3_REGION }}
+          CONNECTOR_S3_TEST_BUCKET: ${{ secrets.CONNECTOR_S3_TEST_BUCKET }}
+          CONNECTOR_GCS_CLIENT_EMAIL: ${{ secrets.CONNECTOR_GCS_CLIENT_EMAIL }}
+          CONNECTOR_GCS_PRIVATE_KEY: ${{ secrets.CONNECTOR_GCS_PRIVATE_KEY }}
+          CONNECTOR_GCS_TEST_BUCKET: ${{ secrets.CONNECTOR_GCS_TEST_BUCKET }}
+          CONNECTOR_AZURE_BLOB_ACCOUNT: ${{ secrets.CONNECTOR_AZURE_BLOB_ACCOUNT }}
+          CONNECTOR_AZURE_BLOB_ACCOUNT_KEY: ${{ secrets.CONNECTOR_AZURE_BLOB_ACCOUNT_KEY }}
+          CONNECTOR_AZURE_BLOB_TEST_CONTAINER: ${{ secrets.CONNECTOR_AZURE_BLOB_TEST_CONTAINER }}
+          CONNECTOR_STRIPE_SECRET_KEY: ${{ secrets.CONNECTOR_STRIPE_SECRET_KEY }}
+          CONNECTOR_RAZORPAY_KEY_ID: ${{ secrets.CONNECTOR_RAZORPAY_KEY_ID }}
+          CONNECTOR_RAZORPAY_KEY_SECRET: ${{ secrets.CONNECTOR_RAZORPAY_KEY_SECRET }}
+          CONNECTOR_PAYPAL_CLIENT_ID: ${{ secrets.CONNECTOR_PAYPAL_CLIENT_ID }}
+          CONNECTOR_PAYPAL_CLIENT_SECRET: ${{ secrets.CONNECTOR_PAYPAL_CLIENT_SECRET }}
+          CONNECTOR_SENTRY_TOKEN: ${{ secrets.CONNECTOR_SENTRY_TOKEN }}
+          CONNECTOR_SENTRY_ORGANIZATION: ${{ secrets.CONNECTOR_SENTRY_ORGANIZATION }}
+          CONNECTOR_SENDGRID_API_KEY: ${{ secrets.CONNECTOR_SENDGRID_API_KEY }}
+          CONNECTOR_DISCORD_BOT_TOKEN: ${{ secrets.CONNECTOR_DISCORD_BOT_TOKEN }}
+          CONNECTOR_DISCORD_CHANNEL_ID: ${{ secrets.CONNECTOR_DISCORD_CHANNEL_ID }}
+          CONNECTOR_TELEGRAM_BOT_TOKEN: ${{ secrets.CONNECTOR_TELEGRAM_BOT_TOKEN }}
+          CONNECTOR_TELEGRAM_CHAT_ID: ${{ secrets.CONNECTOR_TELEGRAM_CHAT_ID }}
+          CONNECTOR_SLACK_BOT_TOKEN: ${{ secrets.CONNECTOR_SLACK_BOT_TOKEN }}
+          CONNECTOR_SLACK_CHANNEL_ID: ${{ secrets.CONNECTOR_SLACK_CHANNEL_ID }}
+          CONNECTOR_NTFY_TEST_TOPIC: ${{ secrets.CONNECTOR_NTFY_TEST_TOPIC }}
+          CONNECTOR_TWILIO_ACCOUNT_SID: ${{ secrets.CONNECTOR_TWILIO_ACCOUNT_SID }}
+          CONNECTOR_TWILIO_AUTH_TOKEN: ${{ secrets.CONNECTOR_TWILIO_AUTH_TOKEN }}
+          CONNECTOR_TWILIO_FROM_NUMBER: ${{ secrets.CONNECTOR_TWILIO_FROM_NUMBER }}
+          CONNECTOR_TWILIO_TO_NUMBER: ${{ secrets.CONNECTOR_TWILIO_TO_NUMBER }}
+          CONNECTOR_POLYMARKET_PRIVATE_KEY: ${{ secrets.CONNECTOR_POLYMARKET_PRIVATE_KEY }}
+          CONNECTOR_KALSHI_ACCESS_KEY: ${{ secrets.CONNECTOR_KALSHI_ACCESS_KEY }}
+          CONNECTOR_KALSHI_PRIVATE_KEY_PEM: ${{ secrets.CONNECTOR_KALSHI_PRIVATE_KEY_PEM }}
+          CONNECTOR_KALSHI_BASE_URL: ${{ secrets.CONNECTOR_KALSHI_BASE_URL }}
+          CONNECTOR_CLOUDFLARE_EMAIL_ACCOUNT_ID: ${{ secrets.CONNECTOR_CLOUDFLARE_EMAIL_ACCOUNT_ID }}
+          CONNECTOR_CLOUDFLARE_EMAIL_API_TOKEN: ${{ secrets.CONNECTOR_CLOUDFLARE_EMAIL_API_TOKEN }}
+          CONNECTOR_CLOUDFLARE_EMAIL_FROM: ${{ secrets.CONNECTOR_CLOUDFLARE_EMAIL_FROM }}
+          CONNECTOR_CLOUDFLARE_EMAIL_TO: ${{ secrets.CONNECTOR_CLOUDFLARE_EMAIL_TO }}
+          CONNECTOR_DODO_PAYMENTS_API_KEY: ${{ secrets.CONNECTOR_DODO_PAYMENTS_API_KEY }}
+
+  report:
+    name: Report failures
+    needs: [live-test]
+    if: always() && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('.github/ISSUE_TEMPLATE/live_test_health.md', 'utf8')
+              .replace(/^---[\s\S]*?---\n/, '');
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'live-test-failure',
+              state: 'open',
+            });
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const fullBody = `${body}\n\nFailed run: ${runUrl}`;
+            if (issues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues[0].number,
+                body: fullBody,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'Monthly live-vendor test failed',
+                labels: ['live-test-failure'],
+                body: fullBody,
+              });
+            }

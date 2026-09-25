@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/discord",
+  "version": "0.0.0",
+  "description": "Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.3.1"
+  }
+}

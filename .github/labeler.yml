@@ -1,12 +1,80 @@
 workflows:
   - changed-files:
       - any-glob-to-any-file: .github/workflows/*
+infra:
+  - changed-files:
+      - any-glob-to-any-file:
+          - deno.json
+          - package.json
+          - release-please-config.json
+          - .release-please-manifest.json
 documentation:
   - changed-files:
-      - any-glob-to-any-file: CHANGELOG.md
-      - any-glob-to-any-file: '**/README.md'
-      - any-glob-to-any-file: .github/workflows/release.yaml
-openexchange:
-  - openexchange/**
-surepass:
-  - surepass/**
+      - any-glob-to-any-file: ['**/README.md', '**/CHANGELOG.md']
+
+'connector: algolia':
+  - changed-files:
+      - any-glob-to-any-file: connectors/algolia/**
+'connector: azure-blob':
+  - changed-files:
+      - any-glob-to-any-file: connectors/azure-blob/**
+'connector: cloudflare-email':
+  - changed-files:
+      - any-glob-to-any-file: connectors/cloudflare-email/**
+'connector: coingecko':
+  - changed-files:
+      - any-glob-to-any-file: connectors/coingecko/**
+'connector: discord':
+  - changed-files:
+      - any-glob-to-any-file: connectors/discord/**
+'connector: dodo-payments':
+  - changed-files:
+      - any-glob-to-any-file: connectors/dodo-payments/**
+'connector: gcs':
+  - changed-files:
+      - any-glob-to-any-file: connectors/gcs/**
+'connector: kalshi':
+  - changed-files:
+      - any-glob-to-any-file: connectors/kalshi/**
+'connector: ntfy':
+  - changed-files:
+      - any-glob-to-any-file: connectors/ntfy/**
+'connector: openexchange':
+  - changed-files:
+      - any-glob-to-any-file: connectors/openexchange/**
+'connector: openweathermap':
+  - changed-files:
+      - any-glob-to-any-file: connectors/openweathermap/**
+'connector: paypal':
+  - changed-files:
+      - any-glob-to-any-file: connectors/paypal/**
+'connector: polymarket':
+  - changed-files:
+      - any-glob-to-any-file: connectors/polymarket/**
+'connector: razorpay':
+  - changed-files:
+      - any-glob-to-any-file: connectors/razorpay/**
+'connector: s3':
+  - changed-files:
+      - any-glob-to-any-file: connectors/s3/**
+'connector: sendgrid':
+  - changed-files:
+      - any-glob-to-any-file: connectors/sendgrid/**
+'connector: sentry':
+  - changed-files:
+      - any-glob-to-any-file: connectors/sentry/**
+'connector: slack':
+  - changed-files:
+      - any-glob-to-any-file: connectors/slack/**
+'connector: stripe':
+  - changed-files:
+      - any-glob-to-any-file: connectors/stripe/**
+'connector: telegram':
+  - changed-files:
+      - any-glob-to-any-file: connectors/telegram/**
+'connector: twilio':
+  - changed-files:
+      - any-glob-to-any-file: connectors/twilio/**
+'connector: upstash-redis':
+  - changed-files:
+      - any-glob-to-any-file: connectors/upstash-redis/**

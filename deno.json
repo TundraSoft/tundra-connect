@@ -1,5 +1,5 @@
 {
-  "description": "Collection of useful API Integrations",
+  "description": "Vendor integration connects built on RESTler and Guardian",
   "license": "MIT",
   "author": "TundraSoft",
   "homepage": "https://github.com/TundraSoft/tundra-connect",
@@ -9,33 +9,32 @@
   },
   "unstable": [],
   "workspace": [
-    "./openexchange",
-    "./surepass"
+    "./connectors/*"
   ],
+  "nodeModulesDir": "auto",
+  "minimumDependencyAge": "0",
   "imports": {
-    "$asserts": "jsr:@std/assert@^1.0.0",
-    "$testing": "jsr:@std/testing@^1.0.0",
-    "$restler": "jsr:@tundralibs/restler@^1.0.0-dev4.1",
-    "$guardian": "jsr:@tundralibs/guardian@^1.0.0-dev3",
-    "$utils": "jsr:@tundralibs/utils@^1.0.0-dev2"
+    "@asserts": "jsr:@std/assert@^1.0.0",
+    "@test": "jsr:@tundralibs/compat@^2.7.4/test",
+    "@restler": "jsr:@tundralibs/restler@^1.3.1",
+    "@guardian": "jsr:@tundralibs/guardian@^1.1.0",
+    "@crypt": "jsr:@tundralibs/crypt@^1.4.1",
+    "@id": "jsr:@tundralibs/id@^1.1.4",
+    "@encoding": "jsr:@std/encoding@^1.0.11"
   },
   "tasks": {
     "check": "deno task check:fmt && deno task check:lint && deno task check:types",
     "check:fmt": "deno fmt --check",
     "check:lint": "deno lint",
-    "check:types": "deno check **/*.ts",
+    "check:types": "deno check ./connectors/*/mod.ts",
     "test": "deno task test:run && deno task test:report",
-    "test:run": "deno test --allow-read --allow-write --allow-env --allow-net --allow-ffi --allow-sys --parallel --coverage=coverage --junit-path=./test-report.xml",
-    "test:report": "deno coverage coverage --lcov cov --output=coverage/report.lcov",
-    "workspace:add": "deno run --allow-read --allow-sys --allow-write .github/workspace.ts add",
-    "workspace:remove": "deno run --allow-read --allow-sys --allow-write .github/workspace.ts remove",
-    "workspace:sync": "deno run --allow-read --allow-sys --allow-write .github/workspace.ts sync",
-    "docs:validate": "deno run --allow-read .github/docs.ts --validate",
-    "docs:links": "deno run --allow-read .github/docs.ts --links",
-    "docs:wiki": "deno run --allow-read --allow-write .github/docs.ts --wiki",
-    "docs:index": "deno run --allow-read --allow-write .github/docs.ts --index",
-    "publish:check": "deno task check && deno task test",
-    "publish:workspace": "deno run --allow-read --allow-write --allow-env --allow-net .github/publish.ts"
+    "test:run": "deno test --allow-read --allow-write --allow-env --allow-net --parallel --coverage=coverage --junit-path=./test-report.xml",
+    "test:report": "deno coverage coverage --lcov --output=coverage/report.lcov",
+    "publish:dry": "deno publish --dry-run",
+    "workspace:add": "deno run --allow-read --allow-write --allow-run=deno .github/scripts/workspace.ts add",
+    "workspace:remove": "deno run --allow-read --allow-write .github/scripts/workspace.ts remove",
+    "workspace:sync": "deno run --allow-read --allow-write .github/scripts/workspace.ts sync",
+    "workspace:sync:check": "deno run --allow-read .github/scripts/workspace.ts sync --check"
   },
   "compilerOptions": {
     "strict": true,
@@ -43,9 +42,7 @@
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
     "allowUnreachableCode": false,
-    "noErrorTruncation": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true
+    "noErrorTruncation": true
   },
   "lint": {
     "report": "pretty",

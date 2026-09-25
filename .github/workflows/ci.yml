@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Format, lint, type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno fmt --check
+      - run: deno lint
+      - run: deno task check:types
+      - name: Generated config drift check
+        run: deno task workspace:sync:check
+
+  audit:
+    name: Dependency audit (high+)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno audit --level=high
+
+  publish-dry-run:
+    name: JSR publish dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno task publish:dry
+
+  test:
+    name: Test (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [deno, bun, node-22, node-24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        if: matrix.runtime == 'deno'
+        with:
+          deno-version: v2.x
+      - name: Deno test + coverage
+        if: matrix.runtime == 'deno'
+        run: deno task test
+
+      - name: Relativize coverage paths
+        if: matrix.runtime == 'deno'
+        # Deno emits absolute SF: paths; relativize to the repo root so
+        # Codecov maps them onto the per-connect components and the Sonar
+        # scanner resolves the files instead of importing 0% coverage.
+        run: sed -i "s|SF:${GITHUB_WORKSPACE}/|SF:|g" coverage/report.lcov
+
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.runtime == 'bun'
+      - name: Bun test
+        if: matrix.runtime == 'bun'
+        run: bun install && bun run test:bun
+
+      - uses: actions/setup-node@v4
+        if: startsWith(matrix.runtime, 'node')
+        with:
+          node-version: ${{ matrix.runtime == 'node-22' && '22' || '24' }}
+      - uses: oven-sh/setup-bun@v2
+        if: startsWith(matrix.runtime, 'node')
+      - name: Install dependencies (bun)
+        if: startsWith(matrix.runtime, 'node')
+        # npm can't resolve the `@jsr/*` scope without a local .npmrc (which
+        # is gitignored); bun already knows this scope via bunfig.toml, so
+        # it populates node_modules for the Node run too.
+        run: bun install
+      - name: Node test
+        if: startsWith(matrix.runtime, 'node')
+        run: npm run test:node
+
+      - name: Upload coverage to Codecov
+        if: matrix.runtime == 'deno' && github.event_name == 'push'
+        continue-on-error: true
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/report.lcov
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage to SonarQube
+        if: matrix.runtime == 'deno' && github.event_name == 'push'
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  workers:
+    name: Workers smoke (workerd)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies (bun)
+        # Same reason as the Node job: bun resolves the `@jsr/*` scope.
+        run: bun install
+      - name: Bundle every connect and run it inside workerd
+        # Strict form of the Web-APIs-only claim: no `nodejs_compat` flag.
+        # See .github/scripts/workers-smoke.mjs for what each check covers.
+        run: npm run test:workers
+

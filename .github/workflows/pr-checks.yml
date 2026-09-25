@@ -1,0 +1,59 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  title-lint:
+    name: Conventional PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9,-]+\))?!?: .+'
+          if ! echo "$TITLE" | grep -qE "$pattern"; then
+            echo "PR title '$TITLE' does not match Conventional Commits format: $pattern"
+            exit 1
+          fi
+
+  connector-guard:
+    name: Single-connector guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check connects touched
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | grep -q "multi-connector"; then
+            echo "multi-connector label present — skipping guard"
+            exit 0
+          fi
+          merge_base=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
+          changed=$(git diff --name-only "$merge_base" "$HEAD_SHA")
+          connects=$(jq -r 'keys[]' .github/workspace-meta.json)
+          touched=""
+          for c in $connects; do
+            if echo "$changed" | grep -q "^connectors/$c/"; then
+              touched="$touched $c"
+            fi
+          done
+          count=$(echo "$touched" | wc -w)
+          if [ "$count" -gt 1 ]; then
+            echo "PR touches multiple connects:$touched"
+            echo "Add the 'multi-connector' label if this is a genuinely atomic cross-connect change."
+            exit 1
+          fi

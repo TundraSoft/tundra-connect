@@ -1,0 +1,125 @@
+name: Release Please
+
+# Mirrors TundraLibs' release flow: ONE aggregated release PR per cycle
+# (`separate-pull-requests: false` in release-please-config.json). Separate
+# per-connect PRs each edit adjacent lines of .release-please-manifest.json,
+# so merging one conflicts — and can corrupt the manifest for — every other
+# open release PR.
+
+on:
+  push:
+    branches:
+      - main
+  # Manual escape hatch: publish ONE already-released connect to JSR.
+  # The automatic `publish` job only fires in the same run where
+  # release-please reports it just created a release, so a connect whose
+  # publish failed (e.g. its JSR package did not exist yet, or a transient
+  # JSR error) — or a release tagged by hand after manual tag surgery (see
+  # googleapis/release-please#1946) — is never retried on its own. This lets
+  # a maintainer publish exactly that connect on demand.
+  workflow_dispatch:
+    inputs:
+      path:
+        description: Connect directory to publish (must already be tagged/released)
+        required: true
+        type: choice
+        options:
+          # workspace:publish-paths:start
+          - connectors/algolia
+          - connectors/azure-blob
+          - connectors/cloudflare-email
+          - connectors/coingecko
+          - connectors/discord
+          - connectors/dodo-payments
+          - connectors/gcs
+          - connectors/kalshi
+          - connectors/ntfy
+          - connectors/openexchange
+          - connectors/openweathermap
+          - connectors/paypal
+          - connectors/polymarket
+          - connectors/razorpay
+          - connectors/s3
+          - connectors/sendgrid
+          - connectors/sentry
+          - connectors/slack
+          - connectors/stripe
+          - connectors/telegram
+          - connectors/twilio
+          - connectors/upstash-redis
+          # workspace:publish-paths:end
+
+permissions:
+  contents: read
+
+# Never run two "Maintain release PR" jobs at once: a second run reading
+# repo state while a first is mid-write races on the same git refs
+# (release-please's tag/PR bookkeeping is not safe under concurrent
+# invocations). Queue instead of running in parallel; never cancel a run
+# that is already mutating state.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Maintain release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      paths_released: ${{ steps.release.outputs.paths_released }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        with:
+          # RELEASE_PLEASE_TOKEN is a fine-grained PAT: PRs opened with the
+          # default GITHUB_TOKEN do not trigger CI, so the release PR would
+          # sit without its required checks. Falls back to GITHUB_TOKEN so
+          # the workflow still functions before the PAT is configured.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    name: Publish ${{ matrix.path }} to JSR
+    needs: release-please
+    # Publishes ONLY from the real repository. Either release-please just
+    # created releases in THIS run, or a maintainer asked to publish one
+    # connect by hand (see workflow_dispatch above).
+    if: |
+      github.repository == 'TundraSoft/tundra-connect' &&
+      (
+        (needs.release-please.outputs.paths_released != '' &&
+         needs.release-please.outputs.paths_released != '[]') ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # JSR tokenless OIDC publish
+    strategy:
+      # One aggregated release publishes many connects at once. A failure in
+      # one (e.g. its JSR package not created or not linked to this repo
+      # yet) must not cancel the others — recover it with workflow_dispatch.
+      fail-fast: false
+      matrix:
+        path: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', inputs.path)) || fromJson(needs.release-please.outputs.paths_released) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4
+        with:
+          deno-version: v2.x
+
+      - name: Publish connect
+        working-directory: ${{ matrix.path }}
+        # No retry loop (unlike TundraLibs, whose packages depend on each
+        # other in-repo and can race each other's publish): connects depend
+        # only on already-published @tundralibs packages. A transient
+        # failure is re-run via workflow_dispatch.
+        run: deno publish
