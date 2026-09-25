@@ -546,30 +546,44 @@ describe('Polymarket — submitOrders (bulk)', () => {
   it('chunks more than 15 orders into multiple requests, deduping the shared token neg-risk lookup', async () => {
     const c = client();
     const orders = Array.from({ length: 17 }, () => orderA); // all share tokenId
-    c.setResponseQueue([
-      { body: { version: 2 } },
-      { body: { neg_risk: false } }, // one lookup for the one unique token, not 17
-      {
-        body: Array.from({ length: 15 }, () => ({
-          status: 'live',
-          success: true,
-        })),
-      },
-      {
-        body: Array.from({ length: 2 }, () => ({
-          status: 'live',
-          success: true,
-        })),
-      },
-    ]);
+    // Chunks are submitted concurrently, and the 2-order chunk (less
+    // EIP-712 signing) can reach fetch before the 15-order one — so answer
+    // each request by what it asks for, never by arrival order (a FIFO queue
+    // here made this test pass or fail on timing alone).
+    const seen: Array<{ url: string; body?: string }> = [];
+    const json = (body: unknown) =>
+      Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    c['_fetch'] = (input, init) => {
+      const url = String(input);
+      const body = typeof init?.body === 'string' ? init.body : undefined;
+      seen.push({ url, body });
+      if (url.includes('/version')) return json({ version: 2 });
+      if (url.includes('/neg-risk')) return json({ neg_risk: false });
+      // POST /orders: one result per order in this chunk.
+      const count = (JSON.parse(body ?? '[]') as unknown[]).length;
+      return json(
+        Array.from(
+          { length: count },
+          () => ({ status: 'live', success: true }),
+        ),
+      );
+    };
     const results = await c.submitOrders(orders);
     asserts.assertEquals(results.length, 17);
-    const orderRequests = c.requests.filter((r) => r.url.includes('/orders'));
-    asserts.assertEquals(orderRequests.length, 2);
-    const negRiskRequests = c.requests.filter((r) =>
-      r.url.includes('/neg-risk')
+    const chunkSizes = seen
+      .filter((r) => r.url.endsWith('/orders'))
+      .map((r) => (JSON.parse(r.body ?? '[]') as unknown[]).length)
+      .sort((a, b) => b - a);
+    asserts.assertEquals(chunkSizes, [15, 2]);
+    asserts.assertEquals(
+      seen.filter((r) => r.url.includes('/neg-risk')).length,
+      1,
     );
-    asserts.assertEquals(negRiskRequests.length, 1);
   });
 
   it('reports rejected:true for every order (never a throw) when the whole chunk is refused at once', async () => {
