@@ -71,6 +71,13 @@ connect = "connect"
 connects = "connects"
 tundasoft = "tundasoft"
 tundra = "tundra"
+# "unparseable" is an accepted spelling; "mis-" is a prefix (mis-sized);
+# "PnL" is profit-and-loss
+unparseable = "unparseable"
+mis = "mis"
+pn = "pn"
+# "fils" is the minor unit of the Kuwaiti dinar
+fils = "fils"
 
 # Common technical abbreviations
 arg = "arg"
