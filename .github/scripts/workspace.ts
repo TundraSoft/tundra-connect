@@ -193,6 +193,10 @@ function genReleasePleaseConfig(
     // version independence is unaffected — this only changes PR count, not
     // version computation.
     'separate-pull-requests': false,
+    // A package with no manifest entry yet has no previous version, so
+    // `bump-minor-pre-major` cannot apply and release-please would start it
+    // at its own default of 1.0.0. New connectors start at 0.1.0 instead.
+    'initial-version': '0.1.0',
     'include-component-in-tag': true,
     'changelog-sections': existing?.['changelog-sections'] ?? [
       { type: 'feat', section: 'Features' },
