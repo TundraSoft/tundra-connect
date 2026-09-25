@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/razorpay",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Typed Razorpay client: create and fetch orders; capture, fetch and list payments; create payment links; and verify webhook signatures.",
   "exports": {
     ".": "./mod.ts",
