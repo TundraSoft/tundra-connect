@@ -85,8 +85,20 @@ connect's `deno.json` (e.g. bumping `exports`).
 ## Releases
 
 Versions, tags, and changelogs are fully owned by **release-please** — do
-not hand-edit a `version` field or `CHANGELOG.md`. Merging a release PR tags
-and publishes the affected connect(s) to JSR automatically.
+not hand-edit a `version` field or `CHANGELOG.md`.
+
+release-please keeps **one aggregated release PR** covering every connect
+with releasable changes (`separate-pull-requests: false`, as in
+TundraLibs). Per-connect PRs each edit adjacent lines of the shared
+`.release-please-manifest.json`, so merging one conflicts with every other
+open release PR. Versions stay independent per connect.
+
+Merging the release PR tags each included connect and publishes it to JSR.
+A connect's JSR package must already exist and be linked to this repository
+(package Settings → GitHub repository) for the tokenless publish to work.
+If one connect's publish fails, the others still publish; once the cause is
+fixed, re-publish it from **Actions → Release Please → Run workflow**,
+choosing its directory.
 
 ## Reporting issues
 

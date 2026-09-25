@@ -186,7 +186,13 @@ function genReleasePleaseConfig(
   return {
     $schema:
       'https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json',
-    'separate-pull-requests': true,
+    // false (the release-please default): one aggregated release PR, as in
+    // TundraLibs. Separate per-package PRs each bump adjacent lines in the
+    // shared .release-please-manifest.json, so merging one conflicts (and
+    // can corrupt the manifest for) every other open release PR. Per-package
+    // version independence is unaffected — this only changes PR count, not
+    // version computation.
+    'separate-pull-requests': false,
     'include-component-in-tag': true,
     'changelog-sections': existing?.['changelog-sections'] ?? [
       { type: 'feat', section: 'Features' },
@@ -391,6 +397,32 @@ async function genRoadmap(
     current.slice(end);
 }
 
+/**
+ * Fills the `workflow_dispatch` path choices in release-please.yml — the
+ * manual "publish one connect" escape hatch — from workspace-meta.json, so
+ * a new connect is publishable by hand without editing the workflow (and a
+ * removed one stops being offered). TundraLibs keeps this list by hand;
+ * generating it removes the drift.
+ */
+function genReleaseWorkflow(meta: WorkspaceMeta, current: string): string {
+  const START = '# workspace:publish-paths:start';
+  const END = '# workspace:publish-paths:end';
+  const start = current.indexOf(START);
+  const end = current.indexOf(END);
+  if (start < 0 || end < 0 || end < start) {
+    throw new Error(
+      `release-please.yml is missing the ${START} / ${END} markers.`,
+    );
+  }
+  const lineStart = current.lastIndexOf('\n', start) + 1;
+  const indent = current.slice(lineStart, start);
+  const entries = connectorNames(meta)
+    .map((name) => `${indent}- ${CONNECTORS_DIR}/${name}`)
+    .join('\n');
+  return current.slice(0, start + START.length) + '\n' + entries + '\n' +
+    indent + current.slice(end);
+}
+
 interface Generated {
   file: string;
   content: string | Record<string, unknown>;
@@ -406,6 +438,9 @@ async function buildGenerated(meta: WorkspaceMeta): Promise<Generated[]> {
   ).catch(() => ({}));
   const existingReadme = await readText(path('README.md'));
   const existingRoadmap = await readText(path('ROADMAP.md'));
+  const existingReleaseWorkflow = await readText(
+    path('.github/workflows/release-please.yml'),
+  );
 
   return [
     { file: '.github/labeler.yml', content: genLabeler(meta), json: false },
@@ -428,6 +463,11 @@ async function buildGenerated(meta: WorkspaceMeta): Promise<Generated[]> {
     {
       file: 'ROADMAP.md',
       content: await genRoadmap(meta, existingRoadmap),
+      json: false,
+    },
+    {
+      file: '.github/workflows/release-please.yml',
+      content: genReleaseWorkflow(meta, existingReleaseWorkflow),
       json: false,
     },
     ...genIssueTemplates(meta),
