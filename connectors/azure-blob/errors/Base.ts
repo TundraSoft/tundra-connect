@@ -27,6 +27,7 @@ export class AzureBlobError<
   /** The specific error code this instance was thrown with (see {@link AzureBlobErrorCodes}). */
   public readonly code: AzureBlobErrorCode;
 
+  /** Formats every message as `[AzureBlob] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[AzureBlob] ${timeStamp}: ${message}';
   }

@@ -76,6 +76,24 @@ export type RazorpayOptions = Omit<RESTlerOptions, 'auth'> & {
 };
 
 /**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Arguments to {@link Razorpay.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /** The RAW request body, exactly as received, never re-serialized or re-cast. */
+  payload: string;
+  headers: WebhookHeadersLike;
+  /** The webhook secret configured in the dashboard, used as-is. */
+  secret: string;
+};
+
+/**
  * Razorpay client for the Razorpay REST API — Orders, Payments, and
  * Payment Links.
  *
@@ -124,24 +142,6 @@ export type RazorpayOptions = Omit<RESTlerOptions, 'auth'> & {
  * const page = await client.listPayments({ count: 20 });
  * ```
  */
-/**
- * Anything a runtime hands you as request headers — a `Headers` instance or
- * a plain object. Lookup is case-insensitive either way, as HTTP header
- * names are.
- */
-export type WebhookHeadersLike =
-  | Headers
-  | Record<string, string | string[] | undefined>;
-
-/** Arguments to {@link Razorpay.verifyWebhook}. */
-export type VerifyWebhookOptions = {
-  /** The RAW request body, exactly as received, never re-serialized or re-cast. */
-  payload: string;
-  headers: WebhookHeadersLike;
-  /** The webhook secret configured in the dashboard, used as-is. */
-  secret: string;
-};
-
 export class Razorpay extends RESTler<RazorpayOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Razorpay';
@@ -452,20 +452,6 @@ export class Razorpay extends RESTler<RazorpayOptions> {
     return super._processOption(key as any, value);
   }
 
-  /**
-   * Makes a request and validates its response body against `guard`,
-   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
-   * into a {@link RazorpayError} — see CONVENTIONS.md's "HTTP client"
-   * section for the full rationale.
-   *
-   * @template B - The expected response body type.
-   * @param endpoint - The endpoint to request.
-   * @param guard - Guardian schema object for validating the response.
-   * @returns The validated response data.
-   * @throws {RazorpayError} `RESPONSE_ERROR` when the body fails
-   * validation.
-   */
-
   /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
   private static __webhookHeader(
     headers: WebhookHeadersLike,
@@ -526,6 +512,19 @@ export class Razorpay extends RESTler<RazorpayOptions> {
     }
   }
 
+  /**
+   * Makes a request and validates its response body against `guard`,
+   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
+   * into a {@link RazorpayError} — see CONVENTIONS.md's "HTTP client"
+   * section for the full rationale.
+   *
+   * @template B - The expected response body type.
+   * @param endpoint - The endpoint to request.
+   * @param guard - Guardian schema object for validating the response.
+   * @returns The validated response data.
+   * @throws {RazorpayError} `RESPONSE_ERROR` when the body fails
+   * validation.
+   */
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,

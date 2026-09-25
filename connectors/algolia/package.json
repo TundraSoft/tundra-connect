@@ -2,7 +2,7 @@
   "name": "@tundraconnect/algolia",
   "version": "0.0.0",
   "type": "module",
-  "description": "Algolia Search REST API client for search, indexing, and index browsing",
+  "description": "Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

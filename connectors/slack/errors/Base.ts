@@ -26,6 +26,7 @@ export class SlackError<
    */
   public readonly code: SlackErrorCode;
 
+  /** Formats every message as `[slack] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[slack] ${timeStamp}: ${message}';
   }

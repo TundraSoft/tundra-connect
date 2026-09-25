@@ -1061,6 +1061,12 @@ export class S3 extends RESTler<S3Options> {
     return metadata;
   }
 
+  /**
+   * Narrows `bucket` to a non-blank string and guards it against a `.`/`..`
+   * path segment (see {@link __assertSafePathSegment}).
+   *
+   * @throws {S3Error} `CONFIG_INVALID_BUCKET` or `INVALID_OBJECT_KEY`.
+   */
   private __assertBucket(bucket: unknown): asserts bucket is string {
     if (typeof bucket !== 'string' || bucket.trim() === '') {
       throw new S3Error('CONFIG_INVALID_BUCKET', { bucket });
@@ -1068,6 +1074,12 @@ export class S3 extends RESTler<S3Options> {
     this.__assertSafePathSegment(bucket, 'bucket');
   }
 
+  /**
+   * Narrows `key` to a non-blank string and guards it against a `.`/`..`
+   * path segment (see {@link __assertSafePathSegment}).
+   *
+   * @throws {S3Error} `CONFIG_INVALID_KEY` or `INVALID_OBJECT_KEY`.
+   */
   private __assertKey(key: unknown): asserts key is string {
     if (typeof key !== 'string' || key.trim() === '') {
       throw new S3Error('CONFIG_INVALID_KEY', { key });

@@ -152,6 +152,8 @@ export class CloudflareEmail extends RESTler<CloudflareEmailOptions> {
   }
 
   /**
+   * Creates a Cloudflare Email Sending client.
+   *
    * @param options - Configuration options for the client.
    * @param options.auth - `{ type: 'BEARER', token, prefix? }` — a
    * Cloudflare API token carrying the Email Sending permission.

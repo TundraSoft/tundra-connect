@@ -29,6 +29,7 @@ export class PolymarketError<
    */
   public readonly code: PolymarketErrorCode;
 
+  /** Formats every message as `[polymarket] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[polymarket] ${timeStamp}: ${message}';
   }

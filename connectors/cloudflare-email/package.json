@@ -2,7 +2,7 @@
   "name": "@tundraconnect/cloudflare-email",
   "version": "0.0.0",
   "type": "module",
-  "description": "Cloudflare Email Sending REST API client for transactional email",
+  "description": "Typed Cloudflare Email Sending client: send transactional email with attachments, validated locally before the request is made.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

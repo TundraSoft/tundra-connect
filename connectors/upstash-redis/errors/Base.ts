@@ -29,6 +29,7 @@ export class UpstashRedisError<
    */
   public readonly code: UpstashRedisErrorCode;
 
+  /** Formats every message as `[upstash-redis] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[upstash-redis] ${timeStamp}: ${message}';
   }

@@ -26,6 +26,7 @@ export class SentryError<
    */
   public readonly code: SentryErrorCode;
 
+  /** Formats every message as `[sentry] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[sentry] ${timeStamp}: ${message}';
   }

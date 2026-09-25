@@ -1,5 +1,32 @@
 /**
- * @module @tundraconnect/sendgrid
+ * Typed, cross-runtime client for the [Twilio SendGrid v3
+ * API](https://www.twilio.com/docs/sendgrid).
+ *
+ * Typed Twilio SendGrid client: send transactional email, inspect API-key
+ * scopes, and verify ECDSA-signed event webhooks.
+ *
+ * Subpaths: `./schemas` (Guardian schemas and inferred types) and `./errors`
+ * (`SendGridError` and its code registry).
+ *
+ * @example
+ * ```ts
+ * import { SendGrid } from '@tundraconnect/sendgrid';
+ *
+ * const client = new SendGrid({
+ *   auth: { type: 'BEARER', token: 'SG.xxxxx', prefix: 'Bearer' },
+ * });
+ *
+ * const { messageId } = await client.sendMail({
+ *   personalizations: [{ to: [{ email: 'dest@example.com' }] }],
+ *   from: { email: 'sender@example.com' },
+ *   subject: 'Hello from SendGrid',
+ *   content: [{ type: 'text/plain', value: 'Hi there!' }],
+ * });
+ *
+ * console.log(messageId);
+ * ```
+ *
+ * @module
  */
 
 // Export main client class

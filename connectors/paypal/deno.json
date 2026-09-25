@@ -1,7 +1,7 @@
 {
   "name": "@tundraconnect/paypal",
   "version": "0.0.0",
-  "description": "Typed client for PayPal's REST API \u2014 Orders v2 create/get/capture and capture refunds, with automatic OAuth2 client-credentials token exchange.",
+  "description": "Typed PayPal client for Orders v2: create, fetch, capture and refund, with automatic OAuth2 tokens, idempotency keys and webhook verification.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

@@ -23,6 +23,7 @@ export class NtfyError<
   /** The specific error code this instance was thrown with (see {@link NtfyErrorCodes}). */
   public readonly code: NtfyErrorCode;
 
+  /** Formats every message as `[ntfy] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[ntfy] ${timeStamp}: ${message}';
   }

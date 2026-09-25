@@ -27,6 +27,7 @@ export class TelegramError<
   /** The specific error code this instance was thrown with (see {@link TelegramErrorCodes}). */
   public readonly code: TelegramErrorCode;
 
+  /** Formats every message as `[Telegram] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[Telegram] ${timeStamp}: ${message}';
   }

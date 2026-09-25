@@ -2,7 +2,7 @@
   "name": "@tundraconnect/twilio",
   "version": "0.0.0",
   "type": "module",
-  "description": "Twilio REST API client for sending SMS/MMS messages and placing/managing voice calls",
+  "description": "Typed Twilio client: send SMS/MMS; place, list, update and delete voice calls; and verify webhook signatures.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

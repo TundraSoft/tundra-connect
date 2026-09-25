@@ -54,6 +54,28 @@ export type SendMailResult = {
 };
 
 /**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Arguments to {@link SendGrid.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /** The RAW request body, byte-exact — SendGrid warns that re-serializing may drop characters. */
+  payload: string;
+  headers: WebhookHeadersLike;
+  /** The Event Webhook verification key from the dashboard: base64 (SPKI), or a full PEM. */
+  publicKey: string;
+  /** Replay window in seconds — this connect's policy; SendGrid specifies none. @default 300 */
+  toleranceSeconds?: number;
+  /** Clock override, for tests. */
+  nowMs?: number;
+};
+
+/**
  * SendGrid client for sending transactional email through the Twilio
  * SendGrid v3 REST API.
  *
@@ -79,28 +101,6 @@ export type SendMailResult = {
  * console.log(messageId);
  * ```
  */
-/**
- * Anything a runtime hands you as request headers — a `Headers` instance or
- * a plain object. Lookup is case-insensitive either way, as HTTP header
- * names are.
- */
-export type WebhookHeadersLike =
-  | Headers
-  | Record<string, string | string[] | undefined>;
-
-/** Arguments to {@link SendGrid.verifyWebhook}. */
-export type VerifyWebhookOptions = {
-  /** The RAW request body, byte-exact — SendGrid warns that re-serializing may drop characters. */
-  payload: string;
-  headers: WebhookHeadersLike;
-  /** The Event Webhook verification key from the dashboard: base64 (SPKI), or a full PEM. */
-  publicKey: string;
-  /** Replay window in seconds — this connect's policy; SendGrid specifies none. @default 300 */
-  toleranceSeconds?: number;
-  /** Clock override, for tests. */
-  nowMs?: number;
-};
-
 export class SendGrid extends RESTler<SendGridOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'SendGrid';
@@ -250,26 +250,6 @@ export class SendGrid extends RESTler<SendGridOptions> {
     // deno-lint-ignore no-explicit-any
     return super._processOption(key as any, value);
   }
-
-  /**
-   * Makes a request and validates its response body against `guard`,
-   * unwrapping RESTler's generic {@link RESTlerResponseValidationError} into
-   * a {@link SendGridError} — so `SendGridError` stays the only thing a
-   * public method throws for "the vendor responded, but the body doesn't
-   * match what was expected." `B` is inferred from `guard`, so callers no
-   * longer separately write out a `_makeRequest<B>()` type argument.
-   *
-   * By the time a method calls this, {@link _responseHandler} has already
-   * run and thrown for any documented vendor error — this only has to
-   * handle a response whose status looked fine but whose body doesn't match
-   * what was expected.
-   *
-   * @template B - The expected response body type.
-   * @param endpoint - The endpoint to request.
-   * @param guard - Guardian schema object for validating the response.
-   * @returns The validated response data.
-   * @throws {SendGridError} `RESPONSE_ERROR` when the body fails validation.
-   */
 
   /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
   private static __webhookHeader(
@@ -422,6 +402,25 @@ export class SendGrid extends RESTler<SendGridOptions> {
     }
   }
 
+  /**
+   * Makes a request and validates its response body against `guard`,
+   * unwrapping RESTler's generic {@link RESTlerResponseValidationError} into
+   * a {@link SendGridError} — so `SendGridError` stays the only thing a
+   * public method throws for "the vendor responded, but the body doesn't
+   * match what was expected." `B` is inferred from `guard`, so callers no
+   * longer separately write out a `_makeRequest<B>()` type argument.
+   *
+   * By the time a method calls this, {@link _responseHandler} has already
+   * run and thrown for any documented vendor error — this only has to
+   * handle a response whose status looked fine but whose body doesn't match
+   * what was expected.
+   *
+   * @template B - The expected response body type.
+   * @param endpoint - The endpoint to request.
+   * @param guard - Guardian schema object for validating the response.
+   * @returns The validated response data.
+   * @throws {SendGridError} `RESPONSE_ERROR` when the body fails validation.
+   */
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,

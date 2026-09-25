@@ -28,6 +28,7 @@ export class DiscordError<
   /** The specific error code this instance was thrown with (see {@link DiscordErrorCodes}). */
   public readonly code: DiscordErrorCode;
 
+  /** Formats every message as `[Discord] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[Discord] ${timeStamp}: ${message}';
   }

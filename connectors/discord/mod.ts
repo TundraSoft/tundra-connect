@@ -1,5 +1,38 @@
 /**
- * @module @tundraconnect/discord
+ * Typed, cross-runtime client for the [Discord
+ * API](https://discord.com/developers/docs/intro), scoped to sending
+ * notification messages into a channel — via a channel **webhook** or the
+ * **bot** REST API.
+ *
+ * Typed Discord client: post messages through a webhook or a bot token, and
+ * verify Ed25519-signed interaction webhooks.
+ *
+ * Subpaths: `./schemas` (Guardian schemas and inferred types) and `./errors`
+ * (`DiscordError` and its code registry).
+ *
+ * @example
+ * ```ts
+ * import { Discord } from '@tundraconnect/discord';
+ *
+ * const client = new Discord({
+ *   webhookUrl: 'https://discord.com/api/webhooks/123456789012345678/abcDEF...',
+ * });
+ *
+ * // Discord's own default: fire-and-forget, resolves to `undefined`.
+ * await client.sendWebhookMessage({ content: 'Deploy succeeded' });
+ *
+ * // Pass `{ wait: true }` to get the created message back.
+ * const message = await client.sendWebhookMessage(
+ *   {
+ *     content: 'Deploy succeeded',
+ *     embeds: [{ title: 'Build #482', color: 0x57f287 }],
+ *   },
+ *   { wait: true },
+ * );
+ * console.log(message?.id);
+ * ```
+ *
+ * @module
  */
 
 // Export main client class

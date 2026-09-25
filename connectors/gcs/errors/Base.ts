@@ -23,6 +23,7 @@ export class GCSError<
   /** The specific error code this instance was thrown with (see {@link GCSErrorCodes}). */
   public readonly code: GCSErrorCode;
 
+  /** Formats every message as `[GCS] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[GCS] ${timeStamp}: ${message}';
   }

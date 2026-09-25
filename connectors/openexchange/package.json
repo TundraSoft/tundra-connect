@@ -2,7 +2,7 @@
   "name": "@tundraconnect/openexchange",
   "version": "0.1.1",
   "type": "module",
-  "description": "OpenExchangeRates API client for currency exchange rates and conversions",
+  "description": "Typed Open Exchange Rates client: latest and historical rates, time series, currency conversion, OHLC data and account usage.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

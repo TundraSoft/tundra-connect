@@ -379,6 +379,8 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   private readonly __negRiskCache = new Map<string, boolean>();
 
   /**
+   * Creates a Polymarket client.
+   *
    * @param options - Configuration options for the client.
    * @param options.auth - CLOB trading credentials — see {@link PolymarketOptions}.
    * @throws {PolymarketError} `CONFIG_INVALID_PRIVATE_KEY` or `CONFIG_INVALID_FUNDER`
@@ -1319,21 +1321,44 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     };
   }
 
+  /**
+   * The wallet signer built from `auth.privateKey`.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when no `auth` was given.
+   */
   private __requireSigner(): PolymarketSigner {
     if (!this.__signer) throw new PolymarketError('CONFIG_MISSING_PRIVATE_KEY');
     return this.__signer;
   }
 
+  /**
+   * The CLOB L2 API credentials, from `auth.apiCredentials` or
+   * {@link deriveApiCredentials}.
+   *
+   * @throws {PolymarketError} `NO_API_CREDENTIALS` when neither has happened.
+   */
   private __requireApiCreds(): ClobApiCredentials {
     if (!this.__apiCreds) throw new PolymarketError('NO_API_CREDENTIALS');
     return this.__apiCreds;
   }
 
+  /**
+   * The checksummed proxy/funder wallet orders are placed from.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when `auth.funder`
+   * was not set (the code is reused for this missing credential).
+   */
   private __requireFunder(): `0x${string}` {
     if (!this.__funder) throw new PolymarketError('CONFIG_MISSING_PRIVATE_KEY');
     return this.__funder;
   }
 
+  /**
+   * The Relayer API key and its owner address, needed by
+   * {@link split}/{@link merge}/{@link redeem}.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_RELAYER_CREDENTIALS`.
+   */
   private __requireRelayerCredentials(): {
     relayerApiKey: string;
     relayerApiKeyAddress: string;
@@ -1425,6 +1450,11 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     };
   }
 
+  /**
+   * Whether a non-2xx order response is the venue saying it now serves a
+   * different order-signing protocol version (so the order should be
+   * rebuilt and retried once), rather than a real rejection.
+   */
   private __isVersionMismatch(
     response: RESTlerResponse<unknown>,
     parsed: ClobPostOrderResponse,
@@ -1437,6 +1467,14 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     );
   }
 
+  /**
+   * Maps an order-submission response to an {@link OrderResult}. A non-2xx
+   * response is a graceful `noMatch` when the vendor reports an unmatched
+   * FAK/FOK order, and otherwise throws.
+   *
+   * @throws {PolymarketError} `ORDER_REJECTED` for any other non-2xx
+   * response.
+   */
   private __toSubmitOrderResult(
     response: RESTlerResponse<unknown>,
     parsed: ClobPostOrderResponse,
@@ -1502,10 +1540,6 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   }
 
   /**
-   * Builds one order's signed wire payload — the shared step between
-   * {@link submitOrder} and {@link submitOrders}.
-   */
-  /**
    * Validates fields the wire encoding can't honestly satisfy on its own,
    * before any network call. Called once upfront by {@link submitOrder}/
    * {@link submitOrders} (for every order in the batch) rather than
@@ -1524,6 +1558,10 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     }
   }
 
+  /**
+   * Builds one order's signed wire payload — the shared step between
+   * {@link submitOrder} and {@link submitOrders}.
+   */
   private __buildOrderPayload(
     signer: PolymarketSigner,
     funder: `0x${string}`,

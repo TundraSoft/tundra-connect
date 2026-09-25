@@ -1,7 +1,7 @@
 {
   "name": "@tundraconnect/dodo-payments",
   "version": "0.0.0",
-  "description": "Dodo Payments client for payments, subscriptions, and webhook verification",
+  "description": "Typed Dodo Payments client: create and verify payments, manage subscriptions, page through a customer's history, and verify Standard Webhooks signatures.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

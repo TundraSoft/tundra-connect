@@ -26,6 +26,7 @@ export class KalshiError<
    */
   public readonly code: KalshiErrorCode;
 
+  /** Formats every message as `[kalshi] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[kalshi] ${timeStamp}: ${message}';
   }

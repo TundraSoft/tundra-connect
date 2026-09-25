@@ -1,11 +1,48 @@
 /**
- * @module @tundraconnect/gcs
+ * Typed, cross-runtime client for the
+ * [Google Cloud Storage JSON
+ * API](https://cloud.google.com/storage/docs/json_api/v1).
  *
- * Typed, cross-runtime Google Cloud Storage JSON API client. Implements
- * this repository's canonical object-storage interface (`putObject` /
- * `getObject` / `deleteObject` / `listObjects` / `headObject`) on top of
- * RESTler and Guardian.
+ * Typed Google Cloud Storage client with bearer or service-account auth:
+ * upload, download, list, inspect and delete objects, including resumable
+ * streamed uploads for large files.
+ *
+ * Subpaths: `./schemas` (Guardian schemas and inferred types) and `./errors`
+ * (`GCSError` and its code registry).
+ *
+ * @example
+ * ```ts
+ * import { GCS } from '@tundraconnect/gcs';
+ *
+ * const client = new GCS({
+ *   auth: { type: 'BEARER', token: 'ya29....' },
+ * });
+ *
+ * await client.putObject({
+ *   bucket: 'my-bucket',
+ *   key: 'reports/2024-01.csv',
+ *   body: new TextEncoder().encode('a,b,c\n1,2,3\n'),
+ *   contentType: 'text/csv',
+ * });
+ *
+ * const { body, metadata } = await client.getObject({
+ *   bucket: 'my-bucket',
+ *   key: 'reports/2024-01.csv',
+ * });
+ * console.log(metadata.size, await body.text());
+ *
+ * const { objects } = await client.listObjects({
+ *   bucket: 'my-bucket',
+ *   prefix: 'reports/',
+ * });
+ * for (const object of objects) console.log(object.name);
+ *
+ * await client.deleteObject({ bucket: 'my-bucket', key: 'reports/2024-01.csv' });
+ * ```
+ *
+ * @module
  */
+
 export {
   DEFAULT_CHUNK_SIZE,
   type DeleteObjectOptions,

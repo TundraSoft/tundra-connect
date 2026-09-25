@@ -1,5 +1,30 @@
 /**
- * @module @tundraconnect/ntfy
+ * Typed, cross-runtime client for [ntfy.sh](https://ntfy.sh), a simple
+ * pub-sub push-notification service.
+ *
+ * Typed ntfy.sh client for publishing push notifications to a topic.
+ *
+ * Subpaths: `./schemas` (Guardian schemas and inferred types) and `./errors`
+ * (`NtfyError` and its code registry).
+ *
+ * @example
+ * ```ts
+ * import { Ntfy } from '@tundraconnect/ntfy';
+ *
+ * const client = new Ntfy();
+ *
+ * const message = await client.publish({
+ *   topic: 'mytopic',
+ *   title: 'Disk space alert',
+ *   message: 'Disk usage on server1 is at 90%',
+ *   priority: 4,
+ *   tags: ['warning', 'floppy_disk'],
+ * });
+ *
+ * console.log(message.id);
+ * ```
+ *
+ * @module
  */
 
 // Export main client class

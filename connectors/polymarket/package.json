@@ -2,7 +2,7 @@
   "name": "@tundraconnect/polymarket",
   "version": "0.0.0",
   "type": "module",
-  "description": "Polymarket Gamma (market discovery) and CLOB (trading) API client",
+  "description": "Typed Polymarket client: Gamma market discovery, CLOB trading with secp256k1/EIP-712 order signing, portfolio positions and value, and gasless split/merge/redeem.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

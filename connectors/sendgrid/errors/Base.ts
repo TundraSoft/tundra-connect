@@ -26,6 +26,7 @@ export class SendGridError<
   /** The specific error code this instance was thrown with (see {@link SendGridErrorCodes}). */
   public readonly code: SendGridErrorCode;
 
+  /** Formats every message as `[SendGrid] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[SendGrid] ${timeStamp}: ${message}';
   }

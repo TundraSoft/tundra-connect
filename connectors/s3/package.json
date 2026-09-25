@@ -2,7 +2,7 @@
   "name": "@tundraconnect/s3",
   "version": "0.0.0",
   "type": "module",
-  "description": "AWS S3 (and S3-compatible: R2, MinIO) object storage client with SigV4 request signing",
+  "description": "Typed S3 client with SigV4 signing for AWS S3, Cloudflare R2, MinIO and DigitalOcean Spaces: object CRUD and listing, plus streamed multipart uploads and downloads.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

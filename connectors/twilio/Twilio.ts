@@ -84,6 +84,36 @@ export type TwilioOptions = RESTlerOptions & {
 };
 
 /**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Arguments to {@link Twilio.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /**
+   * The EXACT URL Twilio requested — scheme, host, path and query string as
+   * received, never re-encoded. Twilio signs this string byte-for-byte.
+   */
+  url: string;
+  headers: WebhookHeadersLike;
+  /** The POST form parameters, for an `application/x-www-form-urlencoded` webhook. */
+  params?: Record<string, string>;
+  /** The RAW JSON body, for an `application/json` webhook (Twilio then puts a `bodySHA256` query param on the URL). */
+  payload?: string;
+  /**
+   * The ACCOUNT auth token. Defaults to the configured `auth.password`
+   * when this client uses account-SID/auth-token Basic auth. Required
+   * explicitly under API-key auth — Twilio signs with the account token,
+   * never the API-key secret.
+   */
+  authToken?: string;
+};
+
+/**
  * Twilio client for the Twilio REST API — SMS/MMS via the Messages
  * resource, and voice calls via the Calls resource
  *
@@ -125,36 +155,6 @@ export type TwilioOptions = RESTlerOptions & {
  * console.log(call.sid, call.status);
  * ```
  */
-/**
- * Anything a runtime hands you as request headers — a `Headers` instance or
- * a plain object. Lookup is case-insensitive either way, as HTTP header
- * names are.
- */
-export type WebhookHeadersLike =
-  | Headers
-  | Record<string, string | string[] | undefined>;
-
-/** Arguments to {@link Twilio.verifyWebhook}. */
-export type VerifyWebhookOptions = {
-  /**
-   * The EXACT URL Twilio requested — scheme, host, path and query string as
-   * received, never re-encoded. Twilio signs this string byte-for-byte.
-   */
-  url: string;
-  headers: WebhookHeadersLike;
-  /** The POST form parameters, for an `application/x-www-form-urlencoded` webhook. */
-  params?: Record<string, string>;
-  /** The RAW JSON body, for an `application/json` webhook (Twilio then puts a `bodySHA256` query param on the URL). */
-  payload?: string;
-  /**
-   * The ACCOUNT auth token. Defaults to the configured `auth.password`
-   * when this client uses account-SID/auth-token Basic auth. Required
-   * explicitly under API-key auth — Twilio signs with the account token,
-   * never the API-key secret.
-   */
-  authToken?: string;
-};
-
 export class Twilio extends RESTler<TwilioOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Twilio';
@@ -738,28 +738,6 @@ export class Twilio extends RESTler<TwilioOptions> {
     return parsed;
   }
 
-  /**
-   * Makes a request and validates its response body against `guard`,
-   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
-   * into a {@link TwilioError} — so `TwilioError` stays the only thing a
-   * public method throws for "the vendor responded, but the body doesn't
-   * match what was expected." `B` is inferred from `guard`, so callers no
-   * longer separately write out a `_makeRequest<B>()` type argument.
-   *
-   * By the time a method calls this, {@link _responseHandler} has already
-   * run and thrown for any documented vendor error — this only has to
-   * handle a response whose status looked fine but whose body doesn't match
-   * what was expected.
-   *
-   * @template B - The expected response body type
-   * @param endpoint - The endpoint to request
-   * @param guard - Guardian schema object for validating the response
-   * @returns The validated response data
-   * @throws {TwilioError} `RESPONSE_ERROR` when the body fails validation
-   *
-   * @private
-   */
-
   /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
   private static __webhookHeader(
     headers: WebhookHeadersLike,
@@ -885,6 +863,27 @@ export class Twilio extends RESTler<TwilioOptions> {
     }
   }
 
+  /**
+   * Makes a request and validates its response body against `guard`,
+   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
+   * into a {@link TwilioError} — so `TwilioError` stays the only thing a
+   * public method throws for "the vendor responded, but the body doesn't
+   * match what was expected." `B` is inferred from `guard`, so callers no
+   * longer separately write out a `_makeRequest<B>()` type argument.
+   *
+   * By the time a method calls this, {@link _responseHandler} has already
+   * run and thrown for any documented vendor error — this only has to
+   * handle a response whose status looked fine but whose body doesn't match
+   * what was expected.
+   *
+   * @template B - The expected response body type
+   * @param endpoint - The endpoint to request
+   * @param guard - Guardian schema object for validating the response
+   * @returns The validated response data
+   * @throws {TwilioError} `RESPONSE_ERROR` when the body fails validation
+   *
+   * @private
+   */
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,

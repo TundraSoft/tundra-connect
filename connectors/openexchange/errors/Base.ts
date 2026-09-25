@@ -26,6 +26,7 @@ export class OpenExchangeError<
   /** The specific error code this instance was thrown with (see {@link OpenExchangeErrorCodes}). */
   public readonly code: OpenExchangeErrorCode;
 
+  /** Formats every message as `[OpenExchange] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[OpenExchange] ${timeStamp}: ${message}';
   }

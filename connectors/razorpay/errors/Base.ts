@@ -29,6 +29,7 @@ export class RazorpayError<
    */
   public readonly code: RazorpayErrorCode;
 
+  /** Formats every message as `[razorpay] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[razorpay] ${timeStamp}: ${message}';
   }

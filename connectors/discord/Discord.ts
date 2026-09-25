@@ -122,6 +122,28 @@ type DiscordInternalOptions = RESTlerOptions & {
 };
 
 /**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Arguments to {@link Discord.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /** The RAW request body, exactly as received (`await req.text()`), never re-serialized. */
+  payload: string;
+  headers: WebhookHeadersLike;
+  /** The application's Public Key from the Developer Portal — 64 hex characters. */
+  publicKey: string;
+  /** Replay window in seconds — this connect's policy; Discord specifies none. @default 300 */
+  toleranceSeconds?: number;
+  /** Clock override, for tests. */
+  nowMs?: number;
+};
+
+/**
  * Discord client covering the two REST integration surfaces used to send a
  * message into a channel:
  *
@@ -157,28 +179,6 @@ type DiscordInternalOptions = RESTlerOptions & {
  * console.log(message.id);
  * ```
  */
-/**
- * Anything a runtime hands you as request headers — a `Headers` instance or
- * a plain object. Lookup is case-insensitive either way, as HTTP header
- * names are.
- */
-export type WebhookHeadersLike =
-  | Headers
-  | Record<string, string | string[] | undefined>;
-
-/** Arguments to {@link Discord.verifyWebhook}. */
-export type VerifyWebhookOptions = {
-  /** The RAW request body, exactly as received (`await req.text()`), never re-serialized. */
-  payload: string;
-  headers: WebhookHeadersLike;
-  /** The application's Public Key from the Developer Portal — 64 hex characters. */
-  publicKey: string;
-  /** Replay window in seconds — this connect's policy; Discord specifies none. @default 300 */
-  toleranceSeconds?: number;
-  /** Clock override, for tests. */
-  nowMs?: number;
-};
-
 export class Discord extends RESTler<DiscordInternalOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Discord';
@@ -550,28 +550,6 @@ export class Discord extends RESTler<DiscordInternalOptions> {
     return typeof value === 'string' && value.length > 0;
   }
 
-  /**
-   * Makes a request and validates its response body against `guard`,
-   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
-   * into a {@link DiscordError} — so `DiscordError` stays the only thing a
-   * public method throws for "the vendor responded, but the body doesn't
-   * match what was expected." `B` is inferred from `guard`, so callers no
-   * longer separately write out a `_makeRequest<B>()` type argument.
-   *
-   * By the time a method calls this, {@link _responseHandler} has already
-   * run and thrown for any documented vendor error — this only has to
-   * handle a response whose status looked fine but whose body doesn't
-   * match what was expected.
-   *
-   * @template B - The expected response body type
-   * @param endpoint - The endpoint to request
-   * @param guard - Guardian schema object for validating the response
-   * @returns The validated response data
-   * @throws {DiscordError} `RESPONSE_ERROR` when the body fails validation
-   *
-   * @private
-   */
-
   /** Case-insensitive single-header lookup across both {@link WebhookHeadersLike} shapes. */
   private static __webhookHeader(
     headers: WebhookHeadersLike,
@@ -725,6 +703,27 @@ export class Discord extends RESTler<DiscordInternalOptions> {
     }
   }
 
+  /**
+   * Makes a request and validates its response body against `guard`,
+   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
+   * into a {@link DiscordError} — so `DiscordError` stays the only thing a
+   * public method throws for "the vendor responded, but the body doesn't
+   * match what was expected." `B` is inferred from `guard`, so callers no
+   * longer separately write out a `_makeRequest<B>()` type argument.
+   *
+   * By the time a method calls this, {@link _responseHandler} has already
+   * run and thrown for any documented vendor error — this only has to
+   * handle a response whose status looked fine but whose body doesn't
+   * match what was expected.
+   *
+   * @template B - The expected response body type
+   * @param endpoint - The endpoint to request
+   * @param guard - Guardian schema object for validating the response
+   * @returns The validated response data
+   * @throws {DiscordError} `RESPONSE_ERROR` when the body fails validation
+   *
+   * @private
+   */
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,

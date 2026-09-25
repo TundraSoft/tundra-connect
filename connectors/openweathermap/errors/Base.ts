@@ -27,6 +27,7 @@ export class OpenWeatherMapError<
   /** The specific error code this instance was thrown with (see {@link OpenWeatherMapErrorCodes}). */
   public readonly code: OpenWeatherMapErrorCode;
 
+  /** Formats every message as `[OpenWeatherMap] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[OpenWeatherMap] ${timeStamp}: ${message}';
   }

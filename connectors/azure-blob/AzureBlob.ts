@@ -166,37 +166,6 @@ export type ListObjectsResult = {
   isTruncated: boolean;
 };
 
-/**
- * AzureBlob client for Azure Blob Storage's REST API
- *
- * Talks to the classic Blob endpoint (`https://{account}.blob.core.windows.net`
- * — not the Data Lake Storage Gen2 `.dfs.core.windows.net` host) and
- * authenticates every request with Shared Key HMAC-SHA256 signing (see
- * {@link AzureBlobAuth}), or passes through a pre-generated SAS token.
- * Exposes the repo's canonical object-storage surface —
- * {@link putObject}, {@link getObject}, {@link deleteObject},
- * {@link listObjects}, {@link headObject} — mapping the public `bucket`/
- * `key` parameter names onto Azure's own "container"/"blob" terms
- * internally.
- *
- * @example
- * ```typescript
- * import { AzureBlob } from '@tundraconnect/azure-blob';
- *
- * const client = new AzureBlob({
- *   auth: {
- *     type: 'CUSTOM',
- *     account: 'myaccount',
- *     accountKey: 'base64-shared-key',
- *   },
- * });
- *
- * await client.putObject({ bucket: 'my-container', key: 'hello.txt', body: 'hello world' });
- * const { body } = await client.getObject({ bucket: 'my-container', key: 'hello.txt' });
- * const { objects } = await client.listObjects({ bucket: 'my-container' });
- * await client.deleteObject({ bucket: 'my-container', key: 'hello.txt' });
- * ```
- */
 /** Default Put Block size for {@link AzureBlob.putObjectStream}: 4 MiB. */
 export const DEFAULT_BLOCK_SIZE = 4 * 1024 * 1024;
 /** Azure's hard cap on blocks per blob. */
@@ -287,6 +256,37 @@ async function* chunked(
   }
 }
 
+/**
+ * AzureBlob client for Azure Blob Storage's REST API
+ *
+ * Talks to the classic Blob endpoint (`https://{account}.blob.core.windows.net`
+ * — not the Data Lake Storage Gen2 `.dfs.core.windows.net` host) and
+ * authenticates every request with Shared Key HMAC-SHA256 signing (see
+ * {@link AzureBlobAuth}), or passes through a pre-generated SAS token.
+ * Exposes the repo's canonical object-storage surface —
+ * {@link putObject}, {@link getObject}, {@link deleteObject},
+ * {@link listObjects}, {@link headObject} — mapping the public `bucket`/
+ * `key` parameter names onto Azure's own "container"/"blob" terms
+ * internally.
+ *
+ * @example
+ * ```typescript
+ * import { AzureBlob } from '@tundraconnect/azure-blob';
+ *
+ * const client = new AzureBlob({
+ *   auth: {
+ *     type: 'CUSTOM',
+ *     account: 'myaccount',
+ *     accountKey: 'base64-shared-key',
+ *   },
+ * });
+ *
+ * await client.putObject({ bucket: 'my-container', key: 'hello.txt', body: 'hello world' });
+ * const { body } = await client.getObject({ bucket: 'my-container', key: 'hello.txt' });
+ * const { objects } = await client.listObjects({ bucket: 'my-container' });
+ * await client.deleteObject({ bucket: 'my-container', key: 'hello.txt' });
+ * ```
+ */
 export class AzureBlob extends RESTler<AzureBlobOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'AzureBlob';
@@ -714,6 +714,9 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
   }
 
   /**
+   * Rejects a missing or blank container name, then guards it against a
+   * `.`/`..` path segment (see {@link __requireSafePathSegment}).
+   *
    * @throws {AzureBlobError} `INVALID_BUCKET` when `bucket` is
    * missing/empty; `INVALID_PATH_SEGMENT` when it contains a `.`/`..` path
    * segment — see {@link __requireSafePathSegment}.
@@ -726,6 +729,8 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
   }
 
   /**
+   * {@link __requireBucket}, plus the same checks for the blob name.
+   *
    * @throws {AzureBlobError} `INVALID_BUCKET`/`INVALID_KEY` when either is
    * missing/empty; `INVALID_PATH_SEGMENT` when either contains a `.`/`..`
    * path segment — see {@link __requireSafePathSegment}.
@@ -827,21 +832,6 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
     return body;
   }
 
-  /**
-   * Builds the `_makeRequest` option that threads a `bucket`/`key` context
-   * into {@link __toError}, so a mapped error's `${key}`/`${bucket}`
-   * message placeholders render the actual values instead of every call
-   * site hand-writing the same `responseHandler: (response) =>
-   * this.__toError(response, context)` closure. Spread the result into
-   * `_makeRequest`'s options (alongside `responseSchema`, etc.) — see
-   * {@link __requestAndValidate} for a call site that does.
-   *
-   * Callers with no `bucket`/`key` context at all keep relying on the
-   * constructor's context-less `_responseHandler` default instead of
-   * calling this.
-   *
-   * @param context - The calling method's `bucket`/`key`, when known.
-   */
   /**
    * Upload a large blob from a stream — `Put Block` per chunk, then one
    * `Put Block List` — so only one block is ever in memory.
@@ -978,6 +968,21 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
     };
   }
 
+  /**
+   * Builds the `_makeRequest` option that threads a `bucket`/`key` context
+   * into {@link __toError}, so a mapped error's `${key}`/`${bucket}`
+   * message placeholders render the actual values instead of every call
+   * site hand-writing the same `responseHandler: (response) =>
+   * this.__toError(response, context)` closure. Spread the result into
+   * `_makeRequest`'s options (alongside `responseSchema`, etc.) — see
+   * {@link __requestAndValidate} for a call site that does.
+   *
+   * Callers with no `bucket`/`key` context at all keep relying on the
+   * constructor's context-less `_responseHandler` default instead of
+   * calling this.
+   *
+   * @param context - The calling method's `bucket`/`key`, when known.
+   */
   private __ctx(
     context: { bucket?: string; key?: string },
   ): Pick<RESTlerRequestOptions, 'responseHandler'> {

@@ -29,6 +29,7 @@ export class CloudflareEmailError<
    */
   public readonly code: CloudflareEmailErrorCode;
 
+  /** Formats every message as `[cloudflare-email] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[cloudflare-email] ${timeStamp}: ${message}';
   }

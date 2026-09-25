@@ -143,7 +143,9 @@ export function toFixed6(x: number): bigint {
   return BigInt(Math.round(x * 100)) * 10_000n;
 }
 
+/** The CLOB's order-signing protocol version, as reported by `GET /version`. */
 export type ProtocolVersion = 1 | 2;
+/** Which side of the book an order takes. */
 export type OrderSide = 'BUY' | 'SELL';
 
 /** Inputs to {@link buildOrder}. */

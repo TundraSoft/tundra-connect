@@ -24,6 +24,7 @@ export class TwilioError<
   /** The specific error code this instance was thrown with (see {@link TwilioErrorCodes}). */
   public readonly code: TwilioErrorCode;
 
+  /** Formats every message as `[Twilio] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[Twilio] ${timeStamp}: ${message}';
   }

@@ -161,48 +161,6 @@ export type StripeOptions = Omit<RESTlerOptions, 'auth'> & {
 };
 
 /**
- * Stripe client for the Stripe REST API — PaymentIntent create/retrieve
- * and Customer create.
- *
- * ### Authentication
- * Stripe's primary documented scheme
- * (https://docs.stripe.com/api/authentication) is HTTP Basic Auth: the
- * secret key as the username, with no password (`Authorization: Basic
- * base64(sk_live_xxx:)`). `Authorization: Bearer <key>` is documented only
- * as an alternative for cross-origin requests, which doesn't apply to this
- * server-side connect, so `BASIC` is used here. RESTler v1.1.3's
- * `_validateAuth` accepts an empty `password` for `BASIC` (RFC 7617
- * permits it — earlier RESTler versions required a non-empty password,
- * which is why this class used to send `BEARER` instead), and — like
- * `BEARER` — `BASIC` is handled entirely by the base `_authInjector`, so
- * this class still never overrides it.
- *
- * ### Request encoding
- * Every write endpoint sends `application/x-www-form-urlencoded`, using
- * Stripe's bracket notation for nested objects/arrays (`metadata[foo]=bar`,
- * `items[0][price]=x`). See {@link toFormUrlEncoded} for why RESTler's
- * built-in `'FORM'` content type isn't used for this.
- *
- * @example
- * ```typescript
- * import { Stripe } from '@tundraconnect/stripe';
- *
- * const client = new Stripe({
- *   auth: { type: 'BASIC', username: 'sk_test_...', password: '' },
- * });
- *
- * const intent = await client.createPaymentIntent({
- *   amount: 1999,
- *   currency: 'usd',
- *   automatic_payment_methods: { enabled: true },
- * });
- *
- * const retrieved = await client.retrievePaymentIntent(intent.id);
- *
- * const customer = await client.createCustomer({ email: 'jenny@example.com' });
- * ```
- */
-/**
  * Per-request idempotency control for the create/mutate calls.
  *
  * Supply the SAME `idempotencyKey` on every retry of one logical operation
@@ -244,6 +202,48 @@ export type VerifyWebhookOptions = {
   nowMs?: number;
 };
 
+/**
+ * Stripe client for the Stripe REST API — PaymentIntent create/retrieve
+ * and Customer create.
+ *
+ * ### Authentication
+ * Stripe's primary documented scheme
+ * (https://docs.stripe.com/api/authentication) is HTTP Basic Auth: the
+ * secret key as the username, with no password (`Authorization: Basic
+ * base64(sk_live_xxx:)`). `Authorization: Bearer <key>` is documented only
+ * as an alternative for cross-origin requests, which doesn't apply to this
+ * server-side connect, so `BASIC` is used here. RESTler v1.1.3's
+ * `_validateAuth` accepts an empty `password` for `BASIC` (RFC 7617
+ * permits it — earlier RESTler versions required a non-empty password,
+ * which is why this class used to send `BEARER` instead), and — like
+ * `BEARER` — `BASIC` is handled entirely by the base `_authInjector`, so
+ * this class still never overrides it.
+ *
+ * ### Request encoding
+ * Every write endpoint sends `application/x-www-form-urlencoded`, using
+ * Stripe's bracket notation for nested objects/arrays (`metadata[foo]=bar`,
+ * `items[0][price]=x`). See {@link toFormUrlEncoded} for why RESTler's
+ * built-in `'FORM'` content type isn't used for this.
+ *
+ * @example
+ * ```typescript
+ * import { Stripe } from '@tundraconnect/stripe';
+ *
+ * const client = new Stripe({
+ *   auth: { type: 'BASIC', username: 'sk_test_...', password: '' },
+ * });
+ *
+ * const intent = await client.createPaymentIntent({
+ *   amount: 1999,
+ *   currency: 'usd',
+ *   automatic_payment_methods: { enabled: true },
+ * });
+ *
+ * const retrieved = await client.retrievePaymentIntent(intent.id);
+ *
+ * const customer = await client.createCustomer({ email: 'jenny@example.com' });
+ * ```
+ */
 export class Stripe extends RESTler<StripeOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Stripe';
@@ -459,27 +459,6 @@ export class Stripe extends RESTler<StripeOptions> {
   }
 
   /**
-   * Makes a request and validates its response body against `guard`,
-   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
-   * into a {@link StripeError} — so `StripeError` stays the only thing a
-   * public method throws for "the vendor responded, but the body doesn't
-   * match what was expected." `B` is inferred from `guard`, so callers no
-   * longer separately write out a `_makeRequest<B>()` type argument.
-   *
-   * By the time a method calls this, {@link _responseHandler} has already
-   * run and thrown for any documented vendor error — this only has to
-   * handle a response whose status looked fine but whose body doesn't
-   * match what was expected.
-   *
-   * @template B - The expected response body type
-   * @param endpoint - The endpoint to request
-   * @param guard - Guardian schema object for validating the response
-   * @returns The validated response data
-   * @throws {StripeError} `RESPONSE_ERROR` when the body fails validation
-   *
-   * @private
-   */
-  /**
    * A fresh idempotency key — a ULID: 26 chars, time-sortable, URL-safe,
    * well inside Stripe's 255-character limit. Generated by
    * `@tundralibs/id`, never by hand.
@@ -607,6 +586,27 @@ export class Stripe extends RESTler<StripeOptions> {
     }
   }
 
+  /**
+   * Makes a request and validates its response body against `guard`,
+   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
+   * into a {@link StripeError} — so `StripeError` stays the only thing a
+   * public method throws for "the vendor responded, but the body doesn't
+   * match what was expected." `B` is inferred from `guard`, so callers no
+   * longer separately write out a `_makeRequest<B>()` type argument.
+   *
+   * By the time a method calls this, {@link _responseHandler} has already
+   * run and thrown for any documented vendor error — this only has to
+   * handle a response whose status looked fine but whose body doesn't
+   * match what was expected.
+   *
+   * @template B - The expected response body type
+   * @param endpoint - The endpoint to request
+   * @param guard - Guardian schema object for validating the response
+   * @returns The validated response data
+   * @throws {StripeError} `RESPONSE_ERROR` when the body fails validation
+   *
+   * @private
+   */
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,

@@ -293,6 +293,8 @@ export class Kalshi extends RESTler<KalshiOptions> {
   private __accessKey?: string;
 
   /**
+   * Creates a Kalshi client.
+   *
    * @param options - Configuration options for the client.
    * @param options.auth - Portfolio/order credentials — see {@link KalshiOptions}.
    * @throws {KalshiError} `CONFIG_INVALID_PRIVATE_KEY` when `auth` is
@@ -914,6 +916,12 @@ export class Kalshi extends RESTler<KalshiOptions> {
 
   // ── internals ────────────────────────────────────────────────────────────
 
+  /**
+   * Guards every signed (`/portfolio/*`) call: both the access key and the
+   * RSA signer must have been configured through `auth`.
+   *
+   * @throws {KalshiError} `CONFIG_MISSING_PRIVATE_KEY`.
+   */
   private __requireCredentials(): void {
     if (!this.__signer || !this.__accessKey) {
       throw new KalshiError('CONFIG_MISSING_PRIVATE_KEY');
@@ -1181,6 +1189,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     return Math.round(value * 1e6) / 1e6;
   }
 
+  /**
+   * Maps a single-order acknowledgement to the shared {@link OrderResult}:
+   * `filled` when any contracts filled, `slippage` as requested minus
+   * average fill price (0 when nothing filled yet).
+   */
   private static __toOrderResult(
     side: OrderSide,
     requestedPrice: number,
@@ -1210,6 +1223,11 @@ export class Kalshi extends RESTler<KalshiOptions> {
     };
   }
 
+  /**
+   * Maps one row of a batch response to an {@link OrderResult}: a row that
+   * carries an `error` becomes `rejected: true` with the vendor's message;
+   * any other row is mapped like {@link __toOrderResult}.
+   */
   private static __toBatchOrderResult(
     side: OrderSide,
     requestedPrice: number,

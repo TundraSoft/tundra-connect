@@ -139,6 +139,31 @@ type VendorErrorName =
   | 'UNKNOWN_ERROR';
 
 /**
+ * Anything a runtime hands you as request headers — a `Headers` instance or
+ * a plain object. Lookup is case-insensitive either way, as HTTP header
+ * names are.
+ */
+export type WebhookHeadersLike =
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+/** Standard Webhooks' recommended replay window, in seconds. */
+export const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = 300;
+
+/** Arguments to {@link DodoPayments.verifyWebhook}. */
+export type VerifyWebhookOptions = {
+  /** The RAW request body, exactly as received — `await req.text()`, never a re-serialized object. */
+  payload: string;
+  headers: WebhookHeadersLike;
+  /** The endpoint's signing secret from the dashboard, with or without `whsec_`. */
+  secret: string;
+  /** Replay window in seconds. @default DEFAULT_WEBHOOK_TOLERANCE_SECONDS */
+  toleranceSeconds?: number;
+  /** Clock override, for tests. */
+  nowMs?: number;
+};
+
+/**
  * Dodo Payments client — the payment and subscription surface a checkout
  * flow actually needs: initialize a payment, read its status, verify it,
  * list a customer's history, and create or cancel a subscription.
@@ -167,31 +192,6 @@ type VendorErrorName =
  * console.log(created.payment_link); // send the buyer here
  * ```
  */
-/**
- * Anything a runtime hands you as request headers — a `Headers` instance or
- * a plain object. Lookup is case-insensitive either way, as HTTP header
- * names are.
- */
-export type WebhookHeadersLike =
-  | Headers
-  | Record<string, string | string[] | undefined>;
-
-/** Standard Webhooks' recommended replay window, in seconds. */
-export const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = 300;
-
-/** Arguments to {@link DodoPayments.verifyWebhook}. */
-export type VerifyWebhookOptions = {
-  /** The RAW request body, exactly as received — `await req.text()`, never a re-serialized object. */
-  payload: string;
-  headers: WebhookHeadersLike;
-  /** The endpoint's signing secret from the dashboard, with or without `whsec_`. */
-  secret: string;
-  /** Replay window in seconds. @default DEFAULT_WEBHOOK_TOLERANCE_SECONDS */
-  toleranceSeconds?: number;
-  /** Clock override, for tests. */
-  nowMs?: number;
-};
-
 export class DodoPayments extends RESTler<DodoPaymentsOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'DodoPayments';
@@ -202,6 +202,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
   }
 
   /**
+   * Creates a Dodo Payments client.
+   *
    * @param options - Configuration options for the client.
    * @param options.auth - `{ type: 'BEARER', token, prefix? }` — your Dodo
    * API key for the matching environment.
@@ -698,12 +700,6 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
   }
 
   /**
-   * Makes a request and validates its response body against `guard`,
-   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
-   * into a {@link DodoPaymentsError}.
-   */
-
-  /**
    * The exact string Standard Webhooks signs: `<id>.<timestamp>.<payload>`.
    *
    * @example
@@ -856,6 +852,11 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     }
   }
 
+  /**
+   * Makes a request and validates its response body against `guard`,
+   * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
+   * into a {@link DodoPaymentsError}.
+   */
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
     guard: BaseGuardian<B>,

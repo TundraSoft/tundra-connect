@@ -29,6 +29,7 @@ export class DodoPaymentsError<
    */
   public readonly code: DodoPaymentsErrorCode;
 
+  /** Formats every message as `[dodo-payments] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[dodo-payments] ${timeStamp}: ${message}';
   }

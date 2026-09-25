@@ -2,7 +2,7 @@
   "name": "@tundraconnect/stripe",
   "version": "0.0.0",
   "type": "module",
-  "description": "Stripe REST API client for PaymentIntents and Customers",
+  "description": "Typed Stripe client: create and retrieve PaymentIntents and create customers, with idempotency keys and webhook signature verification.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

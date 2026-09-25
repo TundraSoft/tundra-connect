@@ -1,7 +1,7 @@
 {
   "name": "@tundraconnect/azure-blob",
   "version": "0.0.0",
-  "description": "Azure Blob Storage REST API client with Shared Key (HMAC-SHA256) request signing",
+  "description": "Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

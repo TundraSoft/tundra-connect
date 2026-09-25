@@ -27,6 +27,7 @@ export class PayPalError<
    */
   public readonly code: PayPalErrorCode;
 
+  /** Formats every message as `[PayPal] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[PayPal] ${timeStamp}: ${message}';
   }

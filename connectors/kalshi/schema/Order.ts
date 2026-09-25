@@ -7,6 +7,7 @@ export type OrderError = {
   details?: unknown;
 };
 
+/** Guardian schema that validates a {@link OrderError}. */
 export const OrderErrorSchemaObject: BaseGuardian<OrderError> = Guardian
   .object({
     code: Guardian.string(),

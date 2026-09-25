@@ -24,6 +24,7 @@ export class StripeError<
   /** The specific error code this instance was thrown with (see {@link StripeErrorCodes}). */
   public readonly code: StripeErrorCode;
 
+  /** Formats every message as `[Stripe] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[Stripe] ${timeStamp}: ${message}';
   }

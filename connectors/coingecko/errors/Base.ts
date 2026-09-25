@@ -26,6 +26,7 @@ export class CoinGeckoError<
   /** The specific error code this instance was thrown with (see {@link CoinGeckoErrorCodes}). */
   public readonly code: CoinGeckoErrorCode;
 
+  /** Formats every message as `[CoinGecko] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[CoinGecko] ${timeStamp}: ${message}';
   }

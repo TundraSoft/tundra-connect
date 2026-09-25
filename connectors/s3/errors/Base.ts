@@ -26,6 +26,7 @@ export class S3Error<
   /** The specific error code this instance was thrown with (see {@link S3ErrorCodes}). */
   public readonly code: S3ErrorCode;
 
+  /** Formats every message as `[S3] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[S3] ${timeStamp}: ${message}';
   }

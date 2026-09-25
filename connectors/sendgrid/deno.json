@@ -1,7 +1,7 @@
 {
   "name": "@tundraconnect/sendgrid",
   "version": "0.0.0",
-  "description": "Twilio SendGrid API client for transactional email",
+  "description": "Typed Twilio SendGrid client: send transactional email, inspect API-key scopes, and verify ECDSA-signed event webhooks.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

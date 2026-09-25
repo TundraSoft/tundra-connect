@@ -29,6 +29,7 @@ export class AlgoliaError<
    */
   public readonly code: AlgoliaErrorCode;
 
+  /** Formats every message as `[algolia] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[algolia] ${timeStamp}: ${message}';
   }

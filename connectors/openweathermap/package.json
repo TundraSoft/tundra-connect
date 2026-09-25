@@ -2,7 +2,7 @@
   "name": "@tundraconnect/openweathermap",
   "version": "0.0.0",
   "type": "module",
-  "description": "OpenWeatherMap API client for current weather conditions and 5-day/3-hour forecasts",
+  "description": "Typed OpenWeatherMap client: current weather and 5-day / 3-hour forecasts by city name or coordinates.",
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",
