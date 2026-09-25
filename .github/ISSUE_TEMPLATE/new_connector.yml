@@ -79,19 +79,8 @@ body:
     validations:
       required: true
   - type: checkboxes
-    id: runtimes
+    id: test-credentials
     attributes:
-      label: Runtimes you need
+      label: Test credentials
       options:
-        - label: Deno
-        - label: Node.js
-        - label: Bun
-        - label: Cloudflare Workers
-        - label: Browser
-  - type: checkboxes
-    id: contribute
-    attributes:
-      label: Contributing
-      options:
-        - label: I'd like to build this myself, following CONVENTIONS.md
         - label: I can provide test credentials or sandbox access
