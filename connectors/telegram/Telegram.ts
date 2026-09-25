@@ -134,7 +134,10 @@ export class Telegram extends RESTler<TelegramOptions> {
     // `_processOption('baseURL')` still validates the transformed value
     // when `super()` routes options through it.
     if (typeof options.baseURL === 'string' && options.baseURL.length > 0) {
-      const origin = options.baseURL.replace(/\/+$/, '');
+      let origin = options.baseURL;
+      // A loop, not `/\/+$/`: that regex backtracks polynomially on a long
+      // run of slashes followed by another character.
+      while (origin.endsWith('/')) origin = origin.slice(0, -1);
       options = {
         ...options,
         baseURL: origin.endsWith(`/bot${botToken}`)
