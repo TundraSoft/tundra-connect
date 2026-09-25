@@ -75,7 +75,8 @@
       "./.github",
       "./.sonarlint",
       "./.devcontainer",
-      "**/fixtures/**"
+      "**/fixtures/**",
+      "**/CHANGELOG.md"
     ]
   },
   "test": {
