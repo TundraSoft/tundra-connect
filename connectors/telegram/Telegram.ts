@@ -331,6 +331,17 @@ export class Telegram extends RESTler<TelegramOptions> {
     );
     if (envelopeErr || !envelope) {
       const status = response.status;
+      // A 429 without the Bot API envelope (e.g. from a proxy in front of
+      // it) is still a rate limit — map it by status, not to RESPONSE_ERROR.
+      if (status === 429) {
+        const retryAfterSeconds = this._parseRetryAfter(response.headers);
+        throw new TelegramError('RATE_LIMITED', {
+          status,
+          retryAfterSeconds,
+          retryAfter: retryAfterSeconds ?? 'a few',
+          body: response.body,
+        });
+      }
       if (status !== null && status >= 500) {
         throw new TelegramError('SERVICE_UNAVAILABLE', {
           status,

@@ -665,6 +665,16 @@ export class Stripe extends RESTler<StripeOptions> {
       response.body,
     );
     if (envelopeErr || !envelope) {
+      // A 429 without Stripe's envelope (e.g. from a proxy or CDN in front of
+      // the API) is still a rate limit — map it by status, not to the
+      // generic RESPONSE_ERROR fallback below.
+      if (status === 429) {
+        throw new StripeError('RATE_LIMITED', {
+          status,
+          retryAfterSeconds: this._parseRetryAfter(response.headers),
+          body: response.body,
+        });
+      }
       if (status !== null && status >= 500) {
         throw new StripeError('SERVICE_UNAVAILABLE', {
           status,

@@ -929,6 +929,15 @@ export class Twilio extends RESTler<TwilioOptions> {
     if (status !== null && status >= 400 && status < 500) {
       const [err, body] = ErrorSchemaObject.safeParse(response.body);
       if (err || !body) {
+        // A 429 without Twilio's envelope (e.g. from a proxy in front of the
+        // API) is still a rate limit — map it by status.
+        if (status === 429) {
+          throw new TwilioError('RATE_LIMITED', {
+            status,
+            retryAfterSeconds: this._parseRetryAfter(response.headers),
+            body: response.body,
+          });
+        }
         // Unparseable error body — can't reliably diagnose the failure.
         throw new TwilioError('SERVICE_UNAVAILABLE', {
           status: status,

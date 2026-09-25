@@ -1318,6 +1318,27 @@ describe('Twilio — reconfiguration', () => {
   });
 });
 
+describe('Twilio — a 429 without the vendor envelope', () => {
+  it('is still RATE_LIMITED (mapped by status), with the retry hint', async () => {
+    // What a proxy or CDN in front of the API returns: the status and a
+    // Retry-After header, but not the vendor's own error body.
+    const c = new MockTwilio({ accountSid: ACCOUNT_SID, authToken: 'token' });
+    c['_fetch'] = () =>
+      Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '7' },
+        }),
+      );
+    const err = await asserts.assertRejects(
+      () => c.getCall(validCallResponse.sid),
+      TwilioError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 7);
+  });
+});
+
 describe({
   name: 'Twilio — live (read-only)',
   // Deno only: Bun/Node each get their own connect-wide live-test job (see

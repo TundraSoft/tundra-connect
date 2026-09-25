@@ -951,6 +951,29 @@ describe('Stripe — unrecognised error responses', () => {
   });
 });
 
+describe('Stripe — a 429 without the vendor envelope', () => {
+  it('is still RATE_LIMITED (mapped by status), with the retry hint', async () => {
+    // What a proxy or CDN in front of the API returns: the status and a
+    // Retry-After header, but not the vendor's own error body.
+    const c = new MockStripe({
+      auth: { type: 'BASIC', username: 'sk_test_abc123', password: '' },
+    });
+    c['_fetch'] = () =>
+      Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '7' },
+        }),
+      );
+    const err = await asserts.assertRejects(
+      () => c.retrievePaymentIntent('pi_3Nx0aB2c3D4e5F6g'),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 7);
+  });
+});
+
 describe({
   name: 'Stripe — live',
   // Deno only: Bun/Node each get their own connect-wide live-test job

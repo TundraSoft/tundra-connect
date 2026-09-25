@@ -589,6 +589,27 @@ describe('Telegram — unrecognised error responses', () => {
   });
 });
 
+describe('Telegram — a 429 without the vendor envelope', () => {
+  it('is still RATE_LIMITED (mapped by status), with the retry hint', async () => {
+    // What a proxy or CDN in front of the API returns: the status and a
+    // Retry-After header, but not the vendor's own error body.
+    const c = new MockTelegram({ botToken: TEST_TOKEN });
+    c['_fetch'] = () =>
+      Promise.resolve(
+        new Response('{}', {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '7' },
+        }),
+      );
+    const err = await asserts.assertRejects(
+      () => c.sendMessage({ chat_id: 1, text: 'hi' }),
+      TelegramError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 7);
+  });
+});
+
 describe({
   name: 'Telegram — live (getMe)',
   ignore: !liveTestsEnabled,
