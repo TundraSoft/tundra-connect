@@ -84,13 +84,21 @@ console.log(link.short_url);
 ## Webhooks
 
 ```ts
-const raw = await req.text(); // text(), never json()
-const event = await client.verifyWebhook({
-  payload: raw,
-  headers: req.headers,
-  secret: RAZORPAY_WEBHOOK_SECRET,
+import { Razorpay } from '@tundraconnect/razorpay';
+
+const client = new Razorpay({
+  auth: { type: 'BASIC', username: 'rzp_test_...', password: '...' },
 });
-const eventId = req.headers.get('x-razorpay-event-id'); // dedupe on this
+
+export async function onWebhook(req: Request): Promise<void> {
+  const raw = await req.text(); // text(), never json()
+  const event = await client.verifyWebhook({
+    payload: raw,
+    headers: req.headers,
+    secret: 'your-webhook-secret',
+  });
+  const eventId = req.headers.get('x-razorpay-event-id'); // dedupe on this
+}
 ```
 
 See [API → Webhooks](docs/Razorpay-API.md#webhooks).

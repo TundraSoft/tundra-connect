@@ -71,12 +71,21 @@ console.log(customer.id);
 ## Webhooks
 
 ```ts
-const raw = await req.text(); // text(), never json()
-const event = await client.verifyWebhook({
-  payload: raw,
-  headers: req.headers,
-  secret: STRIPE_WEBHOOK_SECRET,
+import { Stripe } from '@tundraconnect/stripe';
+
+const client = new Stripe({
+  auth: { type: 'BASIC', username: 'sk_test_...', password: '' },
 });
+
+export async function onWebhook(req: Request): Promise<void> {
+  const raw = await req.text(); // text(), never json()
+  const event = await client.verifyWebhook({
+    payload: raw,
+    headers: req.headers,
+    secret: 'whsec_...',
+  });
+  // `event` is now trustworthy.
+}
 ```
 
 See [API → Webhooks](docs/Stripe-API.md#webhooks).

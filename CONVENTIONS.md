@@ -334,6 +334,12 @@ unchanged. `responseSchema` only ever sees `response.body`.
   (`import { Guardian, type GuardianInfer } from '@guardian'`).
 - Doc examples (README, JSDoc `@example`) use the public specifier
   (`@tundraconnect/<connect>`), never a relative path.
+- The weekly health check type-checks every README `` ```ts `` block against
+  the published package, so each block must compile on its own. A block
+  that builds on the README's first block (its imports and `client`) is
+  tagged `` ```ts continued `` and is checked appended to it; tag a block
+  `` ```ts ignore `` only when it cannot compile at all (e.g. a before/after
+  migration snippet).
 
 ## Runtime target
 

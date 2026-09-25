@@ -26,12 +26,24 @@ async function readMeta(): Promise<WorkspaceMeta> {
   );
 }
 
+/**
+ * A block tagged ` ```ts continued ` builds on the README's first checked
+ * block (its setup: imports and the `client`), so it is checked appended to
+ * that block, inside its own `{ }` scope so names can repeat across
+ * sections.
+ */
 function extractExamples(markdown: string): string[] {
   const examples: string[] = [];
+  let base: string | undefined;
   const fence = /```(ts|typescript)\b([^\n]*)\n([\s\S]*?)```/g;
   for (const match of markdown.matchAll(fence)) {
-    const [, , attrs, code] = match;
+    const [, , attrs = '', code = ''] = match;
     if (attrs.includes('ignore')) continue;
+    if (attrs.includes('continued') && base !== undefined) {
+      examples.push(`${base}\n{\n${code}}\n`);
+      continue;
+    }
+    base ??= code;
     examples.push(code);
   }
   return examples;
@@ -62,7 +74,9 @@ async function checkConnect(name: string): Promise<boolean> {
     const tmp = `${tmpDir}/example.ts`;
     await Deno.writeTextFile(tmp, code);
     const cmd = new Deno.Command('deno', {
-      args: ['check', '--no-lock', tmp],
+      // Deno refuses versions younger than 24h by default; this check is
+      // about doc drift, so a release published hours ago must not fail it.
+      args: ['check', '--no-lock', '--minimum-dependency-age=0', tmp],
       cwd: tmpDir,
       stdout: 'piped',
       stderr: 'piped',
