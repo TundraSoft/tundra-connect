@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import { CALL_STATUSES, type CallSchema, CallSchemaObject } from './Call.ts';
 import { callSidGuard, dateOnlyGuard } from './Common.ts';
 
@@ -24,7 +24,7 @@ import { callSidGuard, dateOnlyGuard } from './Common.ts';
  * }
  * ```
  */
-type _ListCallsRequestShape = {
+export type ListCallsRequestSchema = {
   to?: string;
   from?: string;
   parentCallSid?: string;
@@ -40,7 +40,7 @@ type _ListCallsRequestShape = {
   pageToken?: string;
 };
 
-const _listCallsRequestSchema: BaseGuardian<_ListCallsRequestShape> = Guardian
+const _listCallsRequestSchema: BaseGuardian<ListCallsRequestSchema> = Guardian
   .object({
     /** Only include calls made to this phone number, SIP address, Client identifier, or SIM SID. */
     to: Guardian.string().minLength(1).optional(),
@@ -74,11 +74,7 @@ const _listCallsRequestSchema: BaseGuardian<_ListCallsRequestShape> = Guardian
       'Filter/pagination options accepted by Twilio.listCalls(), validated before the API call.',
   });
 
-/** Type definition for {@link Twilio.listCalls} request options. */
-export type ListCallsRequestSchema = GuardianInfer<
-  typeof _listCallsRequestSchema
->;
-
+/** Guardian schema that validates a {@link ListCallsRequestSchema}. */
 export const ListCallsRequestSchemaObject: BaseGuardian<
   ListCallsRequestSchema
 > = _listCallsRequestSchema;
@@ -135,7 +131,7 @@ function _extractNextPageToken(nextPageUri: string | null): string | undefined {
  * }
  * ```
  */
-type _ListCallsResponseShape = {
+export type ListCallsResponseSchema = {
   calls: CallSchema[];
   end: number;
   first_page_uri: string;
@@ -152,7 +148,7 @@ type _ListCallsResponseShape = {
   nextPageToken?: string;
 };
 
-const _listCallsResponseSchema: BaseGuardian<_ListCallsResponseShape> = Guardian
+const _listCallsResponseSchema: BaseGuardian<ListCallsResponseSchema> = Guardian
   .object({
     /** The page of Call resources. */
     calls: Guardian.array(CallSchemaObject),
@@ -181,11 +177,7 @@ const _listCallsResponseSchema: BaseGuardian<_ListCallsResponseShape> = Guardian
       'A paginated page of Call resources, returned by the Calls list endpoint, with a convenience nextPageToken cursor.',
   });
 
-/** Type definition for the paginated Read-multiple-Calls response. */
-export type ListCallsResponseSchema = GuardianInfer<
-  typeof _listCallsResponseSchema
->;
-
+/** Guardian schema that validates a {@link ListCallsResponseSchema}. */
 export const ListCallsResponseSchemaObject: BaseGuardian<
   ListCallsResponseSchema
 > = _listCallsResponseSchema;

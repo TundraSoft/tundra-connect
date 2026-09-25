@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import { type ProjectSchema, ProjectSchemaObject } from './Project.ts';
 
 /**
@@ -15,13 +15,13 @@ import { type ProjectSchema, ProjectSchemaObject } from './Project.ts';
  * });
  * ```
  */
-type _ListProjectsRequestShape = {
+export type ListProjectsRequestSchema = {
   cursor?: string;
   perPage?: number;
   query?: string;
 };
 
-const _listProjectsRequestSchema: BaseGuardian<_ListProjectsRequestShape> =
+const _listProjectsRequestSchema: BaseGuardian<ListProjectsRequestSchema> =
   Guardian.object({
     /** Opaque pagination cursor, taken from a previous page's `nextCursor`. */
     cursor: Guardian.string().minLength(1).optional(),
@@ -35,11 +35,7 @@ const _listProjectsRequestSchema: BaseGuardian<_ListProjectsRequestShape> =
       'Filter/pagination options accepted by Sentry.listProjects(), validated before the API call.',
   });
 
-/** Type definition for {@link Sentry.listProjects} request options. */
-export type ListProjectsRequestSchema = GuardianInfer<
-  typeof _listProjectsRequestSchema
->;
-
+/** Guardian schema that validates a {@link ListProjectsRequestSchema}. */
 export const ListProjectsRequestSchemaObject: BaseGuardian<
   ListProjectsRequestSchema
 > = _listProjectsRequestSchema;
@@ -66,13 +62,13 @@ export const ListProjectsRequestSchemaObject: BaseGuardian<
  * }
  * ```
  */
-type _ListProjectsResponseShape = {
+export type ListProjectsResponseSchema = {
   projects: ProjectSchema[];
   /** Sentry's next-page cursor, extracted from the `Link` response header. `undefined` on the last page. */
   nextCursor?: string;
 };
 
-const _listProjectsResponseSchema: BaseGuardian<_ListProjectsResponseShape> =
+const _listProjectsResponseSchema: BaseGuardian<ListProjectsResponseSchema> =
   Guardian.object({
     /** The page of Project resources. */
     projects: Guardian.array(ProjectSchemaObject),
@@ -84,11 +80,7 @@ const _listProjectsResponseSchema: BaseGuardian<_ListProjectsResponseShape> =
       "A paginated page of an organization's Project resources, with a convenience nextCursor.",
   });
 
-/** Type definition for the paginated list-projects response. */
-export type ListProjectsResponseSchema = GuardianInfer<
-  typeof _listProjectsResponseSchema
->;
-
+/** Guardian schema that validates a {@link ListProjectsResponseSchema}. */
 export const ListProjectsResponseSchemaObject: BaseGuardian<
   ListProjectsResponseSchema
 > = _listProjectsResponseSchema;

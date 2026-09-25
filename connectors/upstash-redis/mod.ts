@@ -40,7 +40,12 @@
  */
 
 // Export main client class
-export { UpstashRedis, type UpstashRedisOptions } from './UpstashRedis.ts';
+export {
+  UpstashRedis,
+  type UpstashRedisAuth,
+  type UpstashRedisOptions,
+  type UpstashRedisSetOptions,
+} from './UpstashRedis.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

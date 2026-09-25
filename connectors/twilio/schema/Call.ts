@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Documented lifecycle states of a Twilio Call resource
@@ -79,7 +79,7 @@ export const CALL_DIRECTIONS = [
  * }
  * ```
  */
-type _CallShape = {
+export type CallSchema = {
   sid: string;
   account_sid: string;
   to: string;
@@ -108,7 +108,7 @@ type _CallShape = {
   subresource_uris: Record<string, string>;
 };
 
-const _callSchema: BaseGuardian<_CallShape> = Guardian.object({
+const _callSchema: BaseGuardian<CallSchema> = Guardian.object({
   /** Unique identifier of the call (`CA` + 32 hex characters). */
   sid: Guardian.string(),
   /** Account SID that owns the call. */
@@ -170,7 +170,5 @@ const _callSchema: BaseGuardian<_CallShape> = Guardian.object({
   description: 'A Twilio Call resource, returned by the Calls endpoint.',
 });
 
-/** Type definition for the Twilio Call resource. */
-export type CallSchema = GuardianInfer<typeof _callSchema>;
-
+/** Guardian schema that validates a {@link CallSchema}. */
 export const CallSchemaObject: BaseGuardian<CallSchema> = _callSchema;

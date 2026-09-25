@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Regex for PayPal's documented `money.value` field — confirmed against
@@ -65,14 +65,14 @@ export const moneyValueGuard: BaseGuardian<string> = Guardian.string()
  * }
  * ```
  */
-type _MoneyShape = {
+export type MoneySchema = {
   /** Three-character ISO-4217 currency code. */
   currency_code: string;
   /** Decimal-string amount — see {@link moneyValueGuard}. */
   value: string;
 };
 
-const _moneySchema: BaseGuardian<_MoneyShape> = Guardian.object({
+const _moneySchema: BaseGuardian<MoneySchema> = Guardian.object({
   currency_code: currencyCodeGuard,
   value: moneyValueGuard,
 }).describe({
@@ -81,14 +81,11 @@ const _moneySchema: BaseGuardian<_MoneyShape> = Guardian.object({
     "PayPal's currency + amount pair. `value` is a decimal STRING, not a number — verified against PayPal's published OpenAPI spec.",
 });
 
-/** Type definition for {@link MoneySchemaObject}. */
-export type MoneySchema = GuardianInfer<typeof _moneySchema>;
-
 /** Schema for PayPal's `money` object. */
 export const MoneySchemaObject: BaseGuardian<MoneySchema> = _moneySchema;
 
 /** HTTP methods PayPal documents on a HATEOAS link's `method` field. */
-type _LinkMethod =
+export type LinkMethod =
   | 'GET'
   | 'POST'
   | 'PUT'
@@ -103,16 +100,16 @@ type _LinkMethod =
  * request-related HATEOAS link, as returned on an order/capture/refund's
  * `links` array.
  */
-type _LinkShape = {
+export type LinkSchema = {
   /** The complete target URL for the related call. */
   href: string;
   /** The link relation type (e.g. `"self"`, `"approve"`, `"capture"`). */
   rel: string;
   /** The HTTP method required to make the related call. */
-  method?: _LinkMethod;
+  method?: LinkMethod;
 };
 
-const _linkSchema: BaseGuardian<_LinkShape> = Guardian.object({
+const _linkSchema: BaseGuardian<LinkSchema> = Guardian.object({
   href: Guardian.string(),
   rel: Guardian.string(),
   method: Guardian.enum(
@@ -132,9 +129,6 @@ const _linkSchema: BaseGuardian<_LinkShape> = Guardian.object({
   description:
     "A PayPal request-related HATEOAS link, as returned on an order/capture/refund's `links` array.",
 });
-
-/** Type definition for {@link LinkSchemaObject}. */
-export type LinkSchema = GuardianInfer<typeof _linkSchema>;
 
 /** Schema for PayPal's `link_description` object. */
 export const LinkSchemaObject: BaseGuardian<LinkSchema> = _linkSchema;

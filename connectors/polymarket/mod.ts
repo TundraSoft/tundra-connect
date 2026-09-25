@@ -78,15 +78,23 @@
 
 // Export main client class
 export {
+  type BulkOrderInput,
   CLOB_API,
   DATA_API,
   GAMMA_API,
   type GetFillsOptions,
+  type GetMarketsOptions,
+  type GetMarketsResult,
   type GetOpenOrdersOptions,
   type GetPositionsOptions,
+  type OrderAction,
+  type OrderRequest,
+  type OrderResult,
   Polymarket,
+  type PolymarketAuth,
   type PolymarketOptions,
   RELAYER_API,
+  type SubmitOrderOptions,
 } from './Polymarket.ts';
 
 // Export error handling
@@ -94,3 +102,5 @@ export * from './errors/mod.ts';
 
 // Export the full schema barrel for advanced usage
 export * from './schema/mod.ts';
+export type { ProtocolVersion } from './PolymarketOrder.ts';
+export type { OrderSide } from './PolymarketOrder.ts';

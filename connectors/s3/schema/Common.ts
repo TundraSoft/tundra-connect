@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Shared Guardian components reused across the S3 request/response
@@ -42,7 +42,8 @@ const _metadataGuard = Guardian.record(Guardian.string()).describe({
 export const metadataGuard: BaseGuardian<Record<string, string>> =
   _metadataGuard;
 
-type _ObjectMetadataShape = {
+/** Type definition for {@link ObjectMetadataSchemaObject}. */
+export type ObjectMetadataSchema = {
   contentType?: string;
   contentLength?: number;
   etag?: string;
@@ -51,7 +52,7 @@ type _ObjectMetadataShape = {
   metadata?: Record<string, string>;
 };
 
-const _objectMetadataSchema: BaseGuardian<_ObjectMetadataShape> = Guardian
+const _objectMetadataSchema: BaseGuardian<ObjectMetadataSchema> = Guardian
   .object({
     contentType: Guardian.string().optional().describe({
       description: 'Value of the `Content-Type` response header.',
@@ -73,11 +74,6 @@ const _objectMetadataSchema: BaseGuardian<_ObjectMetadataShape> = Guardian
     description:
       'Header-derived metadata shared by GetObject and HeadObject responses.',
   });
-
-/** Type definition for {@link ObjectMetadataSchemaObject}. */
-export type ObjectMetadataSchema = GuardianInfer<
-  typeof _objectMetadataSchema
->;
 
 /** Metadata common to a GetObject/HeadObject response — every field is read from a response header, none from a body. */
 export const ObjectMetadataSchemaObject: BaseGuardian<ObjectMetadataSchema> =

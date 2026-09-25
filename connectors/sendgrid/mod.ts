@@ -32,8 +32,11 @@
 // Export main client class
 export {
   SendGrid,
+  type SendGridAuth,
   type SendGridOptions,
   type SendMailResult,
+  type VerifyWebhookOptions,
+  type WebhookHeadersLike,
 } from './SendGrid.ts';
 
 // Export error handling

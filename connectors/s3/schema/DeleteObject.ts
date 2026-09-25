@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Schema for a DeleteObject result
@@ -14,12 +14,12 @@ import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
  * });
  * ```
  */
-type _DeleteObjectResponseShape = {
+export type DeleteObjectResponseSchema = {
   versionId?: string;
   deleteMarker?: boolean;
 };
 
-const _deleteObjectResponseSchema: BaseGuardian<_DeleteObjectResponseShape> =
+const _deleteObjectResponseSchema: BaseGuardian<DeleteObjectResponseSchema> =
   Guardian.object({
     /** Value of the `x-amz-version-id` response header, when versioning is enabled. */
     versionId: Guardian.string().optional(),
@@ -30,11 +30,7 @@ const _deleteObjectResponseSchema: BaseGuardian<_DeleteObjectResponseShape> =
     description: 'Header-derived result of a successful DeleteObject request.',
   });
 
-/** Type definition for {@link DeleteObjectResponseSchemaObject}. */
-export type DeleteObjectResponseSchema = GuardianInfer<
-  typeof _deleteObjectResponseSchema
->;
-
+/** Guardian schema that validates a {@link DeleteObjectResponseSchema}. */
 export const DeleteObjectResponseSchemaObject: BaseGuardian<
   DeleteObjectResponseSchema
 > = _deleteObjectResponseSchema;

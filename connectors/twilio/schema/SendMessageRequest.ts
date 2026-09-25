@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import {
   applicationSidGuard,
   contentSidGuard,
@@ -31,7 +31,7 @@ import {
  * }
  * ```
  */
-type _SendMessageRequestShape = {
+export type SendMessageRequestSchema = {
   to: string;
   from?: string;
   messagingServiceSid?: string;
@@ -48,7 +48,7 @@ type _SendMessageRequestShape = {
   contentVariables?: string;
 };
 
-const _sendMessageRequestSchema: BaseGuardian<_SendMessageRequestShape> =
+const _sendMessageRequestSchema: BaseGuardian<SendMessageRequestSchema> =
   Guardian.object({
     /** Recipient phone number, in E.164 format. */
     to: e164Guard,
@@ -96,11 +96,7 @@ const _sendMessageRequestSchema: BaseGuardian<_SendMessageRequestShape> =
       'Options accepted by Twilio.sendMessage(), validated before the API call.',
   });
 
-/** Type definition for {@link Twilio.sendMessage} request options. */
-export type SendMessageRequestSchema = GuardianInfer<
-  typeof _sendMessageRequestSchema
->;
-
+/** Guardian schema that validates a {@link SendMessageRequestSchema}. */
 export const SendMessageRequestSchemaObject: BaseGuardian<
   SendMessageRequestSchema
 > = _sendMessageRequestSchema;

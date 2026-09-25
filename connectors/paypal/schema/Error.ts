@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import { type LinkSchema, LinkSchemaObject } from './Common.ts';
 
 /**
@@ -9,7 +9,7 @@ import { type LinkSchema, LinkSchemaObject } from './Common.ts';
  * `{ field: "/purchase_units/@reference_id=='PUHF'/shipping/address",
  * issue: "MISSING_SHIPPING_ADDRESS", description: "..." }`.
  */
-type _ErrorDetailShape = {
+export type ErrorDetailSchema = {
   /** JSON-pointer to the request field that caused the error, when applicable. */
   field?: string;
   /** The value of the field that caused the error. */
@@ -22,7 +22,7 @@ type _ErrorDetailShape = {
   description?: string;
 };
 
-const _errorDetailSchema: BaseGuardian<_ErrorDetailShape> = Guardian.object({
+const _errorDetailSchema: BaseGuardian<ErrorDetailSchema> = Guardian.object({
   field: Guardian.string().optional(),
   value: Guardian.string().optional(),
   location: Guardian.string().optional(),
@@ -32,9 +32,6 @@ const _errorDetailSchema: BaseGuardian<_ErrorDetailShape> = Guardian.object({
   title: 'Error detail',
   description: "One entry of PayPal's error envelope `details` array.",
 });
-
-/** Type definition for {@link ErrorDetailSchemaObject}. */
-export type ErrorDetailSchema = GuardianInfer<typeof _errorDetailSchema>;
 
 /** Schema for PayPal's `error_details` object. */
 export const ErrorDetailSchemaObject: BaseGuardian<ErrorDetailSchema> =
@@ -46,7 +43,7 @@ export const ErrorDetailSchemaObject: BaseGuardian<ErrorDetailSchema> =
  * (`checkout_orders_v2.json#/components/schemas/error`):
  * `{ name, message, debug_id, details?, links? }`.
  */
-type _ErrorEnvelopeShape = {
+export type ErrorEnvelopeSchema = {
   /** Human-readable, unique name of the error (e.g. `"UNPROCESSABLE_ENTITY"`, `"INVALID_REQUEST"`). */
   name: string;
   /** Message that describes the error. */
@@ -59,7 +56,7 @@ type _ErrorEnvelopeShape = {
   links?: LinkSchema[];
 };
 
-const _errorEnvelopeSchema: BaseGuardian<_ErrorEnvelopeShape> = Guardian
+const _errorEnvelopeSchema: BaseGuardian<ErrorEnvelopeSchema> = Guardian
   .object({
     name: Guardian.string(),
     message: Guardian.string(),
@@ -71,9 +68,6 @@ const _errorEnvelopeSchema: BaseGuardian<_ErrorEnvelopeShape> = Guardian
     description:
       "PayPal's documented error response body, returned on every 4xx/5xx response.",
   });
-
-/** Type definition for {@link ErrorEnvelopeSchemaObject}. */
-export type ErrorEnvelopeSchema = GuardianInfer<typeof _errorEnvelopeSchema>;
 
 /** Schema for PayPal's vendor error envelope. */
 export const ErrorEnvelopeSchemaObject: BaseGuardian<ErrorEnvelopeSchema> =

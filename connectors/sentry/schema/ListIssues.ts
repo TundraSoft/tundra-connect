@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import { ISSUE_SORT_OPTIONS } from './Common.ts';
 import { type IssueSchema, IssueSchemaObject } from './Issue.ts';
 
@@ -24,7 +24,7 @@ import { type IssueSchema, IssueSchemaObject } from './Issue.ts';
  * });
  * ```
  */
-type _ListIssuesRequestShape = {
+export type ListIssuesRequestSchema = {
   project?: string[];
   query?: string;
   environment?: string[];
@@ -34,7 +34,7 @@ type _ListIssuesRequestShape = {
   limit?: number;
 };
 
-const _listIssuesRequestSchema: BaseGuardian<_ListIssuesRequestShape> = Guardian
+const _listIssuesRequestSchema: BaseGuardian<ListIssuesRequestSchema> = Guardian
   .object({
     /** Project IDs or slugs to filter by; omit to search across every project the token can access. */
     project: Guardian.array(Guardian.string().minLength(1)).optional(),
@@ -56,11 +56,7 @@ const _listIssuesRequestSchema: BaseGuardian<_ListIssuesRequestShape> = Guardian
       'Filter/pagination options accepted by Sentry.listIssues(), validated before the API call.',
   });
 
-/** Type definition for {@link Sentry.listIssues} request options. */
-export type ListIssuesRequestSchema = GuardianInfer<
-  typeof _listIssuesRequestSchema
->;
-
+/** Guardian schema that validates a {@link ListIssuesRequestSchema}. */
 export const ListIssuesRequestSchemaObject: BaseGuardian<
   ListIssuesRequestSchema
 > = _listIssuesRequestSchema;
@@ -82,13 +78,13 @@ export const ListIssuesRequestSchemaObject: BaseGuardian<
  * }
  * ```
  */
-type _ListIssuesResponseShape = {
+export type ListIssuesResponseSchema = {
   issues: IssueSchema[];
   /** Sentry's next-page cursor, extracted from the `Link` response header. `undefined` on the last page. */
   nextCursor?: string;
 };
 
-const _listIssuesResponseSchema: BaseGuardian<_ListIssuesResponseShape> =
+const _listIssuesResponseSchema: BaseGuardian<ListIssuesResponseSchema> =
   Guardian
     .object({
       /** The page of Issue resources. */
@@ -101,11 +97,7 @@ const _listIssuesResponseSchema: BaseGuardian<_ListIssuesResponseShape> =
         "A paginated page of an organization's Issue resources, with a convenience nextCursor.",
     });
 
-/** Type definition for the paginated list-issues response. */
-export type ListIssuesResponseSchema = GuardianInfer<
-  typeof _listIssuesResponseSchema
->;
-
+/** Guardian schema that validates a {@link ListIssuesResponseSchema}. */
 export const ListIssuesResponseSchemaObject: BaseGuardian<
   ListIssuesResponseSchema
 > = _listIssuesResponseSchema;

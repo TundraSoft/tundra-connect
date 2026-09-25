@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Reusable Guardian validation components shared by the Sentry request and
@@ -72,14 +72,14 @@ export const ISSUE_SORT_OPTIONS = [
  * });
  * ```
  */
-type _IssueProjectRefShape = {
+export type IssueProjectRefSchema = {
   id: string;
   name: string;
   slug: string;
   platform?: string | null;
 };
 
-const _issueProjectRefSchema: BaseGuardian<_IssueProjectRefShape> = Guardian
+const _issueProjectRefSchema: BaseGuardian<IssueProjectRefSchema> = Guardian
   .object({
     /** Project ID. */
     id: Guardian.string(),
@@ -95,10 +95,6 @@ const _issueProjectRefSchema: BaseGuardian<_IssueProjectRefShape> = Guardian
       "The small project reference embedded in an Issue's `project` field.",
   });
 
-/** Type definition for {@link IssueProjectRefSchemaObject}. */
-export type IssueProjectRefSchema = GuardianInfer<
-  typeof _issueProjectRefSchema
->;
-
+/** Guardian schema that validates a {@link IssueProjectRefSchema}. */
 export const IssueProjectRefSchemaObject: BaseGuardian<IssueProjectRefSchema> =
   _issueProjectRefSchema;

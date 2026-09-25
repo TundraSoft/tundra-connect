@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Schema for a single `<Contents>` entry in a ListObjectsV2 response.
@@ -14,7 +14,7 @@ import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
  * });
  * ```
  */
-type _S3ObjectShape = {
+export type S3ObjectSchema = {
   key: string;
   lastModified: Date;
   etag: string;
@@ -22,7 +22,7 @@ type _S3ObjectShape = {
   storageClass?: string;
 };
 
-const _s3ObjectSchema: BaseGuardian<_S3ObjectShape> = Guardian.object({
+const _s3ObjectSchema: BaseGuardian<S3ObjectSchema> = Guardian.object({
   Key: Guardian.string(),
   LastModified: Guardian.date(),
   ETag: Guardian.string(),
@@ -39,9 +39,7 @@ const _s3ObjectSchema: BaseGuardian<_S3ObjectShape> = Guardian.object({
   description: 'One `<Contents>` entry from a ListObjectsV2 response.',
 });
 
-/** Type definition for {@link S3ObjectSchemaObject}. */
-export type S3ObjectSchema = GuardianInfer<typeof _s3ObjectSchema>;
-
+/** Guardian schema that validates a {@link S3ObjectSchema}. */
 export const S3ObjectSchemaObject: BaseGuardian<S3ObjectSchema> =
   _s3ObjectSchema;
 
@@ -68,17 +66,17 @@ export const S3ObjectSchemaObject: BaseGuardian<S3ObjectSchema> =
  * });
  * ```
  */
-type _ListObjectsResponseShape = {
+export type ListObjectsResponseSchema = {
   name: string;
   prefix?: string;
   keyCount?: number;
   maxKeys?: number;
   isTruncated: boolean;
   nextContinuationToken?: string;
-  contents: _S3ObjectShape[];
+  contents: S3ObjectSchema[];
 };
 
-const _listObjectsResponseSchema: BaseGuardian<_ListObjectsResponseShape> =
+const _listObjectsResponseSchema: BaseGuardian<ListObjectsResponseSchema> =
   Guardian.preprocess(
     (input: unknown) => {
       if (input === null || typeof input !== 'object') return input;
@@ -116,11 +114,7 @@ const _listObjectsResponseSchema: BaseGuardian<_ListObjectsResponseShape> =
       'Parsed `<ListBucketResult>` document from a ListObjectsV2 request.',
   });
 
-/** Type definition for {@link ListObjectsResponseSchemaObject}. */
-export type ListObjectsResponseSchema = GuardianInfer<
-  typeof _listObjectsResponseSchema
->;
-
+/** Guardian schema that validates a {@link ListObjectsResponseSchema}. */
 export const ListObjectsResponseSchemaObject: BaseGuardian<
   ListObjectsResponseSchema
 > = _listObjectsResponseSchema;

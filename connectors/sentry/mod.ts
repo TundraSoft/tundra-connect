@@ -27,7 +27,7 @@
  */
 
 // Export main client class
-export { Sentry, type SentryOptions } from './Sentry.ts';
+export { Sentry, type SentryAuth, type SentryOptions } from './Sentry.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /** Documented lifecycle states of a Twilio Message resource. */
 export const MESSAGE_STATUSES = [
@@ -64,7 +64,7 @@ export const MESSAGE_DIRECTIONS = [
  * }
  * ```
  */
-type _MessageShape = {
+export type MessageSchema = {
   sid: string;
   account_sid: string;
   api_version: string;
@@ -87,7 +87,7 @@ type _MessageShape = {
   subresource_uris: Record<string, string>;
 };
 
-const _messageSchema: BaseGuardian<_MessageShape> = Guardian.object({
+const _messageSchema: BaseGuardian<MessageSchema> = Guardian.object({
   /** Unique identifier of the message (`SM` + 32 hex characters). */
   sid: Guardian.string(),
   /** Account SID that sent the message. */
@@ -138,7 +138,5 @@ const _messageSchema: BaseGuardian<_MessageShape> = Guardian.object({
   description: 'A Twilio Message resource, returned by the Messages endpoint.',
 });
 
-/** Type definition for the Twilio Message resource. */
-export type MessageSchema = GuardianInfer<typeof _messageSchema>;
-
+/** Guardian schema that validates a {@link MessageSchema}. */
 export const MessageSchemaObject: BaseGuardian<MessageSchema> = _messageSchema;

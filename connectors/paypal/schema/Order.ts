@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import {
   currencyCodeGuard,
   type LinkSchema,
@@ -17,7 +17,7 @@ import {
  * `amount_breakdown` schema (verified against PayPal's published OpenAPI
  * spec, `checkout_orders_v2.json#/components/schemas/amount_breakdown`).
  */
-type _AmountBreakdownShape = {
+export type AmountBreakdownSchema = {
   /** Subtotal for all items — required when any `items[].unit_amount` is set. */
   item_total?: MoneySchema;
   /** Shipping fee for this purchase unit. */
@@ -34,7 +34,7 @@ type _AmountBreakdownShape = {
   discount?: MoneySchema;
 };
 
-const _amountBreakdownSchema: BaseGuardian<_AmountBreakdownShape> = Guardian
+const _amountBreakdownSchema: BaseGuardian<AmountBreakdownSchema> = Guardian
   .object({
     item_total: MoneySchemaObject.optional(),
     shipping: MoneySchemaObject.optional(),
@@ -49,11 +49,6 @@ const _amountBreakdownSchema: BaseGuardian<_AmountBreakdownShape> = Guardian
       "Optional sub-totals for a purchase unit's amount — item_total + tax_total + shipping + handling + insurance - shipping_discount - discount must equal amount.value when supplied.",
   });
 
-/** Type definition for {@link AmountBreakdownSchemaObject}. */
-export type AmountBreakdownSchema = GuardianInfer<
-  typeof _amountBreakdownSchema
->;
-
 /** Schema for PayPal's `amount_breakdown` object. */
 export const AmountBreakdownSchemaObject: BaseGuardian<
   AmountBreakdownSchema
@@ -64,7 +59,7 @@ export const AmountBreakdownSchemaObject: BaseGuardian<
  * purchase unit's total `amount`: {@link MoneySchema} plus an optional
  * {@link AmountBreakdownSchema}.
  */
-type _OrderAmountShape = {
+export type OrderAmountSchema = {
   /** Three-character ISO-4217 currency code. */
   currency_code: string;
   /** Decimal-string total for this purchase unit — must be positive. */
@@ -73,7 +68,7 @@ type _OrderAmountShape = {
   breakdown?: AmountBreakdownSchema;
 };
 
-const _orderAmountSchema: BaseGuardian<_OrderAmountShape> = Guardian.object({
+const _orderAmountSchema: BaseGuardian<OrderAmountSchema> = Guardian.object({
   currency_code: currencyCodeGuard,
   value: moneyValueGuard,
   breakdown: AmountBreakdownSchemaObject.optional(),
@@ -82,9 +77,6 @@ const _orderAmountSchema: BaseGuardian<_OrderAmountShape> = Guardian.object({
   description:
     "A purchase unit's total amount, with an optional itemized breakdown.",
 });
-
-/** Type definition for {@link OrderAmountSchemaObject}. */
-export type OrderAmountSchema = GuardianInfer<typeof _orderAmountSchema>;
 
 /** Schema for PayPal's `amount_with_breakdown` object. */
 export const OrderAmountSchemaObject: BaseGuardian<OrderAmountSchema> =
@@ -95,7 +87,7 @@ export const OrderAmountSchemaObject: BaseGuardian<OrderAmountSchema> =
  * purchase unit. `quantity`'s pattern (`^[1-9][0-9]{0,9}$`) is confirmed
  * against PayPal's published OpenAPI spec.
  */
-type _ItemShape = {
+export type ItemSchema = {
   /** Item name or title (truncated to 127 characters in PayPal's response). */
   name: string;
   /** Item quantity, as a positive integer STRING (e.g. `"2"`), not a number. */
@@ -110,7 +102,7 @@ type _ItemShape = {
   category?: 'DIGITAL_GOODS' | 'PHYSICAL_GOODS' | 'DONATION';
 };
 
-const _itemSchema: BaseGuardian<_ItemShape> = Guardian.object({
+const _itemSchema: BaseGuardian<ItemSchema> = Guardian.object({
   name: Guardian.string().minLength(1).maxLength(127),
   quantity: Guardian.string().pattern(
     /^[1-9][0-9]{0,9}$/,
@@ -127,9 +119,6 @@ const _itemSchema: BaseGuardian<_ItemShape> = Guardian.object({
   description: 'One line item that the customer purchases from the merchant.',
 });
 
-/** Type definition for {@link ItemSchemaObject}. */
-export type ItemSchema = GuardianInfer<typeof _itemSchema>;
-
 /** Schema for PayPal's `item`/`item_request` object. */
 export const ItemSchemaObject: BaseGuardian<ItemSchema> = _itemSchema;
 
@@ -138,23 +127,20 @@ export const ItemSchemaObject: BaseGuardian<ItemSchema> = _itemSchema;
  * payment for a purchase unit. Not modeled further than these two fields
  * (out of v1 scope: `payee.merchant_id` sub-schema validation).
  */
-type _PayeeShape = {
+export type PayeeSchema = {
   /** The payee's PayPal email address. */
   email_address?: string;
   /** The payee's PayPal-assigned merchant/account ID. */
   merchant_id?: string;
 };
 
-const _payeeSchema: BaseGuardian<_PayeeShape> = Guardian.object({
+const _payeeSchema: BaseGuardian<PayeeSchema> = Guardian.object({
   email_address: Guardian.string().optional(),
   merchant_id: Guardian.string().optional(),
 }).describe({
   title: 'Payee',
   description: 'The merchant who receives payment for a purchase unit.',
 });
-
-/** Type definition for {@link PayeeSchemaObject}. */
-export type PayeeSchema = GuardianInfer<typeof _payeeSchema>;
 
 /** Schema for PayPal's `payee`/`payee_base` object. */
 export const PayeeSchemaObject: BaseGuardian<PayeeSchema> = _payeeSchema;
@@ -172,7 +158,7 @@ export const PayeeSchemaObject: BaseGuardian<PayeeSchema> = _payeeSchema;
  * for v1 (see `payment_source`'s broader out-of-scope note on
  * {@link CreateOrderRequestSchema}).
  */
-type _ApplicationContextShape = {
+export type ApplicationContextSchema = {
   /** Label shown instead of the PayPal business name on the PayPal site. */
   brand_name?: string;
   /** URL the payer is redirected to after approving the payment. */
@@ -183,7 +169,7 @@ type _ApplicationContextShape = {
   user_action?: 'CONTINUE' | 'PAY_NOW';
 };
 
-const _applicationContextSchema: BaseGuardian<_ApplicationContextShape> =
+const _applicationContextSchema: BaseGuardian<ApplicationContextSchema> =
   Guardian.object({
     brand_name: Guardian.string().maxLength(127).optional(),
     return_url: Guardian.string().optional(),
@@ -195,11 +181,6 @@ const _applicationContextSchema: BaseGuardian<_ApplicationContextShape> =
       "Customizes the payer's approval experience. See this type's doc comment for PayPal's deprecation note.",
   });
 
-/** Type definition for {@link ApplicationContextSchemaObject}. */
-export type ApplicationContextSchema = GuardianInfer<
-  typeof _applicationContextSchema
->;
-
 /** Schema for PayPal's (deprecated but functional) `order_application_context` object. */
 export const ApplicationContextSchemaObject: BaseGuardian<
   ApplicationContextSchema
@@ -209,7 +190,7 @@ export const ApplicationContextSchemaObject: BaseGuardian<
  * Type definition for PayPal's `purchase_unit_request` object — one
  * purchase unit in a Create Order request.
  */
-type _PurchaseUnitRequestShape = {
+export type PurchaseUnitRequestSchema = {
   /** Caller-provided external ID for this purchase unit. Required when there are multiple purchase units. */
   reference_id?: string;
   /** Total amount for this purchase unit. */
@@ -226,7 +207,7 @@ type _PurchaseUnitRequestShape = {
   description?: string;
 };
 
-const _purchaseUnitRequestSchema: BaseGuardian<_PurchaseUnitRequestShape> =
+const _purchaseUnitRequestSchema: BaseGuardian<PurchaseUnitRequestSchema> =
   Guardian.object({
     reference_id: Guardian.string().minLength(1).maxLength(256).optional(),
     amount: OrderAmountSchemaObject,
@@ -240,11 +221,6 @@ const _purchaseUnitRequestSchema: BaseGuardian<_PurchaseUnitRequestShape> =
     description:
       'One purchase unit of a Create Order request — establishes a contract between payer and payee.',
   });
-
-/** Type definition for {@link PurchaseUnitRequestSchemaObject}. */
-export type PurchaseUnitRequestSchema = GuardianInfer<
-  typeof _purchaseUnitRequestSchema
->;
 
 /** Schema for PayPal's `purchase_unit_request` object. */
 export const PurchaseUnitRequestSchemaObject: BaseGuardian<
@@ -266,7 +242,7 @@ export const PurchaseUnitRequestSchemaObject: BaseGuardian<
  * independently validated) so a caller can still set it if needed;
  * `payment_source` is not accepted at all in v1.
  */
-type _CreateOrderRequestShape = {
+export type CreateOrderRequestSchema = {
   /** Whether to capture payment immediately or authorize it for later capture. */
   intent: 'CAPTURE' | 'AUTHORIZE';
   /** 1-10 purchase units — each a contract between payer and payee. */
@@ -277,7 +253,7 @@ type _CreateOrderRequestShape = {
   payer?: unknown;
 };
 
-const _createOrderRequestSchema: BaseGuardian<_CreateOrderRequestShape> =
+const _createOrderRequestSchema: BaseGuardian<CreateOrderRequestSchema> =
   Guardian.object({
     intent: Guardian.enum(['CAPTURE', 'AUTHORIZE'] as const),
     purchase_units: Guardian.array(PurchaseUnitRequestSchemaObject)
@@ -291,18 +267,13 @@ const _createOrderRequestSchema: BaseGuardian<_CreateOrderRequestShape> =
       'Request body for POST /v2/checkout/orders, validated before the API call.',
   });
 
-/** Type definition for {@link CreateOrderRequestSchemaObject}. */
-export type CreateOrderRequestSchema = GuardianInfer<
-  typeof _createOrderRequestSchema
->;
-
 /** Schema for the `createOrder` request body. */
 export const CreateOrderRequestSchemaObject: BaseGuardian<
   CreateOrderRequestSchema
 > = _createOrderRequestSchema;
 
 /** PayPal's documented `capture_status` enum values. */
-type _CaptureStatus =
+export type CaptureStatus =
   | 'COMPLETED'
   | 'DECLINED'
   | 'PARTIALLY_REFUNDED'
@@ -314,11 +285,11 @@ type _CaptureStatus =
  * Type definition for PayPal's `capture` object — a captured payment, as
  * returned in `purchase_units[].payments.captures[]` after a capture.
  */
-type _CaptureShape = {
+export type CaptureSchema = {
   /** PayPal-generated ID for the captured payment — pass to `refundCapture`. */
   id: string;
   /** Status of the captured payment. */
-  status: _CaptureStatus;
+  status: CaptureStatus;
   /** Amount for this captured payment. */
   amount?: MoneySchema;
   /** Whether additional captures can be made against the authorized payment. */
@@ -329,7 +300,7 @@ type _CaptureShape = {
   custom_id?: string;
 };
 
-const _captureSchema: BaseGuardian<_CaptureShape> = Guardian.object({
+const _captureSchema: BaseGuardian<CaptureSchema> = Guardian.object({
   id: Guardian.string(),
   status: Guardian.enum(
     [
@@ -350,9 +321,6 @@ const _captureSchema: BaseGuardian<_CaptureShape> = Guardian.object({
   description: 'A captured payment for a purchase unit.',
 });
 
-/** Type definition for {@link CaptureSchemaObject}. */
-export type CaptureSchema = GuardianInfer<typeof _captureSchema>;
-
 /** Schema for PayPal's `capture` object. */
 export const CaptureSchemaObject: BaseGuardian<CaptureSchema> = _captureSchema;
 
@@ -363,12 +331,12 @@ export const CaptureSchemaObject: BaseGuardian<CaptureSchema> = _captureSchema;
  * method is implemented, and refunds are read from `refundCapture`'s own
  * return value, not read back off the order).
  */
-type _PaymentCollectionShape = {
+export type PaymentCollectionSchema = {
   /** Captured payments for this purchase unit. */
   captures?: CaptureSchema[];
 };
 
-const _paymentCollectionSchema: BaseGuardian<_PaymentCollectionShape> = Guardian
+const _paymentCollectionSchema: BaseGuardian<PaymentCollectionSchema> = Guardian
   .object({
     captures: Guardian.array(CaptureSchemaObject).optional(),
   }).passthrough().describe({
@@ -376,11 +344,6 @@ const _paymentCollectionSchema: BaseGuardian<_PaymentCollectionShape> = Guardian
     description:
       'The comprehensive history of payments for a purchase unit, scoped to `captures`.',
   });
-
-/** Type definition for {@link PaymentCollectionSchemaObject}. */
-export type PaymentCollectionSchema = GuardianInfer<
-  typeof _paymentCollectionSchema
->;
 
 /** Schema for PayPal's `payment_collection` object. */
 export const PaymentCollectionSchemaObject: BaseGuardian<
@@ -391,7 +354,7 @@ export const PaymentCollectionSchemaObject: BaseGuardian<
  * Type definition for PayPal's `purchase_unit` object — one purchase unit
  * as returned in an order response (Create/Get/Capture Order).
  */
-type _PurchaseUnitShape = {
+export type PurchaseUnitSchema = {
   /** Caller-provided external ID for this purchase unit. */
   reference_id?: string;
   /** Total amount for this purchase unit. */
@@ -406,7 +369,7 @@ type _PurchaseUnitShape = {
   invoice_id?: string;
 };
 
-const _purchaseUnitSchema: BaseGuardian<_PurchaseUnitShape> = Guardian.object(
+const _purchaseUnitSchema: BaseGuardian<PurchaseUnitSchema> = Guardian.object(
   {
     reference_id: Guardian.string().optional(),
     amount: OrderAmountSchemaObject.optional(),
@@ -421,9 +384,6 @@ const _purchaseUnitSchema: BaseGuardian<_PurchaseUnitShape> = Guardian.object(
     'One purchase unit of an order response — establishes a contract between payer and payee.',
 });
 
-/** Type definition for {@link PurchaseUnitSchemaObject}. */
-export type PurchaseUnitSchema = GuardianInfer<typeof _purchaseUnitSchema>;
-
 /** Schema for PayPal's `purchase_unit` (response) object. */
 export const PurchaseUnitSchemaObject: BaseGuardian<PurchaseUnitSchema> =
   _purchaseUnitSchema;
@@ -433,7 +393,7 @@ export const PurchaseUnitSchemaObject: BaseGuardian<PurchaseUnitSchema> =
  * PayPal's published OpenAPI spec
  * (`checkout_orders_v2.json#/components/schemas/order_status`).
  */
-type _OrderStatus =
+export type OrderStatus =
   | 'CREATED'
   | 'SAVED'
   | 'APPROVED'
@@ -445,11 +405,11 @@ type _OrderStatus =
  * Type definition for the `createOrder`/`getOrder`/`captureOrder`
  * response body — PayPal's `order` object.
  */
-type _OrderShape = {
+export type OrderSchema = {
   /** PayPal-generated order ID. */
   id: string;
   /** Current order status. */
-  status: _OrderStatus;
+  status: OrderStatus;
   /** Whether the order captures payment immediately or authorizes it for later capture. */
   intent?: 'CAPTURE' | 'AUTHORIZE';
   /** Purchase units for this order. */
@@ -462,7 +422,7 @@ type _OrderShape = {
   update_time?: string;
 };
 
-const _orderSchema: BaseGuardian<_OrderShape> = Guardian.object({
+const _orderSchema: BaseGuardian<OrderSchema> = Guardian.object({
   id: Guardian.string(),
   status: Guardian.enum(
     [
@@ -484,9 +444,6 @@ const _orderSchema: BaseGuardian<_OrderShape> = Guardian.object({
   description:
     'A PayPal order, as returned by Create Order, Get Order, and Capture Order.',
 });
-
-/** Type definition for {@link OrderSchemaObject}. */
-export type OrderSchema = GuardianInfer<typeof _orderSchema>;
 
 /** Schema for PayPal's `order` object. */
 export const OrderSchemaObject: BaseGuardian<OrderSchema> = _orderSchema;

@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import { type IssueEventSchema, IssueEventSchemaObject } from './IssueEvent.ts';
 
 /**
@@ -17,7 +17,7 @@ import { type IssueEventSchema, IssueEventSchemaObject } from './IssueEvent.ts';
  * });
  * ```
  */
-type _ListIssueEventsRequestShape = {
+export type ListIssueEventsRequestSchema = {
   start?: string;
   end?: string;
   statsPeriod?: string;
@@ -29,7 +29,7 @@ type _ListIssueEventsRequestShape = {
 };
 
 const _listIssueEventsRequestSchema: BaseGuardian<
-  _ListIssueEventsRequestShape
+  ListIssueEventsRequestSchema
 > = Guardian.object({
   /** ISO 8601 start of the date range to filter by; requires `end`. */
   start: Guardian.string().minLength(1).optional(),
@@ -53,11 +53,7 @@ const _listIssueEventsRequestSchema: BaseGuardian<
     'Filter/pagination options accepted by Sentry.listIssueEvents(), validated before the API call.',
 });
 
-/** Type definition for {@link Sentry.listIssueEvents} request options. */
-export type ListIssueEventsRequestSchema = GuardianInfer<
-  typeof _listIssueEventsRequestSchema
->;
-
+/** Guardian schema that validates a {@link ListIssueEventsRequestSchema}. */
 export const ListIssueEventsRequestSchemaObject: BaseGuardian<
   ListIssueEventsRequestSchema
 > = _listIssueEventsRequestSchema;
@@ -80,14 +76,14 @@ export const ListIssueEventsRequestSchemaObject: BaseGuardian<
  * }
  * ```
  */
-type _ListIssueEventsResponseShape = {
+export type ListIssueEventsResponseSchema = {
   events: IssueEventSchema[];
   /** Sentry's next-page cursor, extracted from the `Link` response header. `undefined` on the last page. */
   nextCursor?: string;
 };
 
 const _listIssueEventsResponseSchema: BaseGuardian<
-  _ListIssueEventsResponseShape
+  ListIssueEventsResponseSchema
 > = Guardian.object({
   /** The page of Event resources. */
   events: Guardian.array(IssueEventSchemaObject),
@@ -99,11 +95,7 @@ const _listIssueEventsResponseSchema: BaseGuardian<
     "A paginated page of an issue's Event resources, with a convenience nextCursor.",
 });
 
-/** Type definition for the paginated list-issue-events response. */
-export type ListIssueEventsResponseSchema = GuardianInfer<
-  typeof _listIssueEventsResponseSchema
->;
-
+/** Guardian schema that validates a {@link ListIssueEventsResponseSchema}. */
 export const ListIssueEventsResponseSchemaObject: BaseGuardian<
   ListIssueEventsResponseSchema
 > = _listIssueEventsResponseSchema;

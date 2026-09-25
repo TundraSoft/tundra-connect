@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * `version` may not be `.`/`..`, contain a forward slash, or contain
@@ -26,7 +26,7 @@ const RELEASE_VERSION_INVALID_CHARS = /[\r\n\f\t/]/;
  * });
  * ```
  */
-type _CreateReleaseRequestShape = {
+export type CreateReleaseRequestSchema = {
   version: string;
   projects: string[];
   ref?: string;
@@ -47,7 +47,7 @@ type _CreateReleaseRequestShape = {
   }>;
 };
 
-const _createReleaseRequestSchema: BaseGuardian<_CreateReleaseRequestShape> =
+const _createReleaseRequestSchema: BaseGuardian<CreateReleaseRequestSchema> =
   Guardian.object({
     /** Version identifier for this release (a version number, a commit hash, ...). Max 200 characters. */
     version: Guardian.string().minLength(1).maxLength(200).refine(
@@ -98,11 +98,7 @@ const _createReleaseRequestSchema: BaseGuardian<_CreateReleaseRequestShape> =
       'Body fields accepted by Sentry.createRelease(), validated before the API call.',
   });
 
-/** Type definition for {@link Sentry.createRelease} request options. */
-export type CreateReleaseRequestSchema = GuardianInfer<
-  typeof _createReleaseRequestSchema
->;
-
+/** Guardian schema that validates a {@link CreateReleaseRequestSchema}. */
 export const CreateReleaseRequestSchemaObject: BaseGuardian<
   CreateReleaseRequestSchema
 > = _createReleaseRequestSchema;

@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Schema for a Sentry Project resource, as returned by
@@ -28,7 +28,7 @@ import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
  * }
  * ```
  */
-type _ProjectShape = {
+export type ProjectSchema = {
   id: string;
   slug: string;
   name: string;
@@ -41,7 +41,7 @@ type _ProjectShape = {
   firstEvent?: string | null;
 };
 
-const _projectSchema: BaseGuardian<_ProjectShape> = Guardian.object({
+const _projectSchema: BaseGuardian<ProjectSchema> = Guardian.object({
   /** Project ID. */
   id: Guardian.string(),
   /** Project slug, used in API paths. */
@@ -68,7 +68,5 @@ const _projectSchema: BaseGuardian<_ProjectShape> = Guardian.object({
     "A Sentry Project resource, as returned by an organization's projects list.",
 });
 
-/** Type definition for {@link ProjectSchemaObject}. */
-export type ProjectSchema = GuardianInfer<typeof _projectSchema>;
-
+/** Guardian schema that validates a {@link ProjectSchema}. */
 export const ProjectSchemaObject: BaseGuardian<ProjectSchema> = _projectSchema;

@@ -27,6 +27,8 @@ export {
 } from './Common.ts';
 
 export {
+  type ErrorEnvelopeCodedSchema,
+  type ErrorEnvelopeFlatSchema,
   type ErrorEnvelopeSchema,
   ErrorEnvelopeSchemaObject,
 } from './Error.ts';

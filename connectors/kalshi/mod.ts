@@ -50,9 +50,20 @@
 
 // Export main client class
 export {
+  type AmendOrderOptions,
+  type BulkOrderInput,
   DEFAULT_CANCEL_BATCH_SIZE,
+  type GetEventsOptions,
+  type GetFillsOptions,
+  type GetOrdersOptions,
+  type GetPositionsOptions,
+  type GetTradesOptions,
   Kalshi,
+  type KalshiAuth,
   type KalshiOptions,
+  type OrderResult,
+  type OrderSide,
+  type SubmitOrderOptions,
 } from './Kalshi.ts';
 
 // Export error handling

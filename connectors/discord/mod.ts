@@ -39,9 +39,13 @@
 export {
   Discord,
   type DiscordBotOptions,
+  type DiscordCommonOptions,
+  type DiscordInternalOptions,
   type DiscordOptions,
   type DiscordWebhookIdOptions,
   type DiscordWebhookUrlOptions,
+  type VerifyWebhookOptions,
+  type WebhookHeadersLike,
 } from './Discord.ts';
 
 // Export error handling

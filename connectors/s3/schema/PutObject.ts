@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import { etagGuard } from './Common.ts';
 
 /**
@@ -15,12 +15,12 @@ import { etagGuard } from './Common.ts';
  * });
  * ```
  */
-type _PutObjectResponseShape = {
+export type PutObjectResponseSchema = {
   etag: string;
   versionId?: string;
 };
 
-const _putObjectResponseSchema: BaseGuardian<_PutObjectResponseShape> = Guardian
+const _putObjectResponseSchema: BaseGuardian<PutObjectResponseSchema> = Guardian
   .object({
     /** Value of the `ETag` response header. */
     etag: etagGuard,
@@ -31,11 +31,7 @@ const _putObjectResponseSchema: BaseGuardian<_PutObjectResponseShape> = Guardian
     description: 'Header-derived result of a successful PutObject request.',
   });
 
-/** Type definition for {@link PutObjectResponseSchemaObject}. */
-export type PutObjectResponseSchema = GuardianInfer<
-  typeof _putObjectResponseSchema
->;
-
+/** Guardian schema that validates a {@link PutObjectResponseSchema}. */
 export const PutObjectResponseSchemaObject: BaseGuardian<
   PutObjectResponseSchema
 > = _putObjectResponseSchema;

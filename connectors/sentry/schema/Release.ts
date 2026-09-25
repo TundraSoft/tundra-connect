@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Schema for a Sentry Release resource, as returned by
@@ -27,7 +27,7 @@ import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
  * }
  * ```
  */
-type _ReleaseShape = {
+export type ReleaseSchema = {
   id: number | string;
   version: string;
   shortVersion?: string;
@@ -44,7 +44,7 @@ type _ReleaseShape = {
   lastEvent?: string | null;
 };
 
-const _releaseSchema: BaseGuardian<_ReleaseShape> = Guardian.object({
+const _releaseSchema: BaseGuardian<ReleaseSchema> = Guardian.object({
   /** Release ID. */
   id: Guardian.oneOf(
     [Guardian.number(), Guardian.string()],
@@ -82,7 +82,5 @@ const _releaseSchema: BaseGuardian<_ReleaseShape> = Guardian.object({
     'A Sentry Release resource, as returned by the create-release endpoint.',
 });
 
-/** Type definition for {@link ReleaseSchemaObject}. */
-export type ReleaseSchema = GuardianInfer<typeof _releaseSchema>;
-
+/** Guardian schema that validates a {@link ReleaseSchema}. */
 export const ReleaseSchemaObject: BaseGuardian<ReleaseSchema> = _releaseSchema;

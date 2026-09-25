@@ -65,7 +65,7 @@ export type CoinGeckoOptions = Omit<RESTlerOptions, 'auth'> & {
 };
 
 /** Query parameters accepted by {@link CoinGecko.getPrice}. */
-type GetPriceOptions = {
+export type GetPriceOptions = {
   /** Coin id(s) to price, as a CSV string or an array. */
   ids?: string | string[];
   /** Coin name(s) to price, as a CSV string or an array. */
@@ -87,7 +87,7 @@ type GetPriceOptions = {
 };
 
 /** Query parameters accepted by {@link CoinGecko.listCoins}. */
-type ListCoinsOptions = {
+export type ListCoinsOptions = {
   /** Include each coin's per-platform contract addresses. */
   includePlatform?: boolean;
   /** Filter by listing status. */
@@ -95,7 +95,7 @@ type ListCoinsOptions = {
 };
 
 /** Query parameters accepted by {@link CoinGecko.getMarkets}. */
-type GetMarketsOptions = {
+export type GetMarketsOptions = {
   /** Target currency code (singular — one market snapshot per request). */
   vsCurrency: string;
   /** Coin id(s) to include, as a CSV string or an array. */

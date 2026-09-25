@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /** Documented `method`/`fallbackMethod`/`statusCallbackMethod` values. */
 const HTTP_METHODS = ['GET', 'POST'] as const;
@@ -40,19 +40,19 @@ const UPDATE_CALL_STATUSES = ['canceled', 'completed'] as const;
  * }
  * ```
  */
-type _UpdateCallRequestShape = {
+export type UpdateCallRequestSchema = {
   url?: string;
-  method?: (typeof HTTP_METHODS)[number];
-  status?: (typeof UPDATE_CALL_STATUSES)[number];
+  method?: 'GET' | 'POST';
+  status?: 'canceled' | 'completed';
   fallbackUrl?: string;
-  fallbackMethod?: (typeof HTTP_METHODS)[number];
+  fallbackMethod?: 'GET' | 'POST';
   statusCallback?: string;
-  statusCallbackMethod?: (typeof HTTP_METHODS)[number];
+  statusCallbackMethod?: 'GET' | 'POST';
   twiml?: string;
   timeLimit?: number;
 };
 
-const _updateCallRequestSchema: BaseGuardian<_UpdateCallRequestShape> = Guardian
+const _updateCallRequestSchema: BaseGuardian<UpdateCallRequestSchema> = Guardian
   .object({
     /** Absolute URL returning new TwiML instructions to redirect the live call to. */
     url: Guardian.string().url().optional(),
@@ -84,11 +84,7 @@ const _updateCallRequestSchema: BaseGuardian<_UpdateCallRequestShape> = Guardian
       'Options accepted by Twilio.updateCall(), validated before the API call.',
   });
 
-/** Type definition for {@link Twilio.updateCall} request options. */
-export type UpdateCallRequestSchema = GuardianInfer<
-  typeof _updateCallRequestSchema
->;
-
+/** Guardian schema that validates a {@link UpdateCallRequestSchema}. */
 export const UpdateCallRequestSchemaObject: BaseGuardian<
   UpdateCallRequestSchema
 > = _updateCallRequestSchema;

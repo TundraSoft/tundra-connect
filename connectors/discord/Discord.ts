@@ -58,7 +58,7 @@ const VENDOR_ERROR_CODE_MAP: Record<number, DiscordErrorCode> = {
  * is always Discord's API; `auth` is derived from `botToken`, when set, in
  * the constructor).
  */
-type DiscordCommonOptions = Omit<RESTlerOptions, 'baseURL' | 'auth'>;
+export type DiscordCommonOptions = Omit<RESTlerOptions, 'baseURL' | 'auth'>;
 
 /** Configure the client to execute a channel webhook, addressed by its full URL. */
 export type DiscordWebhookUrlOptions = DiscordCommonOptions & {
@@ -114,7 +114,7 @@ export type DiscordOptions =
  * one integration mode is configured — before this internal shape is ever
  * built.
  */
-type DiscordInternalOptions = RESTlerOptions & {
+export type DiscordInternalOptions = RESTlerOptions & {
   webhookUrl?: string;
   webhookId?: string;
   webhookToken?: string;

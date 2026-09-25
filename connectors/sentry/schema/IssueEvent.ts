@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Schema for a Sentry Event resource, as returned by
@@ -24,7 +24,7 @@ import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
  * });
  * ```
  */
-type _IssueEventShape = {
+export type IssueEventSchema = {
   id: string;
   eventID?: string;
   groupID?: string;
@@ -38,7 +38,7 @@ type _IssueEventShape = {
   user?: unknown;
 };
 
-const _issueEventSchema: BaseGuardian<_IssueEventShape> = Guardian.object({
+const _issueEventSchema: BaseGuardian<IssueEventSchema> = Guardian.object({
   /** Event ID. */
   id: Guardian.string(),
   /** Alias of `id`, as documented for this endpoint. */
@@ -67,8 +67,6 @@ const _issueEventSchema: BaseGuardian<_IssueEventShape> = Guardian.object({
     "A Sentry Event resource, as returned by an issue's events list.",
 });
 
-/** Type definition for {@link IssueEventSchemaObject}. */
-export type IssueEventSchema = GuardianInfer<typeof _issueEventSchema>;
-
+/** Guardian schema that validates a {@link IssueEventSchema}. */
 export const IssueEventSchemaObject: BaseGuardian<IssueEventSchema> =
   _issueEventSchema;

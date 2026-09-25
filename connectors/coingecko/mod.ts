@@ -32,6 +32,9 @@ export {
   CoinGecko,
   type CoinGeckoAuth,
   type CoinGeckoOptions,
+  type GetMarketsOptions,
+  type GetPriceOptions,
+  type ListCoinsOptions,
 } from './CoinGecko.ts';
 
 // Export error handling

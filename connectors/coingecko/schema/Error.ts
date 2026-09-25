@@ -56,7 +56,7 @@ const ErrorStatusSchemaObject: BaseGuardian<_ErrorStatusSchema> = Guardian
 // properties (dropping `error_code`) instead of the full A | B | C union.
 
 /** Normalized `{ error_code, error_message }` shared by shapes B and C. */
-type _ErrorEnvelopeCodedSchema = {
+export type ErrorEnvelopeCodedSchema = {
   error_code: number;
   error_message: string;
 };
@@ -68,7 +68,7 @@ type _ErrorEnvelopeStatusInput = {
 
 const ErrorEnvelopeStatusSchemaObject: ObjectGuardian<
   _ErrorEnvelopeStatusInput,
-  _ErrorEnvelopeCodedSchema
+  ErrorEnvelopeCodedSchema
 > = Guardian.object({
   status: ErrorStatusSchemaObject,
 }).transform((data) => ({
@@ -85,7 +85,7 @@ type _ErrorEnvelopeNestedInput = {
 
 const ErrorEnvelopeNestedSchemaObject: ObjectGuardian<
   _ErrorEnvelopeNestedInput,
-  _ErrorEnvelopeCodedSchema
+  ErrorEnvelopeCodedSchema
 > = Guardian.object({
   error: Guardian.object({
     status: ErrorStatusSchemaObject,
@@ -101,13 +101,13 @@ type _ErrorEnvelopeFlatInput = {
 };
 
 /** Normalized `{ error_message }` produced by shape A. */
-type _ErrorEnvelopeFlatSchema = {
+export type ErrorEnvelopeFlatSchema = {
   error_message: string;
 };
 
 const ErrorEnvelopeFlatSchemaObject: ObjectGuardian<
   _ErrorEnvelopeFlatInput,
-  _ErrorEnvelopeFlatSchema
+  ErrorEnvelopeFlatSchema
 > = Guardian.object({
   error: Guardian.string(),
 }).transform((data) => ({
@@ -116,8 +116,8 @@ const ErrorEnvelopeFlatSchemaObject: ObjectGuardian<
 
 /** Type definition for the normalized CoinGecko error envelope. */
 export type ErrorEnvelopeSchema =
-  | _ErrorEnvelopeCodedSchema
-  | _ErrorEnvelopeFlatSchema;
+  | ErrorEnvelopeCodedSchema
+  | ErrorEnvelopeFlatSchema;
 
 /**
  * Normalized CoinGecko error envelope — tries shape B, then shape C, then

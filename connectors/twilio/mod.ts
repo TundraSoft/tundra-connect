@@ -39,7 +39,12 @@
  */
 
 // Export main client class
-export { Twilio, type TwilioOptions } from './Twilio.ts';
+export {
+  Twilio,
+  type TwilioOptions,
+  type VerifyWebhookOptions,
+  type WebhookHeadersLike,
+} from './Twilio.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

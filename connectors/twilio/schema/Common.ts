@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Reusable Guardian validation components shared by the Twilio request and
@@ -65,7 +65,7 @@ const _e164Guard: BaseGuardian<string> = Guardian.string().pattern(
 });
 
 /** Type definition for a validated E.164 phone number. */
-export type E164Schema = GuardianInfer<typeof _e164Guard>;
+export type E164Schema = string;
 
 /** Validates an E.164-formatted phone number (e.g. `+14155552671`). */
 export const e164Guard: BaseGuardian<E164Schema> = _e164Guard;

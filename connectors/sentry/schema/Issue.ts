@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import {
   type IssueProjectRefSchema,
   IssueProjectRefSchemaObject,
@@ -45,7 +45,7 @@ import {
  * }
  * ```
  */
-type _IssueShape = {
+export type IssueSchema = {
   id: string;
   shortId: string;
   title: string;
@@ -76,7 +76,7 @@ type _IssueShape = {
   tags?: unknown[];
 };
 
-const _issueSchema: BaseGuardian<_IssueShape> = Guardian.object({
+const _issueSchema: BaseGuardian<IssueSchema> = Guardian.object({
   /** Issue ID. */
   id: Guardian.string(),
   /** Short, human-friendly issue identifier (e.g. `PUMP-STATION-1`). */
@@ -137,7 +137,5 @@ const _issueSchema: BaseGuardian<_IssueShape> = Guardian.object({
     'A Sentry Issue resource, as returned by the issues list/detail/update endpoints.',
 });
 
-/** Type definition for {@link IssueSchemaObject}. */
-export type IssueSchema = GuardianInfer<typeof _issueSchema>;
-
+/** Guardian schema that validates a {@link IssueSchema}. */
 export const IssueSchemaObject: BaseGuardian<IssueSchema> = _issueSchema;

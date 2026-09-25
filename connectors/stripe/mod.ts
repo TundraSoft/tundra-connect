@@ -35,7 +35,13 @@
  */
 
 // Export main client class
-export { Stripe, type StripeOptions } from './Stripe.ts';
+export {
+  type IdempotentRequestOptions,
+  Stripe,
+  type StripeOptions,
+  type VerifyWebhookOptions,
+  type WebhookHeadersLike,
+} from './Stripe.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

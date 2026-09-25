@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import { ISSUE_STATUSES, ISSUE_SUBSTATUSES, PRIORITIES } from './Common.ts';
 
 /**
@@ -17,7 +17,7 @@ import { ISSUE_STATUSES, ISSUE_SUBSTATUSES, PRIORITIES } from './Common.ts';
  * });
  * ```
  */
-type _UpdateIssueRequestShape = {
+export type UpdateIssueRequestSchema = {
   status?: (typeof ISSUE_STATUSES)[number];
   substatus?: (typeof ISSUE_SUBSTATUSES)[number];
   statusDetails?: Record<string, unknown>;
@@ -32,7 +32,7 @@ type _UpdateIssueRequestShape = {
   discard?: boolean;
 };
 
-const _updateIssueRequestSchema: BaseGuardian<_UpdateIssueRequestShape> =
+const _updateIssueRequestSchema: BaseGuardian<UpdateIssueRequestSchema> =
   Guardian
     .object({
       /** New issue status. */
@@ -68,11 +68,7 @@ const _updateIssueRequestSchema: BaseGuardian<_UpdateIssueRequestShape> =
         'Body fields accepted by Sentry.updateIssue(), validated before the API call.',
     });
 
-/** Type definition for {@link Sentry.updateIssue} request options. */
-export type UpdateIssueRequestSchema = GuardianInfer<
-  typeof _updateIssueRequestSchema
->;
-
+/** Guardian schema that validates a {@link UpdateIssueRequestSchema}. */
 export const UpdateIssueRequestSchemaObject: BaseGuardian<
   UpdateIssueRequestSchema
 > = _updateIssueRequestSchema;

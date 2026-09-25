@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Schema for Twilio API error responses
@@ -24,14 +24,14 @@ import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
  * }
  * ```
  */
-type _ErrorShape = {
+export type ErrorSchema = {
   code?: number;
   message: string;
   more_info?: string;
   status: number;
 };
 
-const _errorSchema: BaseGuardian<_ErrorShape> = Guardian.object({
+const _errorSchema: BaseGuardian<ErrorSchema> = Guardian.object({
   /** Twilio-documented error code (e.g. `21211`), when available. */
   code: Guardian.number().optional(),
   /** Human-readable error description. */
@@ -46,7 +46,5 @@ const _errorSchema: BaseGuardian<_ErrorShape> = Guardian.object({
     'Documented error envelope returned by Twilio endpoints on non-2xx responses.',
 });
 
-/** Type definition for Twilio API error responses. */
-export type ErrorSchema = GuardianInfer<typeof _errorSchema>;
-
+/** Guardian schema that validates a {@link ErrorSchema}. */
 export const ErrorSchemaObject: BaseGuardian<ErrorSchema> = _errorSchema;

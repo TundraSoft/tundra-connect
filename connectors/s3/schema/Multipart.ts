@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import { etagGuard } from './Common.ts';
 
 /**
@@ -15,14 +15,14 @@ import { etagGuard } from './Common.ts';
  * });
  * ```
  */
-type _InitiateMultipartUploadResultShape = {
+export type InitiateMultipartUploadResultSchema = {
   bucket: string;
   key: string;
   uploadId: string;
 };
 
 const _initiateMultipartUploadResultSchema: BaseGuardian<
-  _InitiateMultipartUploadResultShape
+  InitiateMultipartUploadResultSchema
 > = Guardian.object({
   Bucket: Guardian.string(),
   Key: Guardian.string(),
@@ -37,11 +37,7 @@ const _initiateMultipartUploadResultSchema: BaseGuardian<
     'Parsed `<InitiateMultipartUploadResult>` document from a CreateMultipartUpload request.',
 });
 
-/** Type definition for {@link InitiateMultipartUploadResultSchemaObject}. */
-export type InitiateMultipartUploadResultSchema = GuardianInfer<
-  typeof _initiateMultipartUploadResultSchema
->;
-
+/** Guardian schema that validates a {@link InitiateMultipartUploadResultSchema}. */
 export const InitiateMultipartUploadResultSchemaObject: BaseGuardian<
   InitiateMultipartUploadResultSchema
 > = _initiateMultipartUploadResultSchema;
@@ -63,7 +59,7 @@ export const InitiateMultipartUploadResultSchemaObject: BaseGuardian<
  * });
  * ```
  */
-type _CompleteMultipartUploadResultShape = {
+export type CompleteMultipartUploadResultSchema = {
   location?: string;
   bucket: string;
   key: string;
@@ -71,7 +67,7 @@ type _CompleteMultipartUploadResultShape = {
 };
 
 const _completeMultipartUploadResultSchema: BaseGuardian<
-  _CompleteMultipartUploadResultShape
+  CompleteMultipartUploadResultSchema
 > = Guardian.object({
   Location: Guardian.string().optional(),
   Bucket: Guardian.string(),
@@ -88,11 +84,7 @@ const _completeMultipartUploadResultSchema: BaseGuardian<
     'Parsed `<CompleteMultipartUploadResult>` document from a CompleteMultipartUpload request.',
 });
 
-/** Type definition for {@link CompleteMultipartUploadResultSchemaObject}. */
-export type CompleteMultipartUploadResultSchema = GuardianInfer<
-  typeof _completeMultipartUploadResultSchema
->;
-
+/** Guardian schema that validates a {@link CompleteMultipartUploadResultSchema}. */
 export const CompleteMultipartUploadResultSchemaObject: BaseGuardian<
   CompleteMultipartUploadResultSchema
 > = _completeMultipartUploadResultSchema;

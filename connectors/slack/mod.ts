@@ -27,7 +27,13 @@
  */
 
 // Export main client class
-export { Slack, type SlackOptions } from './Slack.ts';
+export {
+  Slack,
+  type SlackAuth,
+  type SlackOptions,
+  type VerifyWebhookOptions,
+  type WebhookHeadersLike,
+} from './Slack.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

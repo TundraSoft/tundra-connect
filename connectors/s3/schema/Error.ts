@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 
 /**
  * Schema for S3's documented XML error envelope
@@ -30,14 +30,14 @@ import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
  * }
  * ```
  */
-type _S3ErrorEnvelopeShape = {
+export type S3ErrorEnvelopeSchema = {
   Code: string;
   Message: string;
   Resource?: string;
   RequestId?: string;
 };
 
-const _s3ErrorEnvelopeSchema: BaseGuardian<_S3ErrorEnvelopeShape> = Guardian
+const _s3ErrorEnvelopeSchema: BaseGuardian<S3ErrorEnvelopeSchema> = Guardian
   .object({
     /** Vendor error code, e.g. `NoSuchKey`, `AccessDenied`. */
     Code: Guardian.string(),
@@ -52,10 +52,6 @@ const _s3ErrorEnvelopeSchema: BaseGuardian<_S3ErrorEnvelopeShape> = Guardian
     description: 'Documented `<Error>` XML envelope returned by S3 endpoints.',
   });
 
-/** Type definition for S3 API error responses. */
-export type S3ErrorEnvelopeSchema = GuardianInfer<
-  typeof _s3ErrorEnvelopeSchema
->;
-
+/** Guardian schema that validates a {@link S3ErrorEnvelopeSchema}. */
 export const S3ErrorEnvelopeSchemaObject: BaseGuardian<S3ErrorEnvelopeSchema> =
   _s3ErrorEnvelopeSchema;

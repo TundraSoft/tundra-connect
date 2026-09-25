@@ -1,26 +1,22 @@
 import { type BaseGuardian, Guardian } from '@guardian';
 
 /** Shared `{ enable: boolean }` toggle used by several mail settings. */
-interface _ToggleSchema {
-  enable: boolean;
-}
-
-const ToggleSchemaObject: BaseGuardian<_ToggleSchema> = Guardian.object({
+const ToggleSchemaObject: BaseGuardian<{ enable: boolean }> = Guardian.object({
   enable: Guardian.boolean(),
 });
 
 /** Type definition for SendGrid mail-send `mail_settings`. */
 export interface MailSettingsSchema {
   /** Validate the request without delivering it; returns 200 instead of 202. */
-  sandbox_mode?: _ToggleSchema;
+  sandbox_mode?: { enable: boolean };
   /** Skip list-management processing (suppression, unsubscribe groups, …). */
-  bypass_list_management?: _ToggleSchema;
+  bypass_list_management?: { enable: boolean };
   /** Skip spam-report suppression checks. */
-  bypass_spam_management?: _ToggleSchema;
+  bypass_spam_management?: { enable: boolean };
   /** Skip bounce suppression checks. */
-  bypass_bounce_management?: _ToggleSchema;
+  bypass_bounce_management?: { enable: boolean };
   /** Skip unsubscribe suppression checks. */
-  bypass_unsubscribe_management?: _ToggleSchema;
+  bypass_unsubscribe_management?: { enable: boolean };
   /** Append a footer to the message body. */
   footer?: {
     enable: boolean;

@@ -62,7 +62,9 @@
 // Export main client class
 export {
   CloudflareEmail,
+  type CloudflareEmailAuth,
   type CloudflareEmailOptions,
+  type SendEmailOptions,
 } from './CloudflareEmail.ts';
 
 // Export error handling

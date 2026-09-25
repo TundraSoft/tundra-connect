@@ -42,7 +42,12 @@
  */
 
 // Export main client class
-export { Razorpay, type RazorpayOptions } from './Razorpay.ts';
+export {
+  Razorpay,
+  type RazorpayOptions,
+  type VerifyWebhookOptions,
+  type WebhookHeadersLike,
+} from './Razorpay.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

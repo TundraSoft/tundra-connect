@@ -53,7 +53,14 @@
  */
 
 // Export main client class
-export { PayPal, type PayPalOptions } from './PayPal.ts';
+export {
+  type IdempotentRequestOptions,
+  PayPal,
+  type PayPalAuth,
+  type PayPalOptions,
+  type VerifyWebhookOptions,
+  type WebhookHeadersLike,
+} from './PayPal.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

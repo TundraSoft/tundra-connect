@@ -1,4 +1,4 @@
-import { type BaseGuardian, Guardian, type GuardianInfer } from '@guardian';
+import { type BaseGuardian, Guardian } from '@guardian';
 import { applicationSidGuard, byocTrunkSidGuard } from './Common.ts';
 
 /** Documented `method`/`fallbackMethod`/`*CallbackMethod` values. */
@@ -44,25 +44,25 @@ const RECORDING_STATUS_EVENTS = ['in-progress', 'completed', 'absent'] as const;
  * }
  * ```
  */
-type _CreateCallRequestShape = {
+export type CreateCallRequestSchema = {
   to: string;
   from: string;
   url?: string;
   twiml?: string;
   applicationSid?: string;
-  method?: (typeof HTTP_METHODS)[number];
+  method?: 'GET' | 'POST';
   fallbackUrl?: string;
-  fallbackMethod?: (typeof HTTP_METHODS)[number];
+  fallbackMethod?: 'GET' | 'POST';
   statusCallback?: string;
-  statusCallbackEvent?: (typeof CALL_PROGRESS_EVENTS)[number][];
-  statusCallbackMethod?: (typeof HTTP_METHODS)[number];
+  statusCallbackEvent?: ('initiated' | 'ringing' | 'answered' | 'completed')[];
+  statusCallbackMethod?: 'GET' | 'POST';
   sendDigits?: string;
   timeout?: number;
   record?: boolean;
   recordingChannels?: 'mono' | 'dual';
   recordingStatusCallback?: string;
-  recordingStatusCallbackMethod?: (typeof HTTP_METHODS)[number];
-  recordingStatusCallbackEvent?: (typeof RECORDING_STATUS_EVENTS)[number][];
+  recordingStatusCallbackMethod?: 'GET' | 'POST';
+  recordingStatusCallbackEvent?: ('in-progress' | 'completed' | 'absent')[];
   recordingConfigurationId?: string;
   sipAuthUsername?: string;
   sipAuthPassword?: string;
@@ -75,7 +75,7 @@ type _CreateCallRequestShape = {
   callerId?: string;
   asyncAmd?: boolean;
   asyncAmdStatusCallback?: string;
-  asyncAmdStatusCallbackMethod?: (typeof HTTP_METHODS)[number];
+  asyncAmdStatusCallbackMethod?: 'GET' | 'POST';
   passports?: string;
   byoc?: string;
   callReason?: string;
@@ -85,7 +85,7 @@ type _CreateCallRequestShape = {
   clientNotificationUrl?: string;
 };
 
-const _createCallRequestSchema: BaseGuardian<_CreateCallRequestShape> = Guardian
+const _createCallRequestSchema: BaseGuardian<CreateCallRequestSchema> = Guardian
   .object({
     /** Phone number, SIP address, Client identifier, or SIM SID to call. */
     to: Guardian.string().minLength(1),
@@ -192,11 +192,7 @@ const _createCallRequestSchema: BaseGuardian<_CreateCallRequestShape> = Guardian
       'Options accepted by Twilio.createCall(), validated before the API call.',
   });
 
-/** Type definition for {@link Twilio.createCall} request options. */
-export type CreateCallRequestSchema = GuardianInfer<
-  typeof _createCallRequestSchema
->;
-
+/** Guardian schema that validates a {@link CreateCallRequestSchema}. */
 export const CreateCallRequestSchemaObject: BaseGuardian<
   CreateCallRequestSchema
 > = _createCallRequestSchema;
