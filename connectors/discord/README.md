@@ -96,12 +96,21 @@ console.log(message.id, message.timestamp);
 ## Interactions
 
 ```ts
-const raw = await req.text(); // text(), never json()
-const interaction = await client.verifyWebhook({
-  payload: raw,
-  headers: req.headers,
-  publicKey: DISCORD_PUBLIC_KEY,
+import { Discord } from '@tundraconnect/discord';
+
+const client = new Discord({
+  webhookUrl: 'https://discord.com/api/webhooks/123456789012345678/abcDEF...',
 });
+
+export async function onInteraction(req: Request): Promise<void> {
+  const raw = await req.text(); // text(), never json()
+  const interaction = await client.verifyWebhook({
+    payload: raw,
+    headers: req.headers,
+    publicKey: 'your-application-public-key',
+  });
+  // `interaction` is now trustworthy.
+}
 ```
 
 See [API → Webhooks](docs/Discord-API.md#webhooks).

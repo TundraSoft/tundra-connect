@@ -109,12 +109,26 @@ await client.refundCapture(capture!.id, {
 ## Webhooks
 
 ```ts
-const raw = await req.text(); // text(), never json()
-const event = await client.verifyWebhook({
-  payload: raw,
-  headers: req.headers,
-  webhookId: PAYPAL_WEBHOOK_ID,
+import { PayPal } from '@tundraconnect/paypal';
+
+const client = new PayPal({
+  auth: {
+    type: 'CUSTOM',
+    clientId: 'your-client-id',
+    clientSecret: 'your-client-secret',
+    environment: 'sandbox',
+  },
 });
+
+export async function onWebhook(req: Request): Promise<void> {
+  const raw = await req.text(); // text(), never json()
+  const event = await client.verifyWebhook({
+    payload: raw,
+    headers: req.headers,
+    webhookId: 'your-webhook-id',
+  });
+  // `event` is now trustworthy.
+}
 ```
 
 See [API → Webhooks](docs/PayPal-API.md#webhooks).

@@ -78,12 +78,21 @@ console.log(sent.ts);
 ## Webhooks
 
 ```ts
-const raw = await req.text(); // text(), never json()
-const body = await client.verifyWebhook({
-  payload: raw,
-  headers: req.headers,
-  signingSecret: SLACK_SIGNING_SECRET,
+import { Slack } from '@tundraconnect/slack';
+
+const client = new Slack({
+  auth: { type: 'BEARER', token: 'xoxb-your-bot-token' },
 });
+
+export async function onSlackRequest(req: Request): Promise<void> {
+  const raw = await req.text(); // text(), never json()
+  const body = await client.verifyWebhook({
+    payload: raw,
+    headers: req.headers,
+    signingSecret: 'your-signing-secret',
+  });
+  // `body` is now trustworthy.
+}
 ```
 
 See [API → Webhooks](docs/Slack-API.md#webhooks).

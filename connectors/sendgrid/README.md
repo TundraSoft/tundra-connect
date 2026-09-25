@@ -65,12 +65,21 @@ console.log(messageId);
 ## Webhooks
 
 ```ts
-const raw = await req.text(); // text(), never json()
-const events = await client.verifyWebhook({
-  payload: raw,
-  headers: req.headers,
-  publicKey: SENDGRID_WEBHOOK_KEY,
+import { SendGrid } from '@tundraconnect/sendgrid';
+
+const client = new SendGrid({
+  auth: { type: 'BEARER', token: 'SG.xxxxx', prefix: 'Bearer' },
 });
+
+export async function onEventWebhook(req: Request): Promise<void> {
+  const raw = await req.text(); // text(), never json()
+  const events = await client.verifyWebhook({
+    payload: raw,
+    headers: req.headers,
+    publicKey: 'your-verification-key',
+  });
+  // `events` is now trustworthy.
+}
 ```
 
 See [API → Webhooks](docs/SendGrid-API.md#webhooks).

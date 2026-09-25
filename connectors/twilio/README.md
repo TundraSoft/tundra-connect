@@ -77,13 +77,29 @@ console.log(call.sid, call.status);
 ## Webhooks
 
 ```ts
-const raw = await req.text(); // text(), never json()
-await client.verifyWebhook({ url: req.url, headers: req.headers, params }); // form
-await client.verifyWebhook({
-  url: req.url,
-  headers: req.headers,
-  payload: raw,
-}); // JSON
+import { Twilio } from '@tundraconnect/twilio';
+
+const client = new Twilio({
+  accountSid: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  authToken: 'your-auth-token',
+});
+
+export async function onWebhook(req: Request): Promise<void> {
+  const raw = await req.text(); // text(), never json()
+  const type = req.headers.get('content-type') ?? '';
+  if (type.startsWith('application/x-www-form-urlencoded')) {
+    // Form-encoded (most webhooks): verify the parsed parameters.
+    const params = Object.fromEntries(new URLSearchParams(raw));
+    await client.verifyWebhook({ url: req.url, headers: req.headers, params });
+  } else {
+    // JSON: verify the raw body.
+    await client.verifyWebhook({
+      url: req.url,
+      headers: req.headers,
+      payload: raw,
+    });
+  }
+}
 ```
 
 See [API → Webhooks](docs/Twilio-API.md#webhooks).

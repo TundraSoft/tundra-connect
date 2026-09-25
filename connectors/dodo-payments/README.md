@@ -91,7 +91,7 @@ npx jsr add @tundraconnect/dodo-payments
 
 ### 1. Initialize a payment
 
-```ts
+```ts continued
 const created = await client.createPayment({
   product_cart: [{ product_id: 'prd_1', quantity: 2 }],
   customer: { email: 'buyer@example.com', name: 'Ada' },
@@ -100,7 +100,7 @@ const created = await client.createPayment({
   return_url: 'https://example.com/thanks',
 });
 
-redirect(created.payment_link!);
+console.log(created.payment_link); // send the buyer here
 ```
 
 `created.client_secret` is a credential for confirming the payment from a
@@ -111,16 +111,18 @@ client SDK — never log it or expose it outside the buyer's own session.
 **Never trust the browser redirect.** The buyer controls it, and a
 `?status=success` query parameter proves nothing. Confirm server-side:
 
-```ts
+```ts continued
+const paymentId = created.payment_id;
+
 if (await client.isPaid(paymentId)) {
-  await fulfilOrder(paymentId);
+  // Safe to fulfil the order.
 }
 ```
 
 Or inspect the full record when you need the detail:
 
-```ts
-const payment = await client.getPayment(paymentId);
+```ts continued
+const payment = await client.getPayment(created.payment_id);
 payment.status; // 'succeeded' | 'processing' | 'requires_*' | ...
 payment.total_amount; // 1999 === $19.99
 payment.error_message; // set when status is 'failed'
@@ -128,7 +130,7 @@ payment.error_message; // set when status is 'failed'
 
 ### 3. Subscriptions
 
-```ts
+```ts continued
 const sub = await client.createSubscription({
   product_id: 'prd_monthly',
   quantity: 1,
@@ -139,7 +141,7 @@ const sub = await client.createSubscription({
 });
 
 // A created subscription is NOT yet active.
-if (sub.payment_method_required) redirect(sub.payment_link!);
+if (sub.payment_method_required) console.log(sub.payment_link); // send the buyer here
 
 // Cancel immediately …
 await client.cancelSubscription('sub_1');
@@ -162,7 +164,9 @@ ended.cancel_at_next_billing_date; // true
 Both list methods take `customerId`, and status comes back inline — no
 follow-up fetch per record.
 
-```ts
+```ts continued
+const customerId = 'cus_1';
+
 const [customer, payments, subscriptions] = await Promise.all([
   client.getCustomer(customerId),
   client.listPayments({ customerId, pageSize: 20 }),
@@ -175,22 +179,22 @@ const paid = payments.filter((p) => p.status === 'succeeded');
 
 Filter server-side instead of paging and discarding:
 
-```ts
-await client.listPayments({ customerId, status: 'succeeded' });
-await client.listSubscriptions({ customerId, status: 'active' });
+```ts continued
+await client.listPayments({ customerId: 'cus_1', status: 'succeeded' });
+await client.listSubscriptions({ customerId: 'cus_1', status: 'active' });
 ```
 
 Walk a full history with the auto-paging iterators:
 
-```ts
-for await (const p of client.listAllPayments({ customerId })) {
+```ts continued
+for await (const p of client.listAllPayments({ customerId: 'cus_1' })) {
   console.log(p.payment_id, p.status);
 }
 ```
 
 Charge history for a single subscription:
 
-```ts
+```ts continued
 const renewals = await client.listPayments({ subscriptionId: 'sub_1' });
 ```
 
@@ -207,14 +211,22 @@ Two things to know:
 ### 5. Verify webhooks
 
 ```ts
-// Note req.text() — NOT req.json().
-const raw = await req.text();
-const event = await client.verifyWebhook({
-  payload: raw,
-  headers: req.headers,
-  secret: Deno.env.get('DODO_WEBHOOK_SECRET')!,
+import { DodoPayments } from '@tundraconnect/dodo-payments';
+
+const client = new DodoPayments({
+  auth: { type: 'BEARER', token: 'YOUR_API_KEY', prefix: 'Bearer' },
 });
-// `event` is now trustworthy.
+
+export async function onWebhook(req: Request): Promise<void> {
+  // Note req.text() — NOT req.json().
+  const raw = await req.text();
+  const event = await client.verifyWebhook({
+    payload: raw,
+    headers: req.headers,
+    secret: 'whsec_...',
+  });
+  // `event` is now trustworthy.
+}
 ```
 
 Verification is constant-time, enforces a 5-minute replay window in both
