@@ -5,20 +5,32 @@ and must be configured once (or re-verified) in the repo/org settings UI.
 
 ## Merge settings
 
-- **Squash merge only** — the PR title becomes the squash commit message and
-  must be a Conventional Commit (enforced by the `pr-checks` workflow).
+- Merge commits, squash and rebase are all allowed. Squash a
+  single-purpose PR (its title becomes the commit, so it must be a
+  Conventional Commit — enforced by `pr-checks`). Use a **merge commit** for
+  a PR whose commits carry different types or scopes, so release-please
+  sees each one (a squash would collapse them into the title's type).
 - Auto-delete head branches after merge.
 - Wikis enabled (published by `workflows/wiki-sync.yml`).
 
 ## Branch protection (`main`)
 
-Require these status checks before merging:
+A repository ruleset, `protect-main`, mirroring TundraLibs:
 
-- `Format, lint, type-check` (from `workflows/ci.yml` / `quality` job)
-- `JSR publish dry-run`
-- `Test (deno)`, `Test (bun)`, `Test (node-22)`, `Test (node-24)`
-- `Conventional PR title`
-- `Single-connector guard`
+- Blocks deletion and force-pushes.
+- Requires a pull request (0 approvals; review threads must be resolved).
+- Requires these status checks (GitHub Actions):
+  - `Format, lint, type-check`, `Dependency audit (high+)`,
+    `JSR publish dry-run`, `Workers smoke (workerd)` (from `ci.yml`)
+  - `Test (deno)`, `Test (bun)`, `Test (node-22)`, `Test (node-24)`
+  - `Conventional PR title`, `Single-connector guard` (from `pr-checks.yml`)
+- Blocks merging on CodeQL errors or high/critical security alerts.
+- Organization admins and repository admins may bypass.
+
+Release-please's own release PR is exempt from `Single-connector guard`
+(it carries the `autorelease: pending` label); it must be opened with
+`RELEASE_PLEASE_TOKEN`, since PRs opened by `GITHUB_TOKEN` do not trigger
+the required checks.
 
 Do not enable or tighten these rules in the same PR that introduces the
 workflows: a missing or renamed check can block that PR from merging.
