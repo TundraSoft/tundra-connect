@@ -355,7 +355,8 @@ async function genReadme(
       const displayName = meta[name];
       const jsrName = denoJson.name ?? `${SCOPE}/${name}`;
       const description = denoJson.description ?? 'TODO: Add description';
-      return `- **[${displayName}](./${CONNECTORS_DIR}/${name}/README.md)** — [\`${jsrName}\`](https://jsr.io/${jsrName}) — ${description}`;
+      // The JSR badge shows the latest published version, live.
+      return `- **[${displayName}](./${CONNECTORS_DIR}/${name}/README.md)** [![JSR](https://jsr.io/badges/${jsrName})](https://jsr.io/${jsrName}) — ${description}`;
     }),
   );
   return current.slice(0, start + START.length) +
