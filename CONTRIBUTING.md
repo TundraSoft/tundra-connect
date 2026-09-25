@@ -67,9 +67,11 @@ connect's `deno.json` (e.g. bumping `exports`).
    Guardian schema with accepted and rejected payloads.
 4. Before opening a PR:
    ```bash
-   deno task check   # fmt --check, lint, type-check
+   deno task check        # fmt --check, lint, type-check
    deno task test
+   npm run test:workers   # after `bun install`: each connect inside workerd
    ```
+   A new connect needs an entry in `.github/scripts/workers-smoke.mjs`.
 5. PR title **must** be a Conventional Commit — it becomes the squash commit
    on `main` and drives release-please's changelog/version bump:
    ```

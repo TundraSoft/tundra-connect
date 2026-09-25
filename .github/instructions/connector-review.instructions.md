@@ -65,7 +65,10 @@ Before approving a PR that adds or changes a connect, verify it matches
   hint-over-cap). See CONVENTIONS "Rate limits".
 - **Runtime**: implementation only uses `fetch`/`URL`/standard Web APIs —
   no `node:*` or `Deno.*` calls — so it stays portable to Cloudflare Workers
-  and the browser even without dedicated CI for them yet.
+  and the browser. Workers is checked in CI: `npm run test:workers` bundles
+  each connect and runs one request through it inside workerd (no
+  `nodejs_compat`); a new connect needs an entry in
+  `.github/scripts/workers-smoke.mjs`. The browser is not CI-verified yet.
 - **Tests**: prefer environment-gated live coverage when a vendor sandbox is
   available; otherwise use mocked transport or fixtures. Tests are co-located,
   cover every reachable error code, and validate every schema.

@@ -17,7 +17,8 @@ under the `@tundraconnect` scope, living under `connectors/<name>/`. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 
 Runs on Deno, Bun and Node; Web-APIs-only, so it also works on Cloudflare
-Workers and in the browser (not CI-verified).
+Workers (smoke-tested in CI inside workerd) and in the browser (not
+CI-verified).
 
 <!-- workspace:connectors:start -->
 

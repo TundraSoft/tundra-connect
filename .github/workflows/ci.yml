@@ -108,3 +108,21 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v4
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  workers:
+    name: Workers smoke (workerd)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies (bun)
+        # Same reason as the Node job: bun resolves the `@jsr/*` scope.
+        run: bun install
+      - name: Bundle every connect and run it inside workerd
+        # Strict form of the Web-APIs-only claim: no `nodejs_compat` flag.
+        # See .github/scripts/workers-smoke.mjs for what each check covers.
+        run: npm run test:workers
+
