@@ -120,6 +120,8 @@ extend-exclude = [
   "*.bundle.*",
   "*.map",
   "deno.lock",
+  # release-please writes these; they quote commit hashes and messages verbatim
+  "CHANGELOG.md",
 ]
 
 [type.deno]
