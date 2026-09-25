@@ -16,7 +16,7 @@ jobs:
     name: Format, lint, type-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -41,7 +41,7 @@ jobs:
     name: JSR publish dry-run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -55,7 +55,7 @@ jobs:
       matrix:
         runtime: [deno, bun, node-22, node-24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: denoland/setup-deno@v2
         if: matrix.runtime == 'deno'
@@ -78,7 +78,7 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun install && bun run test:bun
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: startsWith(matrix.runtime, 'node')
         with:
           node-version: ${{ matrix.runtime == 'node-22' && '22' || '24' }}
@@ -97,7 +97,7 @@ jobs:
       - name: Upload coverage to Codecov
         if: matrix.runtime == 'deno' && github.event_name == 'push'
         continue-on-error: true
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: coverage/report.lcov
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -105,7 +105,7 @@ jobs:
       - name: Upload coverage to SonarQube
         if: matrix.runtime == 'deno' && github.event_name == 'push'
         continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@v4
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -113,8 +113,8 @@ jobs:
     name: Workers smoke (workerd)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
