@@ -1,13 +1,20 @@
 name: PR Checks
 
+# `labeled`/`unlabeled` re-run the connector guard when `multi-connector`
+# (or release-please's `autorelease: *` label) is added after the PR opens —
+# otherwise the guard only sees labels present at the last push or edit.
 on:
   pull_request:
-    types: [opened, edited, synchronize]
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
     branches: [main]
 
 permissions:
   contents: read
   pull-requests: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   title-lint:
@@ -37,7 +44,16 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          # release-please's combined "chore: release main" PR always bundles
+          # every connect with a pending release — that is its format, not an
+          # atomic cross-connect change — so it is exempt. release-please tags
+          # every PR it manages `autorelease: pending` (then `: tagged`).
+          IS_RELEASE_PR: "${{ contains(github.event.pull_request.labels.*.name, 'autorelease: pending') || contains(github.event.pull_request.labels.*.name, 'autorelease: tagged') }}"
         run: |
+          if [ "$IS_RELEASE_PR" = "true" ]; then
+            echo "release-please release PR — bundling every pending release is the point; skipping guard"
+            exit 0
+          fi
           if echo "$LABELS" | grep -q "multi-connector"; then
             echo "multi-connector label present — skipping guard"
             exit 0
