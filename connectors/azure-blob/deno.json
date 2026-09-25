@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/azure-blob",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.",
   "exports": {
     ".": "./mod.ts",

@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/gcs",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.",
   "exports": {

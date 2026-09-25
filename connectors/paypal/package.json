@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/paypal",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Typed PayPal client for Orders v2: create, fetch, capture and refund, with automatic OAuth2 tokens, idempotency keys and webhook verification.",
   "exports": {

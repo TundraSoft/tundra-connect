@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/openweathermap",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed OpenWeatherMap client: current weather and 5-day / 3-hour forecasts by city name or coordinates.",
   "exports": {
     ".": "./mod.ts",
