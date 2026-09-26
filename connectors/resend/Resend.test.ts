@@ -567,7 +567,7 @@ describe('Resend — maxRetryWait (RESTler rate-limit retry)', () => {
 
 describe('Resend — verifyWebhook', () => {
   const secretBytes = new TextEncoder().encode(
-    'resend-test-signing-secret-32byt',
+    'resend-test-signing-secret-bytes',
   );
   const SECRET = `whsec_${encodeBase64(secretBytes)}`;
   const NOW_MS = 1_700_000_000_000;
