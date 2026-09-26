@@ -26,6 +26,7 @@ export class ResendError<
    */
   public readonly code: ResendErrorCode;
 
+  /** Formats every message as `[resend] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
     return '[resend] ${timeStamp}: ${message}';
   }

@@ -35,6 +35,15 @@ Resend rejects a request with no `User-Agent` (HTTP 403). Server runtimes'
 The API key is never readable back off the client — there is no getter for
 it.
 
+### Exported constants
+
+| Constant                            | Value                    | Meaning                                            |
+| ----------------------------------- | ------------------------ | -------------------------------------------------- |
+| `RESEND_API`                        | `https://api.resend.com` | Default `baseURL`.                                 |
+| `MAX_BATCH_SIZE`                    | `100`                    | Most emails one `sendBatch` call accepts.          |
+| `DEFAULT_USER_AGENT`                | `tundraconnect-resend`   | `User-Agent` sent when none is configured.         |
+| `DEFAULT_WEBHOOK_TOLERANCE_SECONDS` | `300`                    | Default `verifyWebhook` replay window, in seconds. |
+
 ## Endpoints
 
 ### `send(email, options?)`
@@ -91,7 +100,7 @@ validation failure carries the offending email's `index` in its context.
 `GET /emails/{id}` &rarr; `EmailSchema`
 
 ```ts continued
-const email = await client.getEmail(id);
+const email = await client.getEmail('4ef9a417-02e9-4d39-ad75-9611e0fcc33c');
 console.log(email.last_event, email.tags);
 ```
 
@@ -120,12 +129,15 @@ rejected locally as `REQUEST_VALIDATION_ERROR`.
 Local check — no request, no API key used.
 
 ```ts continued
-declare const req: Request;
-const event = await client.verifyWebhook({
-  payload: await req.text(),
-  headers: req.headers,
-  secret: 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw',
-});
+async function handle(req: Request): Promise<Response> {
+  const event = await client.verifyWebhook({
+    payload: await req.text(), // the raw body — never re-serialized JSON
+    headers: req.headers,
+    secret: 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw',
+  });
+  console.log(event.type, event.data);
+  return new Response(null, { status: 204 });
+}
 ```
 
 | Field              | Type                 | Required | Description                                               |
