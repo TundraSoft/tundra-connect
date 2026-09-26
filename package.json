@@ -14,18 +14,7 @@
     "deno",
     "bun",
     "nodejs",
-    "cloudflare-workers",
-    "resend",
-    "email",
-    "transactional-email",
-    "email-api",
-    "send-email",
-    "batch-email",
-    "scheduled-email",
-    "email-delivery",
-    "webhooks",
-    "svix",
-    "idempotency"
+    "cloudflare-workers"
   ],
   "workspaces": [
     "connectors/*"
