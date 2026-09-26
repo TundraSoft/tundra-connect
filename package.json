@@ -4,6 +4,29 @@
   "engines": {
     "node": ">=22"
   },
+  "keywords": [
+    "tundra-connect",
+    "tundraconnect",
+    "api-client",
+    "vendor-api",
+    "integrations",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "resend",
+    "email",
+    "transactional-email",
+    "email-api",
+    "send-email",
+    "batch-email",
+    "scheduled-email",
+    "email-delivery",
+    "webhooks",
+    "svix",
+    "idempotency"
+  ],
   "workspaces": [
     "connectors/*"
   ],
