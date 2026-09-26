@@ -3,6 +3,19 @@
   "version": "0.1.1",
   "type": "module",
   "description": "Typed Razorpay client: create and fetch orders; capture, fetch and list payments; create payment links; and verify webhook signatures.",
+  "keywords": [
+    "razorpay",
+    "payments",
+    "payment-links",
+    "india",
+    "webhooks",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "tundraconnect"
+  ],
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

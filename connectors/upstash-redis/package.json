@@ -3,6 +3,20 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Typed Upstash Redis REST client: string, hash and list commands, TTLs, counters and pipelining over plain HTTPS — no TCP connection needed.",
+  "keywords": [
+    "upstash",
+    "upstash-redis",
+    "redis",
+    "serverless",
+    "cache",
+    "key-value",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "tundraconnect"
+  ],
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

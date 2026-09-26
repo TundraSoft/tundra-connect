@@ -3,6 +3,18 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Typed ntfy.sh client for publishing push notifications to a topic.",
+  "keywords": [
+    "ntfy",
+    "push-notifications",
+    "notifications",
+    "pubsub",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "tundraconnect"
+  ],
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

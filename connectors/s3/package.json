@@ -3,6 +3,23 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Typed S3 client with SigV4 signing for AWS S3, Cloudflare R2, MinIO and DigitalOcean Spaces: object CRUD and listing, plus streamed multipart uploads and downloads.",
+  "keywords": [
+    "s3",
+    "aws-s3",
+    "aws",
+    "cloudflare-r2",
+    "minio",
+    "digitalocean-spaces",
+    "object-storage",
+    "sigv4",
+    "multipart-upload",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "tundraconnect"
+  ],
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

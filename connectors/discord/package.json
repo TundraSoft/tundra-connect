@@ -3,6 +3,21 @@
   "version": "0.1.1",
   "type": "module",
   "description": "Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.",
+  "keywords": [
+    "discord",
+    "discord-bot",
+    "discord-webhook",
+    "chat",
+    "messaging",
+    "webhooks",
+    "ed25519",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "tundraconnect"
+  ],
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

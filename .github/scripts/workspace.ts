@@ -9,7 +9,8 @@
  * files that must enumerate connects individually rather than glob a
  * directory — is `.github/labeler.yml`, `.github/codecov.yml`,
  * `release-please-config.json`, `.release-please-manifest.json`, the issue
- * templates' connect dropdowns, and README.md's connect list. Never
+ * templates' connect dropdowns, README.md's connect list, and the root
+ * `package.json`'s `keywords` (the union of every connect's own). Never
  * hand-edit those.
  *
  * Usage:
@@ -33,6 +34,26 @@ const ROOT = fromFileUrl(new URL('../../', import.meta.url));
 const CONNECTORS_DIR = 'connectors';
 const SCOPE = '@tundraconnect';
 const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9-]*$/;
+
+/** Runtime/ecosystem keywords every connect's `package.json` carries. */
+const COMMON_KEYWORDS = [
+  'typescript',
+  'deno',
+  'bun',
+  'nodejs',
+  'cloudflare-workers',
+  'tundraconnect',
+];
+
+/** Repo-level keywords that lead the root `package.json`'s generated list. */
+const ROOT_KEYWORDS = [
+  'tundra-connect',
+  'tundraconnect',
+  'api-client',
+  'vendor-api',
+  'integrations',
+  ...COMMON_KEYWORDS,
+];
 
 type WorkspaceMeta = Record<string, string>;
 
@@ -432,6 +453,34 @@ interface Generated {
   json: boolean;
 }
 
+/**
+ * Rewrites the root `package.json`'s `keywords` as {@link ROOT_KEYWORDS}
+ * followed by every connect's own `keywords`, in connect order, without
+ * duplicates. Every other field of the root manifest is left as it is; a
+ * missing `keywords` key is inserted after `engines` (or appended).
+ */
+async function genRootPackageJson(
+  meta: WorkspaceMeta,
+  current: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const keywords = new Set<string>(ROOT_KEYWORDS);
+  for (const name of connectorNames(meta)) {
+    const pkg = await readJson<{ keywords?: string[] }>(
+      path(`${CONNECTORS_DIR}/${name}/package.json`),
+    ).catch(() => ({}) as { keywords?: string[] });
+    for (const keyword of pkg.keywords ?? []) keywords.add(keyword);
+  }
+  const value = [...keywords];
+  if ('keywords' in current) return { ...current, keywords: value };
+  const out: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(current)) {
+    out[key] = field;
+    if (key === 'engines') out.keywords = value;
+  }
+  if (!('keywords' in out)) out.keywords = value;
+  return out;
+}
+
 async function buildGenerated(meta: WorkspaceMeta): Promise<Generated[]> {
   const existingRP = await readJson<Record<string, unknown>>(
     path('release-please-config.json'),
@@ -443,6 +492,9 @@ async function buildGenerated(meta: WorkspaceMeta): Promise<Generated[]> {
   const existingRoadmap = await readText(path('ROADMAP.md'));
   const existingReleaseWorkflow = await readText(
     path('.github/workflows/release-please.yml'),
+  );
+  const existingRootPackage = await readJson<Record<string, unknown>>(
+    path('package.json'),
   );
 
   return [
@@ -472,6 +524,11 @@ async function buildGenerated(meta: WorkspaceMeta): Promise<Generated[]> {
       file: '.github/workflows/release-please.yml',
       content: genReleaseWorkflow(meta, existingReleaseWorkflow),
       json: false,
+    },
+    {
+      file: 'package.json',
+      content: await genRootPackageJson(meta, existingRootPackage),
+      json: true,
     },
     ...genIssueTemplates(meta),
   ];
@@ -545,6 +602,10 @@ function genConnectPackageJson(name: string): Record<string, unknown> {
     version: '0.0.0',
     type: 'module',
     description: 'TODO: Add description',
+    // A starter set — add the vendor's product and domain terms
+    // (e.g. 'payments', 'object-storage'). The root package.json's
+    // keywords are regenerated from these by `workspace:sync`.
+    keywords: [name, ...COMMON_KEYWORDS],
     exports: connectExportsMap(),
     engines: { node: '>=22' },
     dependencies: { '@tundralibs/utils': UTILS_NPM_SPECIFIER },

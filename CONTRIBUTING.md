@@ -40,7 +40,8 @@ that entry, then run `deno task workspace:sync`.
 This scaffolds a full starting skeleton under `connectors/<connect-name>/`,
 matching CONVENTIONS.md's "Connect (connector) layout" — `deno.json` +
 `package.json` (with the `.`/`./schemas`/`./errors` `exports` map already
-wired up), `mod.ts`, `README.md`, `CHANGELOG.md`, `<Connect>.ts` +
+wired up, and a starter `keywords` list to extend with the vendor's
+terms), `mod.ts`, `README.md`, `CHANGELOG.md`, `<Connect>.ts` +
 `<Connect>.test.ts` (a working `RESTler` subclass skeleton with an
 `auth: RESTlerAuth` option, `_responseHandler`/`__toError`/
 `__requestAndValidate` already wired per CONVENTIONS.md's "HTTP client"
@@ -48,7 +49,8 @@ section, and one passing constructor test), `errors/` (a working
 `<Connect>Error` class, a four-code starter registry, and their test), an
 empty `schema/mod.ts` barrel, and three `docs/<Connect>-*.md` stub pages.
 It also regenerates the derived config (labeler, codecov, issue templates,
-release-please manifest, README's connect list, ROADMAP's shipped list) — `deno.json`'s `workspace` and
+release-please manifest, README's connect list, ROADMAP's shipped list, the
+root `package.json`'s keywords) — `deno.json`'s `workspace` and
 `package.json`'s `workspaces`/test scripts are a static `connectors/*` glob,
 so they need no update. Everything vendor-specific (base URL, auth scheme,
 error codes, schemas, endpoint methods) is left as a clearly marked `TODO`

@@ -3,6 +3,20 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.",
+  "keywords": [
+    "gcs",
+    "google-cloud-storage",
+    "google-cloud",
+    "object-storage",
+    "file-upload",
+    "resumable-upload",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "tundraconnect"
+  ],
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",
