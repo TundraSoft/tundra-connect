@@ -24,6 +24,7 @@ body:
         - PayPal
         - Polymarket
         - Razorpay
+        - Resend
         - S3
         - SendGrid
         - Sentry

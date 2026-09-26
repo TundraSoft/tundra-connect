@@ -15,7 +15,7 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-22 connects are implemented today:
+23 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
@@ -31,6 +31,7 @@ if you'd like to champion one.
 - **[PayPal](connectors/paypal/README.md)** — Typed PayPal client for Orders v2: create, fetch, capture and refund, with automatic OAuth2 tokens, idempotency keys and webhook verification.
 - **[Polymarket](connectors/polymarket/README.md)** — Typed Polymarket client: Gamma market discovery, CLOB trading with secp256k1/EIP-712 order signing, portfolio positions and value, and gasless split/merge/redeem.
 - **[Razorpay](connectors/razorpay/README.md)** — Typed Razorpay client: create and fetch orders; capture, fetch and list payments; create payment links; and verify webhook signatures.
+- **[Resend](connectors/resend/README.md)** — Typed Resend client: send single and batch transactional email with idempotency keys, retrieve delivery status, reschedule or cancel scheduled email, and verify Svix-signed webhooks.
 - **[S3](connectors/s3/README.md)** — Typed S3 client with SigV4 signing for AWS S3, Cloudflare R2, MinIO and DigitalOcean Spaces: object CRUD and listing, plus streamed multipart uploads and downloads.
 - **[SendGrid](connectors/sendgrid/README.md)** — Typed Twilio SendGrid client: send transactional email, inspect API-key scopes, and verify ECDSA-signed event webhooks.
 - **[Sentry](connectors/sentry/README.md)** — Typed Sentry API client: list projects; list, fetch and update issues; read issue events; and create releases.
@@ -50,15 +51,6 @@ if you'd like to champion one.
 - **Coinbase** — market data, account/order endpoints
 - **Kraken** — market data, account/order endpoints
 - **Bybit** — market data, account/order endpoints
-
-### Messaging / notifications
-
-Ordered by how cheaply/easily a real account can be tested (free/no-signup
-first) — relevant for docs examples and manual smoke testing, since CI itself
-always stubs the transport regardless.
-
-- **Resend** — transactional email; modern API, generous free tier, popular
-  in indie/fast-shipping app stacks
 
 ### Payments
 

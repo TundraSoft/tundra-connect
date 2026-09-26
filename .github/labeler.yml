@@ -54,6 +54,9 @@ documentation:
 'connector: razorpay':
   - changed-files:
       - any-glob-to-any-file: connectors/razorpay/**
+'connector: resend':
+  - changed-files:
+      - any-glob-to-any-file: connectors/resend/**
 'connector: s3':
   - changed-files:
       - any-glob-to-any-file: connectors/s3/**
