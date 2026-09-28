@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
 
       - name: 🔤 Run spell check
-        uses: crate-ci/typos@v1.50.2
+        uses: crate-ci/typos@v1.50.3
         with:
           config: ./.typos.toml
 
