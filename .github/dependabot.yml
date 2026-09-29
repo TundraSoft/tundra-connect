@@ -7,8 +7,12 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # The grouped bump rewrites every connect's deno.json in one PR — an
+    # atomic cross-connect change by construction — so it carries
+    # `multi-connector` to pass the single-connector guard in pr-checks.yml.
     labels:
       - dependencies
+      - multi-connector
     groups:
       deno-minor-patch:
         update-types:
