@@ -22,7 +22,7 @@ those files; never hand-edit the generated sections.
 ```
 connectors/<connect>/
 ├── deno.json            # @tundraconnect/<connect>, exports map
-├── package.json          # mirrors deno.json exports for Bun/Node
+├── package.json          # mirrors deno.json exports for Bun/Node; carries keywords
 ├── mod.ts                 # single re-export site (client + schemas + errors)
 ├── README.md               # main docs and wiki page
 ├── CHANGELOG.md           # release-please generated — never hand-edited
@@ -55,6 +55,14 @@ connectors/<connect>/
   schema barrel. Internal helpers stay unexported.
 - `exports` in `deno.json`/`package.json` should mirror this: `.` → `mod.ts`,
   `./schemas` → `schema/mod.ts`, and `./errors` → `errors/mod.ts`.
+- `package.json` carries a `keywords` array: the vendor's product and domain
+  terms (`stripe`, `payments`, `webhooks`, ...) followed by the shared
+  runtime set (`typescript`, `deno`, `bun`, `nodejs`, `cloudflare-workers`,
+  `tundraconnect`). `workspace:add` scaffolds the connect name plus that
+  shared set; add the vendor terms by hand. The root `package.json` is
+  private and keeps only a short, repo-level `keywords` list — don't copy
+  connect keywords into it. (JSR does not read `package.json` keywords, so
+  changing them needs no release.)
 
 ## Errors
 

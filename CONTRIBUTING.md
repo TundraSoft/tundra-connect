@@ -40,7 +40,8 @@ that entry, then run `deno task workspace:sync`.
 This scaffolds a full starting skeleton under `connectors/<connect-name>/`,
 matching CONVENTIONS.md's "Connect (connector) layout" — `deno.json` +
 `package.json` (with the `.`/`./schemas`/`./errors` `exports` map already
-wired up), `mod.ts`, `README.md`, `CHANGELOG.md`, `<Connect>.ts` +
+wired up, and a starter `keywords` list to extend with the vendor's
+terms), `mod.ts`, `README.md`, `CHANGELOG.md`, `<Connect>.ts` +
 `<Connect>.test.ts` (a working `RESTler` subclass skeleton with an
 `auth: RESTlerAuth` option, `_responseHandler`/`__toError`/
 `__requestAndValidate` already wired per CONVENTIONS.md's "HTTP client"

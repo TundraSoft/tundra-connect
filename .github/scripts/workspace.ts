@@ -34,6 +34,16 @@ const CONNECTORS_DIR = 'connectors';
 const SCOPE = '@tundraconnect';
 const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9-]*$/;
 
+/** Runtime/ecosystem keywords every connect's `package.json` carries. */
+const COMMON_KEYWORDS = [
+  'typescript',
+  'deno',
+  'bun',
+  'nodejs',
+  'cloudflare-workers',
+  'tundraconnect',
+];
+
 type WorkspaceMeta = Record<string, string>;
 
 function path(...segments: string[]): string {
@@ -545,6 +555,9 @@ function genConnectPackageJson(name: string): Record<string, unknown> {
     version: '0.0.0',
     type: 'module',
     description: 'TODO: Add description',
+    // A starter set — add the vendor's product and domain terms
+    // (e.g. 'payments', 'object-storage').
+    keywords: [name, ...COMMON_KEYWORDS],
     exports: connectExportsMap(),
     engines: { node: '>=22' },
     dependencies: { '@tundralibs/utils': UTILS_NPM_SPECIFIER },

@@ -3,6 +3,19 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.",
+  "keywords": [
+    "coingecko",
+    "crypto",
+    "cryptocurrency",
+    "crypto-prices",
+    "market-data",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "tundraconnect"
+  ],
   "exports": {
     ".": "./mod.ts",
     "./schemas": "./schema/mod.ts",

@@ -4,6 +4,18 @@
   "engines": {
     "node": ">=22"
   },
+  "keywords": [
+    "tundra-connect",
+    "tundraconnect",
+    "api-client",
+    "vendor-api",
+    "integrations",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers"
+  ],
   "workspaces": [
     "connectors/*"
   ],
