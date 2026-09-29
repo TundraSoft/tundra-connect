@@ -1,8 +1,14 @@
 # PayPal
 
-A typed client for [PayPal's REST API](https://developer.paypal.com/api/rest/)
-covering the core Orders v2 payment lifecycle: create an order, check its
-status, capture payment once the payer approves it, and refund a capture.
+Typed [PayPal REST API](https://developer.paypal.com/api/rest/) client for Deno,
+Bun, Node.js and Cloudflare Workers, covering the Orders v2 payment lifecycle:
+create an order, check its status, capture payment once the payer approves it,
+and refund a capture. OAuth2 access tokens are fetched and refreshed
+automatically, requests carry idempotency keys, and webhook signatures can be
+verified.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/paypal)](https://jsr.io/@tundraconnect/paypal)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/paypal/score)](https://jsr.io/@tundraconnect/paypal)
 
 ## Overview
 
@@ -30,16 +36,16 @@ const client = new PayPal({
 Covers `createOrder`, `getOrder`, `captureOrder`, and `refundCapture`.
 Webhook signature verification and PayPal's full `payment_source`
 payment-method union (cards, wallets, BNPL, local payment methods, ...) are
-out of scope for this v1 — see [docs/PayPal-API.md](docs/PayPal-API.md) for
+out of scope for this v1 — see [docs/PayPal-API.md](https://github.com/TundraSoft/tundra-connect/wiki/PayPal-API) for
 the exact boundary.
 
 ## Documentation
 
-| Topic                             | Description                                |
-| --------------------------------- | ------------------------------------------ |
-| [API](docs/PayPal-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/PayPal-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/PayPal-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                       | Description                                |
+| --------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/PayPal-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/PayPal-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/PayPal-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -131,8 +137,9 @@ export async function onWebhook(req: Request): Promise<void> {
 }
 ```
 
-See [API → Webhooks](docs/PayPal-API.md#webhooks).
+See [API → Webhooks](https://github.com/TundraSoft/tundra-connect/wiki/PayPal-API#webhooks).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

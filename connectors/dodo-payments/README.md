@@ -1,10 +1,13 @@
-# DodoPayments
+# Dodo Payments
 
-Accept payments and manage subscriptions through
-[Dodo Payments](https://dodopayments.com), a merchant-of-record platform for
-digital products. Covers the checkout path end to end: initialize a payment,
-verify it actually completed, read a customer's history, and create or cancel
-subscriptions — plus Standard Webhooks signature verification.
+Typed [Dodo Payments](https://dodopayments.com) API client for Deno, Bun,
+Node.js and Cloudflare Workers. Dodo Payments is a merchant-of-record platform
+for digital products, and this client covers its checkout path end to end:
+initialize a payment, verify it actually completed, read a customer's history,
+create or cancel subscriptions, and verify Standard Webhooks signatures.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/dodo-payments)](https://jsr.io/@tundraconnect/dodo-payments)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/dodo-payments/score)](https://jsr.io/@tundraconnect/dodo-payments)
 
 ## Overview
 
@@ -52,12 +55,12 @@ console.log(created.payment_link); // send the buyer here
 
 ## Documentation
 
-| Topic                                   | Description                                         |
-| --------------------------------------- | --------------------------------------------------- |
-| [Flows](docs/DodoPayments-Flows.md)     | End-to-end payment, subscription and customer flows |
-| [API](docs/DodoPayments-API.md)         | Client configuration and endpoint methods           |
-| [Errors](docs/DodoPayments-Errors.md)   | Error codes and diagnostic metadata                 |
-| [Schemas](docs/DodoPayments-Schemas.md) | Public Guardian schemas and inferred types          |
+| Topic                                                                             | Description                                         |
+| --------------------------------------------------------------------------------- | --------------------------------------------------- |
+| [Flows](https://github.com/TundraSoft/tundra-connect/wiki/DodoPayments-Flows)     | End-to-end payment, subscription and customer flows |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/DodoPayments-API)         | Client configuration and endpoint methods           |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/DodoPayments-Errors)   | Error codes and diagnostic metadata                 |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/DodoPayments-Schemas) | Public Guardian schemas and inferred types          |
 
 ## Upstream
 
@@ -236,4 +239,5 @@ is the point — it guarantees you act on exactly the body that was signed.
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

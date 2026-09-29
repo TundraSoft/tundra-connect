@@ -1,6 +1,12 @@
 # Slack
 
-Typed, cross-runtime client for the [Slack Web API](https://docs.slack.dev/apis/web-api).
+Typed [Slack Web API](https://docs.slack.dev/apis/web-api) client for Deno, Bun,
+Node.js and Cloudflare Workers. Post, update and delete messages, list channels
+and read history, look up users, and verify request signatures. A lightweight
+alternative to `@slack/web-api` for the methods it covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/slack)](https://jsr.io/@tundraconnect/slack)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/slack/score)](https://jsr.io/@tundraconnect/slack)
 
 ## Overview
 
@@ -15,7 +21,7 @@ transport and Guardian for runtime request/response validation.
 Slack's defining API quirk — most documented failures arrive as
 `HTTP 200 OK` with `{ ok: false, error: '<string>' }` in the body, not a
 4xx/5xx status — is handled centrally; see
-[Errors](docs/Slack-Errors.md) for the full mapping.
+[Errors](https://github.com/TundraSoft/tundra-connect/wiki/Slack-Errors) for the full mapping.
 
 ```ts
 import { Slack } from '@tundraconnect/slack';
@@ -27,11 +33,11 @@ const client = new Slack({
 
 ## Documentation
 
-| Topic                            | Description                                |
-| -------------------------------- | ------------------------------------------ |
-| [API](docs/Slack-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Slack-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Slack-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                      | Description                                |
+| -------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Slack-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Slack-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Slack-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -95,8 +101,9 @@ export async function onSlackRequest(req: Request): Promise<void> {
 }
 ```
 
-See [API → Webhooks](docs/Slack-API.md#webhooks).
+See [API → Webhooks](https://github.com/TundraSoft/tundra-connect/wiki/Slack-API#webhooks).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

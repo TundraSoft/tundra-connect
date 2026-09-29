@@ -1,6 +1,12 @@
 # SendGrid
 
-Typed, cross-runtime client for the [Twilio SendGrid v3 API](https://www.twilio.com/docs/sendgrid).
+Typed [Twilio SendGrid v3 API](https://www.twilio.com/docs/sendgrid) client for
+Deno, Bun, Node.js and Cloudflare Workers. Send transactional email, inspect
+API-key scopes, and verify ECDSA-signed Event Webhook requests. A lightweight
+alternative to `@sendgrid/mail` for the endpoints it covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/sendgrid)](https://jsr.io/@tundraconnect/sendgrid)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/sendgrid/score)](https://jsr.io/@tundraconnect/sendgrid)
 
 ## Overview
 
@@ -12,11 +18,11 @@ tracking settings, …) is validated before it's ever sent.
 
 ## Documentation
 
-| Topic                               | Description                                |
-| ----------------------------------- | ------------------------------------------ |
-| [API](docs/SendGrid-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/SendGrid-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/SendGrid-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                         | Description                                |
+| ----------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/SendGrid-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/SendGrid-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/SendGrid-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -82,8 +88,9 @@ export async function onEventWebhook(req: Request): Promise<void> {
 }
 ```
 
-See [API → Webhooks](docs/SendGrid-API.md#webhooks).
+See [API → Webhooks](https://github.com/TundraSoft/tundra-connect/wiki/SendGrid-API#webhooks).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

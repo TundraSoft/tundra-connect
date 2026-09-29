@@ -1,6 +1,13 @@
 # Twilio
 
-Typed, cross-runtime client for the [Twilio REST API](https://www.twilio.com/docs/usage/api), covering SMS/MMS sending via the Messages resource and voice calls via the Calls resource.
+Typed [Twilio REST API](https://www.twilio.com/docs/usage/api) client for Deno,
+Bun, Node.js and Cloudflare Workers. Send SMS and MMS through the Messages
+resource; place, list, update and delete voice calls through the Calls resource;
+and verify webhook signatures. A lightweight alternative to the official
+`twilio` Node.js SDK for the endpoints it covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/twilio)](https://jsr.io/@tundraconnect/twilio)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/twilio/score)](https://jsr.io/@tundraconnect/twilio)
 
 ## Overview
 
@@ -15,11 +22,11 @@ Twilio what a call should say/do), which is out of scope for this connect.
 
 ## Documentation
 
-| Topic                             | Description                                |
-| --------------------------------- | ------------------------------------------ |
-| [API](docs/Twilio-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Twilio-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Twilio-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                       | Description                                |
+| --------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Twilio-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Twilio-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Twilio-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -102,8 +109,9 @@ export async function onWebhook(req: Request): Promise<void> {
 }
 ```
 
-See [API → Webhooks](docs/Twilio-API.md#webhooks).
+See [API → Webhooks](https://github.com/TundraSoft/tundra-connect/wiki/Twilio-API#webhooks).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

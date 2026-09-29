@@ -1,9 +1,14 @@
 # S3
 
-Typed, cross-runtime client for AWS S3 and S3-compatible object storage
-(Cloudflare R2, MinIO, DigitalOcean Spaces, self-hosted gateways), signing
-every request with
-[AWS Signature Version 4](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv4.html).
+Typed client for AWS S3 and S3-compatible object storage (Cloudflare R2, MinIO,
+DigitalOcean Spaces, self-hosted gateways) for Deno, Bun, Node.js and Cloudflare
+Workers, signing every request with [AWS Signature Version 4](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv4.html).
+Object CRUD and listing, plus streamed multipart uploads and downloads. A
+lightweight, Web-API-only alternative to `@aws-sdk/client-s3` for the operations
+it covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/s3)](https://jsr.io/@tundraconnect/s3)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/s3/score)](https://jsr.io/@tundraconnect/s3)
 
 ## Overview
 
@@ -16,11 +21,11 @@ on Deno, Bun, Node, Cloudflare Workers, and in the browser.
 
 ## Documentation
 
-| Topic                         | Description                                |
-| ----------------------------- | ------------------------------------------ |
-| [API](docs/S3-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/S3-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/S3-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                   | Description                                |
+| ----------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/S3-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/S3-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/S3-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -163,8 +168,9 @@ await body.pipeTo((await Deno.create('restored.tar')).writable);
 ```
 
 Works unchanged against DigitalOcean Spaces, Cloudflare R2 and MinIO. See
-[API → Streaming](docs/S3-API.md#streaming).
+[API → Streaming](https://github.com/TundraSoft/tundra-connect/wiki/S3-API#streaming).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

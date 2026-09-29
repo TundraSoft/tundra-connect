@@ -1,7 +1,11 @@
 # ntfy
 
-Typed, cross-runtime client for [ntfy.sh](https://ntfy.sh), a simple
-pub-sub push-notification service.
+Typed [ntfy](https://ntfy.sh) client for Deno, Bun, Node.js and Cloudflare
+Workers. Publish push notifications to a topic on ntfy.sh or a self-hosted ntfy
+server, with optional auth for protected topics.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/ntfy)](https://jsr.io/@tundraconnect/ntfy)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/ntfy/score)](https://jsr.io/@tundraconnect/ntfy)
 
 ## Overview
 
@@ -23,11 +27,11 @@ await client.publish({ topic: 'mytopic', message: 'Hello from ntfy!' });
 
 ## Documentation
 
-| Topic                           | Description                                |
-| ------------------------------- | ------------------------------------------ |
-| [API](docs/ntfy-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/ntfy-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/ntfy-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                     | Description                                |
+| ------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/ntfy-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/ntfy-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/ntfy-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -96,4 +100,5 @@ numbers — this connect does not enforce them client-side.
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.
