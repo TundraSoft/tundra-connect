@@ -13,11 +13,23 @@
 [![CI](https://github.com/TundraSoft/tundra-connect/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/TundraSoft/tundra-connect/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/TundraSoft/tundra-connect/graph/badge.svg)](https://codecov.io/gh/TundraSoft/tundra-connect)
 
-Tundra Connect wraps popular third-party vendor APIs (payments, object
-storage, messaging, market data, ...) in typed, tested, cross-runtime
-clients. Each connect is an independently versioned package published to JSR
-under the `@tundraconnect` scope, living under `connectors/<name>/`. See
-[CONVENTIONS.md](CONVENTIONS.md) for the shared structure and
+Tundra Connect wraps popular third-party vendor APIs in typed, tested,
+cross-runtime TypeScript clients. Each connect is an independently versioned
+package published to [JSR](https://jsr.io/@tundraconnect) under the
+`@tundraconnect` scope. Requests and responses are validated at runtime, and
+failures surface as one typed error class per vendor.
+
+- **Payments:** Stripe, PayPal, Razorpay, Dodo Payments
+- **Object storage:** AWS S3 and S3-compatible stores (Cloudflare R2, MinIO,
+  DigitalOcean Spaces), Google Cloud Storage, Azure Blob Storage
+- **Messaging and notifications:** Slack, Discord, Telegram, Twilio SMS and
+  voice, SendGrid and Cloudflare email, ntfy push
+- **Market data and prediction markets:** CoinGecko, Open Exchange Rates,
+  Kalshi, Polymarket
+- **Search, data and operations:** Algolia, Upstash Redis, Sentry,
+  OpenWeatherMap
+
+See [CONVENTIONS.md](CONVENTIONS.md) for the shared structure and
 [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 
 Runs on Deno, Bun and Node; Web-APIs-only, so it also works on Cloudflare
@@ -52,6 +64,30 @@ CI-verified).
 - **[UpstashRedis](./connectors/upstash-redis/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/upstash-redis)](https://jsr.io/@tundraconnect/upstash-redis) — Typed Upstash Redis REST client: string, hash and list commands, TTLs, counters and pipelining over plain HTTPS — no TCP connection needed.
 
 <!-- workspace:connectors:end -->
+
+Each connect's README is its main documentation. The API, error and schema
+guides for every connect live in the
+[wiki](https://github.com/TundraSoft/tundra-connect/wiki).
+
+## 🔎 Looking for a familiar SDK?
+
+Each connect covers a focused subset of its vendor's API with no Node-only
+dependencies. Check the connect's README for exactly which endpoints.
+
+| If you use…                                       | Reach for                      |
+| ------------------------------------------------- | ------------------------------ |
+| `stripe`                                          | `@tundraconnect/stripe`        |
+| `@aws-sdk/client-s3` (also for R2, MinIO, Spaces) | `@tundraconnect/s3`            |
+| `@google-cloud/storage`                           | `@tundraconnect/gcs`           |
+| `@azure/storage-blob`                             | `@tundraconnect/azure-blob`    |
+| `@slack/web-api`                                  | `@tundraconnect/slack`         |
+| `discord.js`, for webhook and bot messages        | `@tundraconnect/discord`       |
+| `twilio`                                          | `@tundraconnect/twilio`        |
+| `@sendgrid/mail`                                  | `@tundraconnect/sendgrid`      |
+| `razorpay`                                        | `@tundraconnect/razorpay`      |
+| `algoliasearch`                                   | `@tundraconnect/algolia`       |
+| `@upstash/redis`                                  | `@tundraconnect/upstash-redis` |
+| `@polymarket/clob-client`                         | `@tundraconnect/polymarket`    |
 
 ## 🚀 Quick start
 
