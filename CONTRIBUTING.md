@@ -70,6 +70,7 @@ connect's `deno.json` (e.g. bumping `exports`).
    ```bash
    deno task check        # fmt --check, lint, type-check
    deno task test
+   deno task docs:links   # README links absolute, other docs relative
    npm run test:workers   # after `bun install`: each connect inside workerd
    ```
    A new connect needs an entry in `.github/scripts/workers-smoke.mjs`.

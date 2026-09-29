@@ -46,6 +46,16 @@ connectors/<connect>/
 - A connect's root `README.md` is its main documentation and wiki page.
   Supplemental docs in `docs/` are named `<Connect>-<Topic>.md`, where
   `<Connect>` is its workspace display name; no `docs/README.md` is created.
+- The connect README is rendered on GitHub, the wiki and JSR, and JSR
+  resolves relative links against the repo root. Its links into the repo are
+  therefore absolute: the wiki URL for a wiki-synced page
+  (`https://github.com/TundraSoft/tundra-connect/wiki/<Connect>-API`), a
+  GitHub `blob`/`tree` URL for anything else. Every other markdown file links
+  relatively and `wiki-sync.ts` rewrites it. `deno task docs:links` checks
+  both rules and `deno task docs:links:fix` applies them.
+- The README's first paragraph and `deno.json`'s `description` are what JSR
+  search indexes. Name the vendor's product, the operations covered, and the
+  runtimes, and carry the JSR version and score badges below it.
 - One class/schema/error-registry per `PascalCase.ts` file. Barrels
   (`mod.ts`) are the only files allowed to just re-export.
 - Cross-folder imports go through the folder's `mod.ts` barrel
