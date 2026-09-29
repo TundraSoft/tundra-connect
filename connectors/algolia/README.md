@@ -1,8 +1,13 @@
 # Algolia
 
-A typed client for the [Algolia Search REST API](https://www.algolia.com/doc/rest-api/search/) —
-search, save, fetch, delete, and browse records in an Algolia index, plus
-poll indexing tasks to completion.
+Typed [Algolia Search](https://www.algolia.com/doc/rest-api/search/) API client
+for Deno, Bun, Node.js and Cloudflare Workers. Search an index, save, fetch,
+delete and browse records, and wait for indexing tasks to finish. A lightweight,
+Web-API-only alternative to the official `algoliasearch` SDK for the endpoints
+it covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/algolia)](https://jsr.io/@tundraconnect/algolia)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/algolia/score)](https://jsr.io/@tundraconnect/algolia)
 
 ## Overview
 
@@ -16,7 +21,7 @@ operation to confirm it's live) — against a single index per call.
 Algolia authenticates every request with two headers derived from your
 account: an Application ID and an API key. Those same two values also
 determine which of Algolia's two hostnames a request goes to — see
-[docs/Algolia-API.md](docs/Algolia-API.md) for the full "dual base URL"
+[docs/Algolia-API.md](https://github.com/TundraSoft/tundra-connect/wiki/Algolia-API) for the full "dual base URL"
 mechanism.
 
 ```ts
@@ -36,11 +41,11 @@ console.log(results.nbHits, results.hits.map((h) => h.objectID));
 
 ## Documentation
 
-| Topic                              | Description                                |
-| ---------------------------------- | ------------------------------------------ |
-| [API](docs/Algolia-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Algolia-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Algolia-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                        | Description                                |
+| ---------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Algolia-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Algolia-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Algolia-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -111,4 +116,5 @@ do {
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

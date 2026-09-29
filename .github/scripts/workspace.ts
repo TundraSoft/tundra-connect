@@ -32,6 +32,7 @@ import { fromFileUrl } from 'jsr:@std/path@^1.1.6';
 const ROOT = fromFileUrl(new URL('../../', import.meta.url));
 const CONNECTORS_DIR = 'connectors';
 const SCOPE = '@tundraconnect';
+const REPO_URL = 'https://github.com/TundraSoft/tundra-connect';
 const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9-]*$/;
 
 /** Runtime/ecosystem keywords every connect's `package.json` carries. */
@@ -1092,18 +1093,29 @@ for the expected shape).
 `;
 }
 
+/**
+ * The connect README is what JSR renders, and JSR resolves relative links
+ * against the repo root (dropping `connectors/<name>/`), so every link into
+ * the repo is absolute — see `.github/scripts/doc-links.ts`.
+ */
 function genConnectReadme(name: string, className: string): string {
+  const wiki = `${REPO_URL}/wiki`;
   const docsTable = [
     '| Topic | Description |',
     '| --- | --- |',
-    `| [API](docs/${className}-API.md) | Client configuration and endpoint methods |`,
-    `| [Errors](docs/${className}-Errors.md) | Error codes and diagnostic metadata |`,
-    `| [Schemas](docs/${className}-Schemas.md) | Public Guardian schemas and inferred types |`,
+    `| [API](${wiki}/${className}-API) | Client configuration and endpoint methods |`,
+    `| [Errors](${wiki}/${className}-Errors) | Error codes and diagnostic metadata |`,
+    `| [Schemas](${wiki}/${className}-Schemas) | Public Guardian schemas and inferred types |`,
   ].join('\n');
   return `# ${className}
 
-TODO: Add a one-paragraph description of what this connect does and which
-vendor API it wraps.
+TODO: One keyword-rich sentence: "Typed ${className} <product> API client for
+Deno, Bun, Node.js and Cloudflare Workers: <the concrete operations>." Name
+what a user would search for — the vendor's product, the operations, the
+official SDK this is an alternative to.
+
+[![JSR](https://jsr.io/badges/${SCOPE}/${name})](https://jsr.io/${SCOPE}/${name})
+[![JSR Score](https://jsr.io/badges/${SCOPE}/${name}/score)](https://jsr.io/${SCOPE}/${name})
 
 ## Overview
 
@@ -1154,7 +1166,8 @@ endpoint method.
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](${REPO_URL}),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.
 `;
 }
 

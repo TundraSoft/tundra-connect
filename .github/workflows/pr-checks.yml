@@ -31,6 +31,27 @@ jobs:
             exit 1
           fi
 
+  doc-links:
+    name: Documentation links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check link contract
+        # A connect README is what JSR renders, and JSR resolves its
+        # relative links against the repo root, so they must be absolute or
+        # they 404 for every consumer. Everything else stays relative.
+        run: deno task docs:links
+
+      - name: Dry-run the wiki sync
+        # The wiki is published on push to main; without this, a dead link
+        # or an unmapped connect only fails after the merge.
+        run: deno task docs:wiki:check
+
   connector-guard:
     name: Single-connector guard
     runs-on: ubuntu-latest

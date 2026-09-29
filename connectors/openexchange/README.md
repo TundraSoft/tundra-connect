@@ -1,6 +1,11 @@
-# OpenExchange
+# Open Exchange Rates
 
-Typed, cross-runtime client for the [Open Exchange Rates API](https://openexchangerates.org/).
+Typed [Open Exchange Rates API](https://openexchangerates.org/) client for Deno,
+Bun, Node.js and Cloudflare Workers. Latest and historical currency exchange
+rates, time series, currency conversion, OHLC data and account usage.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/openexchange)](https://jsr.io/@tundraconnect/openexchange)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/openexchange/score)](https://jsr.io/@tundraconnect/openexchange)
 
 ## Overview
 
@@ -10,11 +15,11 @@ Guardian for runtime response validation.
 
 ## Documentation
 
-| Topic                                   | Description                                |
-| --------------------------------------- | ------------------------------------------ |
-| [API](docs/OpenExchange-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/OpenExchange-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/OpenExchange-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                             | Description                                |
+| --------------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/OpenExchange-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/OpenExchange-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/OpenExchange-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -84,8 +89,9 @@ const client = new OpenExchange({
 **3. Additions (non-breaking):** every error exposes a readonly `code`, so
 you can branch on `error.code === 'RATE_LIMITED'` instead of matching
 `.message`; and passing `maxRetryWait` at construction makes the client wait
-out a rate-limit hint and retry once — see [Errors](docs/OpenExchange-Errors.md).
+out a rate-limit hint and retry once — see [Errors](https://github.com/TundraSoft/tundra-connect/wiki/OpenExchange-Errors).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

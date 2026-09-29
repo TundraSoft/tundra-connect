@@ -1,6 +1,13 @@
 # Sentry
 
-Typed, cross-runtime client for [Sentry's organization/project REST API](https://docs.sentry.io/api/) (`https://sentry.io/api/0/`).
+Typed client for [Sentry's organization and project REST
+API](https://docs.sentry.io/api/) (`https://sentry.io/api/0/`) for Deno, Bun,
+Node.js and Cloudflare Workers. List projects; list, fetch and update issues;
+read issue events; and create releases. This is the management API. To capture
+and report errors, use Sentry's own SDKs.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/sentry)](https://jsr.io/@tundraconnect/sentry)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/sentry/score)](https://jsr.io/@tundraconnect/sentry)
 
 ## Overview
 
@@ -26,11 +33,11 @@ const client = new Sentry({
 
 ## Documentation
 
-| Topic                             | Description                                |
-| --------------------------------- | ------------------------------------------ |
-| [API](docs/Sentry-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Sentry-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Sentry-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                       | Description                                |
+| --------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Sentry-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Sentry-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Sentry-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -75,4 +82,5 @@ for (const issue of issues) {
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

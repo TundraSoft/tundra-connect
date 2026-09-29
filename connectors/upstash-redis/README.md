@@ -1,10 +1,15 @@
-# UpstashRedis
+# Upstash Redis
 
-A typed client for the [Upstash Redis REST API](https://upstash.com/docs/redis/features/restapi) —
-Redis over plain HTTPS, no TCP client or connection pool required. Covers
-`GET`/`SET`/`DEL`/`EXISTS`/`EXPIRE`/`INCR`/`INCRBY`, hash (`HGET`/`HSET`)
-and list (`LPUSH`/`RPUSH`/`LRANGE`) commands, request-level pipelining, and
-a low-level `execute()` escape hatch for anything not otherwise typed.
+Typed [Upstash Redis REST API](https://upstash.com/docs/redis/features/restapi)
+client for Deno, Bun, Node.js and Cloudflare Workers: Redis over plain HTTPS,
+with no TCP client or connection pool. It covers
+`GET`/`SET`/`DEL`/`EXISTS`/`EXPIRE`/`INCR`/`INCRBY`, hash (`HGET`/`HSET`) and
+list (`LPUSH`/`RPUSH`/`LRANGE`) commands, request-level pipelining, and a
+low-level `execute()` escape hatch for anything not otherwise typed. A
+lightweight alternative to `@upstash/redis` for the commands it covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/upstash-redis)](https://jsr.io/@tundraconnect/upstash-redis)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/upstash-redis/score)](https://jsr.io/@tundraconnect/upstash-redis)
 
 ## Overview
 
@@ -30,11 +35,11 @@ console.log(await client.get('foo')); // 'bar'
 
 ## Documentation
 
-| Topic                                   | Description                                |
-| --------------------------------------- | ------------------------------------------ |
-| [API](docs/UpstashRedis-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/UpstashRedis-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/UpstashRedis-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                             | Description                                |
+| --------------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/UpstashRedis-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/UpstashRedis-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/UpstashRedis-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -91,9 +96,10 @@ const results = await client.pipeline([
 ```
 
 Every method throws `UpstashRedisError` on failure — see
-[Errors](docs/UpstashRedis-Errors.md) for the full code list and how to
+[Errors](https://github.com/TundraSoft/tundra-connect/wiki/UpstashRedis-Errors) for the full code list and how to
 branch on `error.code`.
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

@@ -11,7 +11,12 @@ and must be configured once (or re-verified) in the repo/org settings UI.
   a PR whose commits carry different types or scopes, so release-please
   sees each one (a squash would collapse them into the title's type).
 - Auto-delete head branches after merge.
-- Wikis enabled (published by `workflows/wiki-sync.yml`).
+- Wikis enabled (published by `workflows/wiki-sync.yml`). GitHub creates
+  the `<repo>.wiki` git repository only when the first page is saved in the
+  web UI, so create any placeholder `Home` page once. Until then the sync
+  fails at checkout (`repository ... .wiki not found`), and every connect
+  README's documentation links land on the empty wiki. The first sync
+  replaces the placeholder with the generated `Home`.
 
 ## Branch protection (`main`)
 
@@ -34,6 +39,8 @@ the required checks.
 
 Do not enable or tighten these rules in the same PR that introduces the
 workflows: a missing or renamed check can block that PR from merging.
+`Documentation links` (from `pr-checks.yml`) is a candidate to require once
+it has run green on `main`.
 
 ## Labels
 

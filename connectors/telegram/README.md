@@ -1,6 +1,12 @@
 # Telegram
 
-Typed, cross-runtime client for the [Telegram Bot API](https://core.telegram.org/bots/api) — the simple bot HTTPS API only, not Telegram's much heavier MTProto client protocol.
+Typed [Telegram Bot API](https://core.telegram.org/bots/api) client for Deno,
+Bun, Node.js and Cloudflare Workers. Send messages and fetch the bot's own
+identity over the bot HTTPS API. It does not implement MTProto, Telegram's much
+heavier client protocol.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/telegram)](https://jsr.io/@tundraconnect/telegram)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/telegram/score)](https://jsr.io/@tundraconnect/telegram)
 
 ## Overview
 
@@ -15,11 +21,11 @@ validation.
 
 ## Documentation
 
-| Topic                               | Description                                |
-| ----------------------------------- | ------------------------------------------ |
-| [API](docs/Telegram-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Telegram-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Telegram-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                         | Description                                |
+| ----------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Telegram-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Telegram-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Telegram-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -68,4 +74,5 @@ console.log(message.message_id);
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

@@ -1,6 +1,12 @@
 # Razorpay
 
-Typed, cross-runtime client for the [Razorpay REST API](https://razorpay.com/docs/api/), covering Order create/fetch, Payment capture/fetch/list, and Payment Link creation.
+Typed [Razorpay REST API](https://razorpay.com/docs/api/) client for Deno, Bun,
+Node.js and Cloudflare Workers. Create and fetch orders; capture, fetch and list
+payments; create payment links; and verify webhook signatures. A lightweight
+alternative to the official `razorpay` Node.js SDK for the endpoints it covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/razorpay)](https://jsr.io/@tundraconnect/razorpay)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/razorpay/score)](https://jsr.io/@tundraconnect/razorpay)
 
 ## Overview
 
@@ -15,15 +21,15 @@ request/response validation.
 INR, cents for USD, etc. — and is always a positive integer, never a
 decimal major-unit amount. ₹299.00 is sent (and returned) as `29900`, not
 `299` or `299.00`. This is the most common Razorpay integration mistake;
-see [API](docs/Razorpay-API.md) for details.
+see [API](https://github.com/TundraSoft/tundra-connect/wiki/Razorpay-API) for details.
 
 ## Documentation
 
-| Topic                               | Description                                |
-| ----------------------------------- | ------------------------------------------ |
-| [API](docs/Razorpay-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Razorpay-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Razorpay-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                         | Description                                |
+| ----------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Razorpay-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Razorpay-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Razorpay-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -101,8 +107,9 @@ export async function onWebhook(req: Request): Promise<void> {
 }
 ```
 
-See [API → Webhooks](docs/Razorpay-API.md#webhooks).
+See [API → Webhooks](https://github.com/TundraSoft/tundra-connect/wiki/Razorpay-API#webhooks).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

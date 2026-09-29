@@ -1,8 +1,14 @@
 # Polymarket
 
-Typed, cross-runtime client for [Polymarket](https://polymarket.com)'s two
-public REST APIs: **Gamma** (market discovery — no auth) and the **CLOB**
-(trading — L1/L2 auth, real secp256k1/EIP-712 order signing).
+Typed [Polymarket](https://polymarket.com) prediction-market client for Deno,
+Bun, Node.js and Cloudflare Workers. It covers **Gamma** market discovery (no
+auth), **CLOB** trading with secp256k1/EIP-712 order signing (L1/L2 auth),
+portfolio positions and value, and gasless split, merge and redeem. An
+alternative to the official `@polymarket/clob-client` for the endpoints it
+covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/polymarket)](https://jsr.io/@tundraconnect/polymarket)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/polymarket/score)](https://jsr.io/@tundraconnect/polymarket)
 
 ## Overview
 
@@ -78,11 +84,11 @@ client with these calls, the same way you would for order signing.
 
 ## Documentation
 
-| Topic                                 | Description                                |
-| ------------------------------------- | ------------------------------------------ |
-| [API](docs/Polymarket-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Polymarket-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Polymarket-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                           | Description                                |
+| ------------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -176,4 +182,5 @@ await clob.order({
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

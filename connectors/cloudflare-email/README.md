@@ -1,9 +1,13 @@
-# CloudflareEmail
+# Cloudflare Email Sending
 
-Send transactional email through Cloudflare's Email Sending REST API
-(`POST /accounts/{account_id}/email/sending/send`), with local validation
-of addresses, attachments and recipient limits before anything leaves your
-process.
+Typed client for Cloudflare's Email Sending REST API
+(`POST /accounts/{account_id}/email/sending/send`) for Deno, Bun, Node.js and
+Cloudflare Workers. Send transactional email with attachments. Addresses,
+attachments and recipient limits are validated locally before anything leaves
+your process.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/cloudflare-email)](https://jsr.io/@tundraconnect/cloudflare-email)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/cloudflare-email/score)](https://jsr.io/@tundraconnect/cloudflare-email)
 
 ## Overview
 
@@ -42,11 +46,11 @@ console.log(result.delivered, result.queued);
 
 ## Documentation
 
-| Topic                                      | Description                                |
-| ------------------------------------------ | ------------------------------------------ |
-| [API](docs/CloudflareEmail-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/CloudflareEmail-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/CloudflareEmail-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                                | Description                                |
+| ------------------------------------------------------------------------------------ | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/CloudflareEmail-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/CloudflareEmail-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/CloudflareEmail-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -136,4 +140,5 @@ depends on the whole encoded message — and surfaces as `MESSAGE_TOO_LARGE`.
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

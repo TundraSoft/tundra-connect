@@ -6,6 +6,7 @@ on:
     paths:
       - "**/*.md"
       - ".github/scripts/wiki-sync.ts"
+      - ".github/scripts/doc-pages.ts"
       - ".github/workspace-meta.json"
 
 permissions:

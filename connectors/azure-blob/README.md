@@ -1,6 +1,13 @@
-# AzureBlob
+# Azure Blob Storage
 
-Typed, cross-runtime client for the [Azure Blob Storage REST API](https://learn.microsoft.com/en-us/rest/api/storageservices/blob-service-rest-api).
+Typed [Azure Blob Storage REST API](https://learn.microsoft.com/en-us/rest/api/storageservices/blob-service-rest-api)
+client for Deno, Bun, Node.js and Cloudflare Workers, with Shared Key or SAS
+authentication. Upload, download, list, inspect and delete blobs, including
+streamed block uploads and downloads for large files. A lightweight,
+Web-API-only alternative to `@azure/storage-blob` for the operations it covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/azure-blob)](https://jsr.io/@tundraconnect/azure-blob)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/azure-blob/score)](https://jsr.io/@tundraconnect/azure-blob)
 
 ## Overview
 
@@ -15,11 +22,11 @@ It uses RESTler for transport and Guardian for runtime response validation.
 
 ## Documentation
 
-| Topic                                | Description                                |
-| ------------------------------------ | ------------------------------------------ |
-| [API](docs/AzureBlob-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/AzureBlob-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/AzureBlob-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                          | Description                                |
+| ------------------------------------------------------------------------------ | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/AzureBlob-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/AzureBlob-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/AzureBlob-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -98,8 +105,9 @@ const { body } = await client.getObjectStream({
 await body.pipeTo((await Deno.create('restored.tar')).writable);
 ```
 
-See [API → Streaming](docs/AzureBlob-API.md#streaming).
+See [API → Streaming](https://github.com/TundraSoft/tundra-connect/wiki/AzureBlob-API#streaming).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

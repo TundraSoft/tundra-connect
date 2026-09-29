@@ -1,7 +1,15 @@
-# GCS
+# Google Cloud Storage (GCS)
 
-Typed, cross-runtime client for the
-[Google Cloud Storage JSON API](https://cloud.google.com/storage/docs/json_api/v1).
+Typed
+[Google Cloud Storage JSON API](https://cloud.google.com/storage/docs/json_api/v1)
+client for Deno, Bun, Node.js and Cloudflare Workers, with bearer-token or
+service-account authentication. Upload, download, list, inspect and delete
+objects, including resumable streamed uploads for large files. A lightweight,
+Web-API-only alternative to `@google-cloud/storage` for the operations it
+covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/gcs)](https://jsr.io/@tundraconnect/gcs)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/gcs/score)](https://jsr.io/@tundraconnect/gcs)
 
 ## Overview
 
@@ -17,11 +25,11 @@ names stay consistent with this repository's other object-storage connects.
 
 ## Documentation
 
-| Topic                          | Description                                |
-| ------------------------------ | ------------------------------------------ |
-| [API](docs/GCS-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/GCS-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/GCS-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                    | Description                                |
+| ------------------------------------------------------------------------ | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/GCS-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/GCS-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/GCS-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -143,8 +151,9 @@ const { body } = await client.getObjectStream({
 await body.pipeTo((await Deno.create('restored.tar')).writable);
 ```
 
-See [API → Streaming](docs/GCS-API.md#streaming).
+See [API → Streaming](https://github.com/TundraSoft/tundra-connect/wiki/GCS-API#streaming).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

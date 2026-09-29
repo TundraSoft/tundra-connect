@@ -3,17 +3,27 @@
  *
  * Each connect's README is its wiki main page. Supplemental documents named
  * `{Connect}-{Topic}.md` are discovered recursively and published as separate
- * wiki pages. Connects live under `connectors/<name>/`.
+ * wiki pages; the page map is shared with `doc-links.ts` via `doc-pages.ts`.
+ * Relative links are rewritten for the flat wiki namespace: a wiki-synced
+ * page becomes its page name, any other repo file or directory becomes a
+ * GitHub `blob`/`tree` URL, and a missing target fails the run.
+ *
+ * Usage:
+ *   deno run --allow-read --allow-write --allow-env .github/scripts/wiki-sync.ts \
+ *     [--out=wiki] [--repo=owner/name] [--ref=main]
+ *
+ * `--repo` defaults to the GITHUB_REPOSITORY env var; without it, links to
+ * non-synced paths are left untouched (with a warning).
  */
 
 import * as path from 'node:path';
-import { fromFileUrl } from 'jsr:@std/path@^1.1.6';
-
-const ROOT = fromFileUrl(new URL('../../', import.meta.url));
-const CONNECTORS_DIR = 'connectors';
-const CONNECTS: Record<string, string> = JSON.parse(
-  Deno.readTextFileSync(`${ROOT}.github/workspace-meta.json`),
-);
+import {
+  CONNECTS,
+  enterRepoRoot,
+  kindOf,
+  unmappedConnects,
+  wikiPages,
+} from './doc-pages.ts';
 
 type Args = { out: string; repo: string | undefined; ref: string };
 
@@ -32,45 +42,6 @@ function parseArgs(): Args {
   return args;
 }
 
-function walk(directory: string): string[] {
-  const files: string[] = [];
-  for (const entry of Deno.readDirSync(directory)) {
-    if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
-    const file = path.join(directory, entry.name);
-    if (entry.isDirectory) files.push(...walk(file));
-    else files.push(file);
-  }
-  return files;
-}
-
-function collectPages(errors: string[]): Map<string, string> {
-  const pages = new Map<string, string>();
-
-  if (Deno.statSync(`${ROOT}README.md`).isFile) pages.set('README.md', 'Home.md');
-
-  for (const [directory, displayName] of Object.entries(CONNECTS)) {
-    const readme = `${CONNECTORS_DIR}/${directory}/README.md`;
-    try {
-      if (Deno.statSync(`${ROOT}${readme}`).isFile) {
-        pages.set(readme, `${displayName}.md`);
-      }
-    } catch {
-      errors.push(`${readme}: connect has no README.md`);
-      continue;
-    }
-
-    const prefix = `${displayName}-`;
-    for (const file of walk(`${ROOT}${CONNECTORS_DIR}/${directory}`)) {
-      const relative = path.relative(ROOT, file);
-      const base = path.basename(relative);
-      if (base.startsWith(prefix) && base.endsWith('.md')) {
-        pages.set(relative, base);
-      }
-    }
-  }
-  return pages;
-}
-
 function rewriteLinks(
   content: string,
   source: string,
@@ -87,22 +58,27 @@ function rewriteLinks(
       return match;
     }
     const [file = '', anchor] = target.split('#', 2);
-    if (!file.endsWith('.md')) return match;
-    const resolved = path.normalize(path.join(directory, file));
+    const resolved = path.normalize(path.join(directory, file)).replace(
+      /\/$/,
+      '',
+    );
     const suffix = anchor ? `#${anchor}` : '';
+
+    // Drop the `.md`: a wiki page is served at `/wiki/<PageName>`, and a
+    // link that keeps the extension resolves to the raw file instead.
     const wikiPage = pages.get(resolved);
     if (wikiPage) return `](${wikiPage.replace(/\.md$/, '')}${suffix})`;
 
-    try {
-      if (Deno.statSync(`${ROOT}${resolved}`).isFile && repo) {
-        return `](https://github.com/${repo}/blob/${ref}/${resolved}${suffix})`;
+    // Exists in the repo but is not a wiki page: deep-link to GitHub. Left
+    // relative, it would resolve against the flat wiki and 404.
+    const kind = kindOf(resolved);
+    if (kind) {
+      if (repo) {
+        const verb = kind === 'dir' ? 'tree' : 'blob';
+        return `](https://github.com/${repo}/${verb}/${ref}/${resolved}${suffix})`;
       }
-      if (Deno.statSync(`${ROOT}${resolved}`).isFile) {
-        warnings.push(`${source}: non-wiki link '${target}' left unchanged`);
-        return match;
-      }
-    } catch {
-      // Report the unresolved link below.
+      warnings.push(`${source}: non-wiki link '${target}' left unchanged`);
+      return match;
     }
     errors.push(`${source}: dead link '${target}'`);
     return match;
@@ -133,7 +109,7 @@ function writePages(
   prunePages(args.out);
   for (const [source, page] of pages) {
     const content = rewriteLinks(
-      Deno.readTextFileSync(`${ROOT}${source}`),
+      Deno.readTextFileSync(source),
       source,
       pages,
       args.repo,
@@ -149,13 +125,19 @@ function writePages(
 function writeSidebar(pages: ReadonlyMap<string, string>, out: string): void {
   const pagesByName = new Set(pages.values());
   const sidebar = ['## Tundra Connect', '', '- [[Home]]', '', '### Connects', ''];
-  for (const displayName of Object.values(CONNECTS).sort((left, right) =>
-    left.localeCompare(right)
-  )) {
+  for (
+    const displayName of Object.values(CONNECTS).sort((left, right) =>
+      left.localeCompare(right)
+    )
+  ) {
     if (!pagesByName.has(`${displayName}.md`)) continue;
     sidebar.push(`- [[${displayName}]]`);
+    // Case-insensitive, exactly like the page map in doc-pages.ts.
+    const prefix = `${displayName.toLowerCase()}-`;
     const subpages = [...pagesByName]
-      .filter((page) => page.startsWith(`${displayName}-`) && page.endsWith('.md'))
+      .filter((page) =>
+        page.toLowerCase().startsWith(prefix) && page.endsWith('.md')
+      )
       .sort((left, right) => left.localeCompare(right));
     for (const subpage of subpages) {
       const stem = subpage.slice(0, -3);
@@ -169,9 +151,23 @@ function writeSidebar(pages: ReadonlyMap<string, string>, out: string): void {
 
 function main(): void {
   const args = parseArgs();
+  // Resolve --out before moving to the repo root, so a relative path means
+  // what it meant where the script was invoked.
+  args.out = path.resolve(args.out);
+  enterRepoRoot();
+
   const warnings: string[] = [];
   const errors: string[] = [];
-  const pages = collectPages(errors);
+  for (const dir of unmappedConnects()) {
+    errors.push(
+      `connectors/${dir}/README.md: connect '${dir}' has no wiki-name mapping — add it to .github/workspace-meta.json and run \`deno task workspace:sync\``,
+    );
+  }
+  for (const dir of Object.keys(CONNECTS)) {
+    const readme = `connectors/${dir}/README.md`;
+    if (kindOf(readme) !== 'file') errors.push(`${readme}: connect has no README.md`);
+  }
+  const pages = wikiPages();
   writePages(pages, args, warnings, errors);
   writeSidebar(pages, args.out);
 

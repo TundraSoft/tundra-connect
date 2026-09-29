@@ -1,6 +1,14 @@
 # Discord
 
-Typed, cross-runtime client for the [Discord API](https://discord.com/developers/docs/intro), scoped to sending notification messages into a channel — via a channel **webhook** or the **bot** REST API.
+Typed [Discord API](https://discord.com/developers/docs/intro) client for Deno,
+Bun, Node.js and Cloudflare Workers, scoped to sending notification messages
+into a channel through a channel **webhook** or the **bot** REST API, and to
+verifying Ed25519-signed interaction webhooks. It needs no Gateway connection,
+so it suits alerts and notifications where `discord.js` would be more than you
+need.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/discord)](https://jsr.io/@tundraconnect/discord)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/discord/score)](https://jsr.io/@tundraconnect/discord)
 
 ## Overview
 
@@ -22,11 +30,11 @@ validation.
 
 ## Documentation
 
-| Topic                              | Description                                |
-| ---------------------------------- | ------------------------------------------ |
-| [API](docs/Discord-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Discord-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Discord-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                        | Description                                |
+| ---------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Discord-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Discord-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Discord-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -113,8 +121,9 @@ export async function onInteraction(req: Request): Promise<void> {
 }
 ```
 
-See [API → Webhooks](docs/Discord-API.md#webhooks).
+See [API → Webhooks](https://github.com/TundraSoft/tundra-connect/wiki/Discord-API#webhooks).
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.

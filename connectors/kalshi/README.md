@@ -1,8 +1,13 @@
 # Kalshi
 
-Typed, cross-runtime client for [Kalshi](https://kalshi.com)'s CFTC-regulated
-event-contract REST API (`/trade-api/v2`) — public market discovery plus
-RSA-PSS-authenticated trading, on one shared host.
+Typed client for [Kalshi](https://kalshi.com)'s CFTC-regulated event-contract
+(prediction market) REST API, `/trade-api/v2`, for Deno, Bun, Node.js and
+Cloudflare Workers. Public market data needs no key. RSA-PSS-signed trading
+covers balance, positions, fills and orders, and placing, amending and
+cancelling orders.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/kalshi)](https://jsr.io/@tundraconnect/kalshi)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/kalshi/score)](https://jsr.io/@tundraconnect/kalshi)
 
 ## Overview
 
@@ -91,17 +96,17 @@ returned, or included in a thrown error. Review `KalshiSigner.ts`/
 - **A single cancel-all endpoint** doesn't exist on Kalshi's side;
   `cancelAllOrders()` is a client-side sweep over
   `GET /portfolio/orders?status=resting` — a snapshot, not a lock. See
-  [API → `cancelAllOrders()`](docs/Kalshi-API.md#cancelallorders--client-side-sweep).
+  [API → `cancelAllOrders()`](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-API#cancelallorders--client-side-sweep).
 - Historical candlesticks (`GET .../candlesticks`) and the separate
   historical-markets surface aren't covered.
 
 ## Documentation
 
-| Topic                             | Description                                |
-| --------------------------------- | ------------------------------------------ |
-| [API](docs/Kalshi-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Kalshi-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Kalshi-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                       | Description                                |
+| --------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -168,4 +173,5 @@ if (result.filled) {
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.
