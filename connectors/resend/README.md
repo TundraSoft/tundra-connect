@@ -1,10 +1,14 @@
 # Resend
 
-Send transactional email through [Resend](https://resend.com)'s REST API
-(`https://api.resend.com`): single and batch sends with idempotency keys,
-delivery-status lookups, rescheduling and cancelling scheduled email, and
-Svix webhook verification — validated locally before anything leaves your
-process.
+Typed [Resend](https://resend.com) email API client for Deno, Bun, Node.js and
+Cloudflare Workers. Send single and batch transactional email with idempotency
+keys, look up delivery status, reschedule or cancel scheduled email, and verify
+Svix-signed webhooks. Requests are validated locally before anything leaves
+your process. A lightweight alternative to the official `resend` SDK for the
+endpoints it covers.
+
+[![JSR](https://jsr.io/badges/@tundraconnect/resend)](https://jsr.io/@tundraconnect/resend)
+[![JSR Score](https://jsr.io/badges/@tundraconnect/resend/score)](https://jsr.io/@tundraconnect/resend)
 
 ## Overview
 
@@ -40,11 +44,11 @@ console.log('sent', id);
 
 ## Documentation
 
-| Topic                             | Description                                |
-| --------------------------------- | ------------------------------------------ |
-| [API](docs/Resend-API.md)         | Client configuration and endpoint methods  |
-| [Errors](docs/Resend-Errors.md)   | Error codes and diagnostic metadata        |
-| [Schemas](docs/Resend-Schemas.md) | Public Guardian schemas and inferred types |
+| Topic                                                                       | Description                                |
+| --------------------------------------------------------------------------- | ------------------------------------------ |
+| [API](https://github.com/TundraSoft/tundra-connect/wiki/Resend-API)         | Client configuration and endpoint methods  |
+| [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Resend-Errors)   | Error codes and diagnostic metadata        |
+| [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Resend-Schemas) | Public Guardian schemas and inferred types |
 
 ## Upstream
 
@@ -192,4 +196,5 @@ enforces it, not this client.
 
 ## License
 
-MIT
+MIT. Part of [Tundra Connect](https://github.com/TundraSoft/tundra-connect),
+typed vendor API clients for Deno, Bun, Node.js and Cloudflare Workers.
