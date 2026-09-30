@@ -218,6 +218,77 @@ ended.status; // still 'active'
 ended.cancel_at_next_billing_date; // true
 ```
 
+## Changing plan
+
+```ts
+// Upgrade now: credit the unused part of this cycle, charge the new plan.
+await dodo.changePlan('sub_1', {
+  product_id: 'prd_pro_monthly',
+  quantity: 1,
+  proration_billing_mode: 'prorated_immediately',
+});
+
+// Downgrade at renewal instead, and change your mind later.
+await dodo.changePlan('sub_1', {
+  product_id: 'prd_starter_monthly',
+  quantity: 1,
+  proration_billing_mode: 'do_not_bill',
+  effective_at: 'next_billing_date',
+});
+await dodo.cancelScheduledPlanChange('sub_1');
+```
+
+Act on the `subscription.plan_changed` webhook rather than on the call's
+result: with `on_payment_failure: 'prevent_change'`, the plan changes only
+once the payment succeeds.
+
+To let customers change plans, update cards and download invoices
+themselves, send them a portal link from
+`createCustomerPortalSession(customerId)`.
+
+## Syncing a product catalogue
+
+Keep plans and packs in your own database and push them to Dodo, keyed by
+an identifier of yours in each product's `metadata`:
+
+```ts
+type Plan = { code: string; name: string; monthlyCents: number };
+
+async function syncPlan(plan: Plan): Promise<string> {
+  const [existing] = await dodo.findProductsByMetadata(
+    { plan_code: plan.code },
+    { includeArchived: true },
+  );
+  if (existing) {
+    await dodo.updateProduct(existing.product_id, { name: plan.name });
+    return existing.product_id;
+  }
+  const created = await dodo.createProduct({
+    name: plan.name,
+    tax_category: 'saas',
+    price: {
+      type: 'recurring_price',
+      price: plan.monthlyCents,
+      currency: 'USD',
+      payment_frequency_count: 1,
+      payment_frequency_interval: 'Month',
+      subscription_period_count: 20,
+      subscription_period_interval: 'Year',
+    },
+    metadata: { plan_code: plan.code },
+  });
+  return created.product_id;
+}
+```
+
+A price change is a new product: create it with a new code, point new
+checkouts at it, and `archiveProduct` the old one. Existing subscribers stay
+on the product they bought until you `changePlan` them.
+
+`findProductsByMetadata` lists every product page by page, since Dodo
+cannot filter by metadata. For a large catalogue, store the returned
+`product_id` against your plan and look it up with `getProduct` instead.
+
 ## Flow comparison
 
 |                        | One-time                         | Subscription                           |
@@ -246,6 +317,12 @@ ended.cancel_at_next_billing_date; // true
 5. **A period-end cancellation stays `active`.** Read
    `cancel_at_next_billing_date`.
 6. **Amounts are the currency's smallest unit.** `1999` is $19.99.
+7. **A subscription period equal to the billing frequency expires.** A
+   product billed monthly with a one-month period runs a single cycle. Use
+   a long period, such as 20 years, for an ongoing plan.
+8. **Archived products are listed separately.** A sync that searches only
+   live products creates a duplicate of an archived one; pass
+   `includeArchived: true`.
 
 ---
 

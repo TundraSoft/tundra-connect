@@ -2,11 +2,9 @@
  * Accept payments and manage subscriptions through
  * [Dodo Payments](https://dodopayments.com), a merchant-of-record platform for
  * digital products. Covers the checkout path end to end: initialize a payment,
- * verify it actually completed, read a customer's history, and create or cancel
- * subscriptions — plus Standard Webhooks signature verification.
- *
- * Typed Dodo Payments client: create and verify payments, manage subscriptions,
- * page through a customer's history, and verify Standard Webhooks signatures.
+ * verify it actually completed, read a customer's history, and create, change,
+ * pause or cancel subscriptions — plus the product catalogue, the customer
+ * portal, and Standard Webhooks signature verification.
  *
  * Subpaths: `./schemas` (Guardian schemas and inferred types) and `./errors`
  * (`DodoPaymentsError` and its code registry).
@@ -41,6 +39,7 @@
 // Export main client class
 export {
   type CancelSubscriptionOptions,
+  type CustomerPortalSessionOptions,
   DEFAULT_MAX_PAGES,
   DEFAULT_PAGE_SIZE,
   DEFAULT_WEBHOOK_TOLERANCE_SECONDS,
@@ -48,7 +47,9 @@ export {
   type DodoPaymentsAuth,
   type DodoPaymentsMode,
   type DodoPaymentsOptions,
+  type FindProductsByMetadataOptions,
   type ListPaymentsOptions,
+  type ListProductsOptions,
   type ListSubscriptionsOptions,
   LIVE_API,
   TEST_API,

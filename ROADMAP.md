@@ -22,7 +22,7 @@ if you'd like to champion one.
 - **[CloudflareEmail](connectors/cloudflare-email/README.md)** — Typed Cloudflare Email Sending client: send transactional email with attachments, validated locally before the request is made.
 - **[CoinGecko](connectors/coingecko/README.md)** — Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.
 - **[Discord](connectors/discord/README.md)** — Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.
-- **[DodoPayments](connectors/dodo-payments/README.md)** — Typed Dodo Payments client: create and verify payments, manage subscriptions, page through a customer's history, and verify Standard Webhooks signatures.
+- **[DodoPayments](connectors/dodo-payments/README.md)** — Typed Dodo Payments client: create and verify payments, manage subscriptions and plan changes, sync products, open the customer portal, and verify Standard Webhooks signatures.
 - **[GCS](connectors/gcs/README.md)** — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.
 - **[Kalshi](connectors/kalshi/README.md)** — Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders.
 - **[ntfy](connectors/ntfy/README.md)** — Typed ntfy.sh client for publishing push notifications to a topic.

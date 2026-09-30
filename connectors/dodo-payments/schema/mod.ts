@@ -33,6 +33,19 @@ export {
   SubscriptionStatusSchemaObject,
 } from './Common.ts';
 export {
+  type ChangePlanRequestSchema,
+  ChangePlanRequestSchemaObject,
+  type ChangePlanResponseSchema,
+  ChangePlanResponseSchemaObject,
+  PLAN_CHANGE_EFFECTIVE_AT,
+  PLAN_CHANGE_ON_PAYMENT_FAILURE,
+  type PlanChangeEffectiveAtSchema,
+  type PlanChangeOnPaymentFailureSchema,
+  PRORATION_BILLING_MODES,
+  type ProrationBillingModeSchema,
+  ProrationBillingModeSchemaObject,
+} from './ChangePlan.ts';
+export {
   type CreatePaymentRequestSchema,
   CreatePaymentRequestSchemaObject,
   type CreatePaymentResponseSchema,
@@ -48,6 +61,10 @@ export {
 } from './CreateSubscription.ts';
 export { type CustomerSchema, CustomerSchemaObject } from './Customer.ts';
 export {
+  type CustomerPortalSessionSchema,
+  CustomerPortalSessionSchemaObject,
+} from './CustomerPortal.ts';
+export {
   type ErrorResponseSchema,
   ErrorResponseSchemaObject,
 } from './Error.ts';
@@ -59,6 +76,34 @@ export {
   type PaymentSchema,
   PaymentSchemaObject,
 } from './Payment.ts';
+export {
+  type CreateProductRequestSchema,
+  CreateProductRequestSchemaObject,
+  type OneTimePriceSchema,
+  OneTimePriceSchemaObject,
+  type PriceSchema,
+  PriceSchemaObject,
+  type ProductListItemSchema,
+  ProductListItemSchemaObject,
+  type ProductListSchema,
+  ProductListSchemaObject,
+  type ProductMetadataSchema,
+  ProductMetadataSchemaObject,
+  type ProductMetadataValueSchema,
+  type ProductPriceRequestSchema,
+  ProductPriceRequestSchemaObject,
+  type ProductSchema,
+  ProductSchemaObject,
+  type RecurringPriceSchema,
+  RecurringPriceSchemaObject,
+  TAX_CATEGORIES,
+  type TaxCategorySchema,
+  TaxCategorySchemaObject,
+  type UpdateProductRequestSchema,
+  UpdateProductRequestSchemaObject,
+  type UsageBasedPriceSchema,
+  UsageBasedPriceSchemaObject,
+} from './Product.ts';
 export {
   type SubscriptionListSchema,
   SubscriptionListSchemaObject,
