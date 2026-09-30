@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/telegram",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Typed Telegram Bot API client: send messages and fetch the bot's own identity.",
   "keywords": [

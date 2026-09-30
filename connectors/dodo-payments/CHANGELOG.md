@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.1.1...dodo-payments-v0.2.0) (2026-09-30)
+
+
+### Features
+
+* **dodo-payments:** products, plan changes, pause/resume and the customer portal ([ec792cc](https://github.com/TundraSoft/tundra-connect/commit/ec792cc434162dc0e106a821f633d8b6f1b72860))
+* **dodo-payments:** products, plan changes, pause/resume and the customer portal ([e964471](https://github.com/TundraSoft/tundra-connect/commit/e964471854653cfe9ffd0809b8eb97e2535643bb))
+
+
+### Documentation
+
+* make every connect README work on JSR and read well in search ([11bc5e6](https://github.com/TundraSoft/tundra-connect/commit/11bc5e6006bfdbc155cce141f63bb080daffa87d))
+* make READMEs work on JSR, GitHub and the wiki, and read well in search ([6d142ac](https://github.com/TundraSoft/tundra-connect/commit/6d142aca51f74200bce414c487c91e80bae5b6aa))
+
 ## [0.1.1](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.1.0...dodo-payments-v0.1.1) (2026-09-25)
 
 

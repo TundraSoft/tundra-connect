@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/resend",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Typed Resend client: send single and batch transactional email with idempotency keys, retrieve delivery status, reschedule or cancel scheduled email, and verify Svix-signed webhooks.",
   "keywords": [
