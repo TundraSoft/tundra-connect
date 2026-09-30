@@ -43,10 +43,16 @@ context value.
 | 400, 422      | `INVALID_REQUEST`     |
 | 401           | `AUTH_FAILED`         |
 | 403           | `FORBIDDEN`           |
-| 404           | `NOT_FOUND`           |
+| 404, 410      | `NOT_FOUND`           |
+| 409           | `CONFLICT`            |
 | 429           | `RATE_LIMITED`        |
 | 5xx           | `SERVICE_UNAVAILABLE` |
 | anything else | `UNKNOWN_ERROR`       |
+
+`CONFLICT` is what `changePlan` gets while a plan change is still pending
+(vendor code `PendingPlanChangeExists`), and what `unarchiveProduct` gets
+for a product that is not archived. `410` is Dodo's answer for a deleted
+product.
 
 A failure body that isn't the documented `{ code, message }` envelope — a
 gateway 502 serving HTML, say — still classifies by status; `vendorCode` is

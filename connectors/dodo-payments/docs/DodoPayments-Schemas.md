@@ -11,28 +11,80 @@ import {
 } from '@tundraconnect/dodo-payments/schemas';
 ```
 
-| Export                                   | Used for                                  |
-| ---------------------------------------- | ----------------------------------------- |
-| `CreatePaymentRequestSchemaObject`       | `POST /payments` body.                    |
-| `CreatePaymentResponseSchemaObject`      | `POST /payments` result.                  |
-| `PaymentSchemaObject`                    | `GET /payments/{id}` record.              |
-| `PaymentListItemSchemaObject`            | One entry of `GET /payments`.             |
-| `PaymentListSchemaObject`                | A `GET /payments` page.                   |
-| `CreateSubscriptionRequestSchemaObject`  | `POST /subscriptions` body.               |
-| `CreateSubscriptionResponseSchemaObject` | `POST /subscriptions` result.             |
-| `SubscriptionSchemaObject`               | A subscription record.                    |
-| `SubscriptionListSchemaObject`           | A `GET /subscriptions` page.              |
-| `ProductCartItemSchemaObject`            | One product line.                         |
-| `BillingAddressSchemaObject`             | Billing address.                          |
-| `CustomerRequestSchemaObject`            | The `customer` field of a create request. |
-| `CustomerDetailsSchemaObject`            | The embedded customer summary.            |
-| `CustomerSchemaObject`                   | A full customer record (`getCustomer`).   |
-| `IntentStatusSchemaObject`               | Payment status enum.                      |
-| `SubscriptionStatusSchemaObject`         | Subscription status enum.                 |
-| `TimeIntervalSchemaObject`               | Billing recurrence unit.                  |
-| `ErrorResponseSchemaObject`              | The `{ code, message }` failure envelope. |
+| Export                                   | Used for                                     |
+| ---------------------------------------- | -------------------------------------------- |
+| `CreatePaymentRequestSchemaObject`       | `POST /payments` body.                       |
+| `CreatePaymentResponseSchemaObject`      | `POST /payments` result.                     |
+| `PaymentSchemaObject`                    | `GET /payments/{id}` record.                 |
+| `PaymentListItemSchemaObject`            | One entry of `GET /payments`.                |
+| `PaymentListSchemaObject`                | A `GET /payments` page.                      |
+| `CreateSubscriptionRequestSchemaObject`  | `POST /subscriptions` body.                  |
+| `CreateSubscriptionResponseSchemaObject` | `POST /subscriptions` result.                |
+| `SubscriptionSchemaObject`               | A subscription record.                       |
+| `SubscriptionListSchemaObject`           | A `GET /subscriptions` page.                 |
+| `ProductCartItemSchemaObject`            | One product line.                            |
+| `BillingAddressSchemaObject`             | Billing address.                             |
+| `CustomerRequestSchemaObject`            | The `customer` field of a create request.    |
+| `CustomerDetailsSchemaObject`            | The embedded customer summary.               |
+| `CustomerSchemaObject`                   | A full customer record (`getCustomer`).      |
+| `CustomerPortalSessionSchemaObject`      | `createCustomerPortalSession` result.        |
+| `ChangePlanRequestSchemaObject`          | `POST /subscriptions/{id}/change-plan` body. |
+| `ChangePlanResponseSchemaObject`         | `changePlan` result.                         |
+| `ProrationBillingModeSchemaObject`       | Plan-change billing mode enum.               |
+| `CreateProductRequestSchemaObject`       | `POST /products` body.                       |
+| `UpdateProductRequestSchemaObject`       | `PATCH /products/{id}` body.                 |
+| `ProductSchemaObject`                    | A product record.                            |
+| `ProductListItemSchemaObject`            | One entry of `GET /products`.                |
+| `ProductListSchemaObject`                | A `GET /products` page.                      |
+| `ProductPriceRequestSchemaObject`        | The price of a product being created.        |
+| `PriceSchemaObject`                      | Any price Dodo returns.                      |
+| `OneTimePriceSchemaObject`               | A one-time price.                            |
+| `RecurringPriceSchemaObject`             | A recurring price.                           |
+| `UsageBasedPriceSchemaObject`            | A usage-based price (read-only).             |
+| `ProductMetadataSchemaObject`            | Product metadata.                            |
+| `TaxCategorySchemaObject`                | Product tax category enum.                   |
+| `IntentStatusSchemaObject`               | Payment status enum.                         |
+| `SubscriptionStatusSchemaObject`         | Subscription status enum.                    |
+| `TimeIntervalSchemaObject`               | Billing recurrence unit.                     |
+| `ErrorResponseSchemaObject`              | The `{ code, message }` failure envelope.    |
 
-Constants: `INTENT_STATUSES`, `SUBSCRIPTION_STATUSES`, `TIME_INTERVALS`.
+Constants: `INTENT_STATUSES`, `SUBSCRIPTION_STATUSES`, `TIME_INTERVALS`,
+`TAX_CATEGORIES`, `PRORATION_BILLING_MODES`, `PLAN_CHANGE_EFFECTIVE_AT`,
+`PLAN_CHANGE_ON_PAYMENT_FAILURE`.
+
+## Prices
+
+`PriceSchema` is a union discriminated on `type`, so checking `type`
+narrows it:
+
+```ts
+import { PriceSchemaObject } from '@tundraconnect/dodo-payments/schemas';
+
+const [, price] = PriceSchemaObject.safeParse({
+  type: 'recurring_price',
+  price: 1500,
+  currency: 'USD',
+  payment_frequency_count: 1,
+  payment_frequency_interval: 'Month',
+  subscription_period_count: 20,
+  subscription_period_interval: 'Year',
+});
+if (price?.type === 'recurring_price') {
+  console.log(price.payment_frequency_interval); // 'Month'
+}
+```
+
+Amounts are integers in the currency's smallest unit, and `currency` is an
+uppercase ISO 4217 code. A request price may be one-time or recurring; a
+response may also be usage-based, whose meter fields pass through untyped.
+
+## Product metadata
+
+Product metadata values are strings, numbers or booleans, and keep their
+type through validation: `5` stays a number and `'5'` stays a string. This
+differs from subscription and customer metadata, which Dodo returns as
+strings. `tax_category` on a product read is typed as `string`, so a
+category Dodo adds later does not fail the read.
 
 ## Status enums
 

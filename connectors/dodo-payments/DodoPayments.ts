@@ -13,14 +13,22 @@ import { constantTimeEqual } from '@crypt';
 import type { BaseGuardian, GuardianError } from '@guardian';
 import { DodoPaymentsError } from './errors/mod.ts';
 import {
+  type ChangePlanRequestSchema,
+  ChangePlanRequestSchemaObject,
+  type ChangePlanResponseSchema,
+  ChangePlanResponseSchemaObject,
   type CreatePaymentRequestSchema,
   CreatePaymentRequestSchemaObject,
   type CreatePaymentResponseSchema,
   CreatePaymentResponseSchemaObject,
+  type CreateProductRequestSchema,
+  CreateProductRequestSchemaObject,
   type CreateSubscriptionRequestSchema,
   CreateSubscriptionRequestSchemaObject,
   type CreateSubscriptionResponseSchema,
   CreateSubscriptionResponseSchemaObject,
+  type CustomerPortalSessionSchema,
+  CustomerPortalSessionSchemaObject,
   type CustomerSchema,
   CustomerSchemaObject,
   ErrorResponseSchemaObject,
@@ -28,9 +36,16 @@ import {
   PaymentListSchemaObject,
   type PaymentSchema,
   PaymentSchemaObject,
+  type ProductListItemSchema,
+  ProductListSchemaObject,
+  type ProductMetadataSchema,
+  type ProductSchema,
+  ProductSchemaObject,
   SubscriptionListSchemaObject,
   type SubscriptionSchema,
   SubscriptionSchemaObject,
+  type UpdateProductRequestSchema,
+  UpdateProductRequestSchemaObject,
 } from './schema/mod.ts';
 
 /** Dodo's test-mode host — fake money, safe to hammer. */
@@ -128,12 +143,50 @@ export type CancelSubscriptionOptions = {
   comment?: string;
 };
 
+/** Filters for {@link DodoPayments.listProducts}. */
+export type ListProductsOptions = {
+  /**
+   * `true` lists only archived products. Dodo lists live and archived
+   * products separately, so omitting it lists live products only.
+   */
+  archived?: boolean;
+  /** `true` for subscription products only, `false` for one-time only. */
+  recurring?: boolean;
+  brandId?: string;
+  /** Page number, as Dodo counts them. */
+  pageNumber?: number;
+  /** At most 100. */
+  pageSize?: number;
+};
+
+/** Options for {@link DodoPayments.findProductsByMetadata}. */
+export type FindProductsByMetadataOptions =
+  & Omit<ListProductsOptions, 'pageNumber' | 'archived'>
+  & {
+    /**
+     * Also search archived products. A sync that must not duplicate a
+     * product sets this, so it finds an archived match to unarchive.
+     */
+    includeArchived?: boolean;
+    /** Page cap for each pass. @default DEFAULT_MAX_PAGES */
+    maxPages?: number;
+  };
+
+/** Options for {@link DodoPayments.createCustomerPortalSession}. */
+export type CustomerPortalSessionOptions = {
+  /** `true` also emails the link to the customer. */
+  sendEmail?: boolean;
+  /** Where the portal sends the customer back to; overrides the business default. */
+  returnUrl?: string;
+};
+
 /** The error codes {@link DodoPayments.__toError} can produce. */
 type VendorErrorName =
   | 'INVALID_REQUEST'
   | 'AUTH_FAILED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
+  | 'CONFLICT'
   | 'RATE_LIMITED'
   | 'SERVICE_UNAVAILABLE'
   | 'UNKNOWN_ERROR';
@@ -164,9 +217,10 @@ export type VerifyWebhookOptions = {
 };
 
 /**
- * Dodo Payments client — the payment and subscription surface a checkout
- * flow actually needs: initialize a payment, read its status, verify it,
- * list a customer's history, and create or cancel a subscription.
+ * Dodo Payments client — the surface a checkout flow and its catalogue
+ * need: initialize a payment, read its status, verify it, list a
+ * customer's history; create, change, pause or cancel a subscription; open
+ * the customer portal; and create, find, update and archive products.
  *
  * Dodo is a **merchant of record**: it takes on tax and compliance, which
  * is why `billing.country` is required on every create call.
@@ -448,6 +502,341 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     );
   }
 
+  /**
+   * Create a customer portal session — `POST
+   * /customers/{customer_id}/customer-portal/session`.
+   *
+   * The portal is Dodo's hosted page where a customer manages their
+   * subscriptions, payment methods and invoices. The returned `link` signs
+   * that customer in, so send it only to them and never log it.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `customerId`; `NOT_FOUND`, `INVALID_REQUEST` and the usual vendor codes;
+   * `RESPONSE_ERROR` when the body fails validation.
+   *
+   * @example
+   * ```typescript
+   * const { link } = await client.createCustomerPortalSession('cus_1', {
+   *   returnUrl: 'https://example.com/account',
+   * });
+   * ```
+   */
+  public async createCustomerPortalSession(
+    customerId: string,
+    options: CustomerPortalSessionOptions = {},
+  ): Promise<CustomerPortalSessionSchema> {
+    DodoPayments.__requireId(customerId, 'customerId');
+    const query: Record<string, string> = {};
+    if (options.sendEmail !== undefined) {
+      query.send_email = String(options.sendEmail);
+    }
+    if (options.returnUrl !== undefined) query.return_url = options.returnUrl;
+    return await this.__requestAndValidate(
+      {
+        path: `/customers/${
+          encodeURIComponent(customerId)
+        }/customer-portal/session`,
+        method: 'POST',
+        query,
+      },
+      CustomerPortalSessionSchemaObject,
+    );
+  }
+
+  // ── Products ────────────────────────────────────────────────────────────
+
+  /**
+   * Create a product — `POST /products`.
+   *
+   * A product is what a customer pays for: a one-time price (a credit
+   * pack) or a recurring price (a plan). Store the returned `product_id`
+   * and put your own identifier in `metadata`, so a later sync can find
+   * the product with {@link findProductsByMetadata} instead of creating a
+   * duplicate.
+   *
+   * For an ongoing subscription, make the subscription period much longer
+   * than the payment frequency. When the two are equal (1 month billed
+   * monthly), the subscription runs one cycle and then expires instead of
+   * renewing. Dodo recommends a period such as 20 years for a monthly plan.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` when `request`
+   * fails local validation; `INVALID_REQUEST` and the usual vendor codes;
+   * `RESPONSE_ERROR` when the body fails validation.
+   *
+   * @example
+   * ```typescript
+   * const plan = await client.createProduct({
+   *   name: 'Pro (monthly)',
+   *   tax_category: 'saas',
+   *   price: {
+   *     type: 'recurring_price',
+   *     price: 1500, // $15.00
+   *     currency: 'USD',
+   *     payment_frequency_count: 1,
+   *     payment_frequency_interval: 'Month',
+   *     subscription_period_count: 20,
+   *     subscription_period_interval: 'Year',
+   *     trial_period_days: 14,
+   *   },
+   *   metadata: { plan_code: 'pro_monthly' },
+   * });
+   * console.log(plan.product_id);
+   * ```
+   */
+  public async createProduct(
+    request: CreateProductRequestSchema,
+  ): Promise<ProductSchema> {
+    const payload = DodoPayments.__validate(
+      CreateProductRequestSchemaObject,
+      request,
+    );
+    return await this.__requestAndValidate(
+      {
+        path: '/products',
+        method: 'POST',
+        contentType: 'JSON',
+        payload: payload as unknown as Record<string, unknown>,
+      },
+      ProductSchemaObject,
+    );
+  }
+
+  /**
+   * Fetch one product — `GET /products/{id}`. Works for archived products
+   * too.
+   *
+   * @throws {DodoPaymentsError} `NOT_FOUND` when no such product exists,
+   * plus the usual vendor and validation codes.
+   *
+   * @example
+   * ```typescript
+   * const product = await client.getProduct('pdt_1');
+   * if (product.price.type === 'recurring_price') {
+   *   console.log(product.price.price, product.price.payment_frequency_interval);
+   * }
+   * ```
+   */
+  public async getProduct(productId: string): Promise<ProductSchema> {
+    DodoPayments.__requireId(productId, 'productId');
+    return await this.__requestAndValidate(
+      {
+        path: `/products/${encodeURIComponent(productId)}`,
+        method: 'GET',
+      },
+      ProductSchemaObject,
+    );
+  }
+
+  /**
+   * List products — `GET /products`. Live products by default; pass
+   * `archived: true` for the archived ones.
+   *
+   * @returns One page of product summaries. The full price is in each
+   * item's `price_detail`.
+   *
+   * @throws {DodoPaymentsError} `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE` or `UNKNOWN_ERROR` from the vendor; `RESPONSE_ERROR` when the page fails validation.
+   *
+   * @example
+   * ```typescript
+   * const plans = await client.listProducts({ recurring: true, pageSize: 50 });
+   * ```
+   */
+  public async listProducts(
+    options: ListProductsOptions = {},
+  ): Promise<ProductListItemSchema[]> {
+    const query: Record<string, string> = {};
+    if (options.archived !== undefined) {
+      query.archived = String(options.archived);
+    }
+    if (options.recurring !== undefined) {
+      query.recurring = String(options.recurring);
+    }
+    if (options.brandId) query.brand_id = options.brandId;
+    if (options.pageNumber !== undefined) {
+      query.page_number = String(options.pageNumber);
+    }
+    if (options.pageSize !== undefined) {
+      query.page_size = String(options.pageSize);
+    }
+    const page = await this.__requestAndValidate(
+      { path: '/products', method: 'GET', query },
+      ProductListSchemaObject,
+    );
+    return page.items;
+  }
+
+  /**
+   * Walk every product matching `options`, fetching each page in turn — the
+   * auto-paging counterpart to {@link listProducts}, with the same paging
+   * and termination rules as {@link listAllPayments}.
+   *
+   * @throws {DodoPaymentsError} The same codes as {@link listProducts},
+   * raised from whichever page fails.
+   *
+   * @example
+   * ```typescript
+   * for await (const product of client.listAllProducts()) {
+   *   console.log(product.product_id, product.name);
+   * }
+   * ```
+   */
+  public async *listAllProducts(
+    options: Omit<ListProductsOptions, 'pageNumber'> & { maxPages?: number } =
+      {},
+  ): AsyncGenerator<ProductListItemSchema, void, unknown> {
+    const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
+    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+    let pageNumber: number | undefined;
+    for (let fetched = 0; fetched < maxPages; fetched++) {
+      const page = await this.listProducts({
+        ...filters,
+        pageSize,
+        pageNumber,
+      });
+      if (page.length === 0) return;
+      for (const item of page) yield item;
+      pageNumber = (pageNumber ?? 1) + 1;
+    }
+  }
+
+  /**
+   * Find the products whose metadata contains every entry of `match`.
+   *
+   * Dodo cannot filter by metadata, so this walks the product list and
+   * compares locally: one request per page, `includeArchived` doubling
+   * that. Values compare strictly, so `{ seats: 5 }` does not match
+   * `{ seats: '5' }`.
+   *
+   * @returns Every match, live products first. An empty array means none.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for an empty
+   * `match`, which would match every product; otherwise the same codes as
+   * {@link listProducts}.
+   *
+   * @example
+   * ```typescript
+   * const [existing] = await client.findProductsByMetadata(
+   *   { plan_code: 'pro_monthly' },
+   *   { includeArchived: true },
+   * );
+   * if (!existing) {
+   *   // create it
+   * }
+   * ```
+   */
+  public async findProductsByMetadata(
+    match: ProductMetadataSchema,
+    options: FindProductsByMetadataOptions = {},
+  ): Promise<ProductListItemSchema[]> {
+    const entries = Object.entries(match ?? {});
+    if (entries.length === 0) {
+      throw new DodoPaymentsError('REQUEST_VALIDATION_ERROR', {
+        reason: '`match` must have at least one metadata entry',
+      });
+    }
+    const { includeArchived = false, ...filters } = options;
+    const found: ProductListItemSchema[] = [];
+    // The live pass sends no `archived` flag, exactly like listProducts().
+    const passes: (true | undefined)[] = includeArchived
+      ? [undefined, true]
+      : [undefined];
+    for (const archived of passes) {
+      for await (
+        const product of this.listAllProducts({ ...filters, archived })
+      ) {
+        if (entries.every(([key, value]) => product.metadata[key] === value)) {
+          found.push(product);
+        }
+      }
+    }
+    return found;
+  }
+
+  /**
+   * Update a product — `PATCH /products/{id}`. Omitted fields are left as
+   * they are.
+   *
+   * Dodo returns no body for an update, so this resolves to nothing; call
+   * {@link getProduct} for the updated record.
+   *
+   * To change a price without touching existing subscribers, create a new
+   * product and archive the old one rather than updating `price` here.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `productId` or an update that fails local validation (including one
+   * that changes nothing); `NOT_FOUND`, `INVALID_REQUEST` and the usual
+   * vendor codes.
+   *
+   * @example
+   * ```typescript
+   * await client.updateProduct('pdt_1', {
+   *   name: 'Pro (monthly)',
+   *   description: 'Everything in Starter, plus custom domains.',
+   * });
+   * ```
+   */
+  public async updateProduct(
+    productId: string,
+    update: UpdateProductRequestSchema,
+  ): Promise<void> {
+    DodoPayments.__requireId(productId, 'productId');
+    const payload = DodoPayments.__validate(
+      UpdateProductRequestSchemaObject,
+      update,
+    );
+    await this.__requestNoContent({
+      path: `/products/${encodeURIComponent(productId)}`,
+      method: 'PATCH',
+      contentType: 'JSON',
+      payload: payload as unknown as Record<string, unknown>,
+    });
+  }
+
+  /**
+   * Archive a product — `DELETE /products/{id}`.
+   *
+   * Archiving takes the product off sale and out of the default product
+   * list; {@link unarchiveProduct} reverses it. Dodo names this route
+   * "archive" even though it uses `DELETE`.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `productId`; `NOT_FOUND` for an unknown or deleted product, plus the
+   * usual vendor codes.
+   *
+   * @example
+   * ```typescript
+   * await client.archiveProduct('pdt_old_price');
+   * ```
+   */
+  public async archiveProduct(productId: string): Promise<void> {
+    DodoPayments.__requireId(productId, 'productId');
+    await this.__requestNoContent({
+      path: `/products/${encodeURIComponent(productId)}`,
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Put an archived product back on sale — `POST
+   * /products/{id}/unarchive`.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `productId`; `NOT_FOUND` for an unknown product; `CONFLICT` when the
+   * product is not archived; plus the usual vendor codes.
+   *
+   * @example
+   * ```typescript
+   * await client.unarchiveProduct('pdt_1');
+   * ```
+   */
+  public async unarchiveProduct(productId: string): Promise<void> {
+    DodoPayments.__requireId(productId, 'productId');
+    await this.__requestNoContent({
+      path: `/products/${encodeURIComponent(productId)}/unarchive`,
+      method: 'POST',
+    });
+  }
+
   // ── Subscriptions ───────────────────────────────────────────────────────
 
   /**
@@ -629,6 +1018,166 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     if (options.comment !== undefined) {
       payload.cancellation_comment = options.comment;
     }
+    return await this.__patchSubscription(subscriptionId, payload);
+  }
+
+  /**
+   * Withdraw a period-end cancellation, so the subscription renews as
+   * normal — `PATCH /subscriptions/{subscription_id}` with
+   * `cancel_at_next_billing_date: false`.
+   *
+   * This undoes `cancelSubscription(id, { atPeriodEnd: true })`. An
+   * immediate cancellation cannot be undone; the customer has to subscribe
+   * again.
+   *
+   * @throws {DodoPaymentsError} `NOT_FOUND` when no such subscription
+   * exists, plus the usual vendor and validation codes.
+   *
+   * @example
+   * ```typescript
+   * const sub = await client.undoScheduledCancellation('sub_1');
+   * sub.cancel_at_next_billing_date; // false
+   * ```
+   */
+  public async undoScheduledCancellation(
+    subscriptionId: string,
+  ): Promise<SubscriptionSchema> {
+    DodoPayments.__requireId(subscriptionId, 'subscriptionId');
+    return await this.__patchSubscription(subscriptionId, {
+      cancel_at_next_billing_date: false,
+    });
+  }
+
+  /**
+   * Pause an active subscription — `PATCH /subscriptions/{subscription_id}`
+   * with `status: 'paused'`. No charges are taken while it is paused;
+   * {@link resumeSubscription} restarts it.
+   *
+   * @throws {DodoPaymentsError} `NOT_FOUND` when no such subscription
+   * exists; `INVALID_REQUEST` when it cannot be paused from its current
+   * state; plus the usual vendor and validation codes.
+   *
+   * @example
+   * ```typescript
+   * const sub = await client.pauseSubscription('sub_1');
+   * sub.status; // 'paused'
+   * ```
+   */
+  public async pauseSubscription(
+    subscriptionId: string,
+  ): Promise<SubscriptionSchema> {
+    DodoPayments.__requireId(subscriptionId, 'subscriptionId');
+    // Dodo rejects `paused` combined with any other field.
+    return await this.__patchSubscription(subscriptionId, { status: 'paused' });
+  }
+
+  /**
+   * Resume a paused subscription — `PATCH /subscriptions/{subscription_id}`
+   * with `status: 'active'`. This also resumes an `on_hold` subscription
+   * that has an unpaid pause invoice, and voids that invoice.
+   *
+   * To keep a subscription that is set to cancel at period end, use
+   * {@link undoScheduledCancellation}: its status is still `active`.
+   *
+   * @throws {DodoPaymentsError} `NOT_FOUND` when no such subscription
+   * exists; `INVALID_REQUEST` when it cannot be resumed from its current
+   * state; plus the usual vendor and validation codes.
+   *
+   * @example
+   * ```typescript
+   * const sub = await client.resumeSubscription('sub_1');
+   * sub.status; // 'active'
+   * ```
+   */
+  public async resumeSubscription(
+    subscriptionId: string,
+  ): Promise<SubscriptionSchema> {
+    DodoPayments.__requireId(subscriptionId, 'subscriptionId');
+    // Dodo rejects `active` combined with any other field.
+    return await this.__patchSubscription(subscriptionId, { status: 'active' });
+  }
+
+  /**
+   * Move a subscription to another product — `POST
+   * /subscriptions/{subscription_id}/change-plan`. Use it for upgrades,
+   * downgrades and quantity changes.
+   *
+   * By default the change applies immediately and is charged to the saved
+   * payment method, in which case every field of the result is null.
+   * `effective_at: 'next_billing_date'` schedules it for renewal instead;
+   * {@link cancelScheduledPlanChange} withdraws a scheduled change. The
+   * outcome arrives as `subscription.plan_changed` and `payment.succeeded`
+   * or `payment.failed` webhooks.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` when `request`
+   * fails local validation; `CONFLICT` while another plan change is still
+   * pending; `INVALID_REQUEST` for an inactive or on-demand subscription;
+   * plus the usual vendor codes and `RESPONSE_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * await client.changePlan('sub_1', {
+   *   product_id: 'pdt_pro_monthly',
+   *   quantity: 1,
+   *   proration_billing_mode: 'prorated_immediately',
+   * });
+   * ```
+   */
+  public async changePlan(
+    subscriptionId: string,
+    request: ChangePlanRequestSchema,
+  ): Promise<ChangePlanResponseSchema> {
+    DodoPayments.__requireId(subscriptionId, 'subscriptionId');
+    const payload = DodoPayments.__validate(
+      ChangePlanRequestSchemaObject,
+      request,
+    );
+    return await this.__requestAndValidate(
+      {
+        path: `/subscriptions/${
+          encodeURIComponent(subscriptionId)
+        }/change-plan`,
+        method: 'POST',
+        contentType: 'JSON',
+        payload: payload as unknown as Record<string, unknown>,
+      },
+      ChangePlanResponseSchemaObject,
+    );
+  }
+
+  /**
+   * Withdraw a plan change scheduled with `effective_at:
+   * 'next_billing_date'` — `DELETE
+   * /subscriptions/{subscription_id}/change-plan/scheduled`.
+   *
+   * @throws {DodoPaymentsError} `NOT_FOUND` when there is no scheduled
+   * change; `INVALID_REQUEST` when the subscription does not exist (Dodo
+   * answers that with a 422); plus the usual vendor and validation codes.
+   *
+   * @example
+   * ```typescript
+   * await client.cancelScheduledPlanChange('sub_1');
+   * ```
+   */
+  public async cancelScheduledPlanChange(
+    subscriptionId: string,
+  ): Promise<void> {
+    DodoPayments.__requireId(subscriptionId, 'subscriptionId');
+    await this.__requestNoContent({
+      path: `/subscriptions/${
+        encodeURIComponent(subscriptionId)
+      }/change-plan/scheduled`,
+      method: 'DELETE',
+    });
+  }
+
+  // ── internals ───────────────────────────────────────────────────────────
+
+  /** `PATCH /subscriptions/{id}` with `payload`, validating the returned record. */
+  private async __patchSubscription(
+    subscriptionId: string,
+    payload: Record<string, unknown>,
+  ): Promise<SubscriptionSchema> {
     return await this.__requestAndValidate(
       {
         path: `/subscriptions/${encodeURIComponent(subscriptionId)}`,
@@ -639,8 +1188,6 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
       SubscriptionSchemaObject,
     );
   }
-
-  // ── internals ───────────────────────────────────────────────────────────
 
   /** Rejects a blank path id before it becomes a request to the collection endpoint. */
   private static __requireId(value: string, name: string): void {
@@ -872,18 +1419,38 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
         }, err);
       }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new DodoPaymentsError('RATE_LIMITED', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
-        }, err);
-      }
-      throw err;
+      throw DodoPayments.__rewrapRateLimit(err);
     }
+  }
+
+  /**
+   * Makes a request whose success carries no body worth reading (Dodo
+   * answers these with an empty 200 or a 204). Failures still go through
+   * {@link __toError}.
+   */
+  private async __requestNoContent(endpoint: RESTlerEndpoint): Promise<void> {
+    try {
+      await this._makeRequest(endpoint);
+    } catch (err) {
+      throw DodoPayments.__rewrapRateLimit(err);
+    }
+  }
+
+  /**
+   * RESTler retried once (maxRetryWait) and was throttled again, or the
+   * vendor's hint exceeded the cap: surface it as this connect's own error,
+   * with the hint and whether a wait already happened. Anything else is
+   * returned unchanged for the caller to rethrow.
+   */
+  private static __rewrapRateLimit(err: unknown): unknown {
+    if (err instanceof RESTlerRateLimitError) {
+      return new DodoPaymentsError('RATE_LIMITED', {
+        status: 429,
+        retryAfterSeconds: err.getContextValue('retryAfter'),
+        retried: err.getContextValue('retried'),
+      }, err);
+    }
+    return err;
   }
 
   /**
@@ -902,7 +1469,9 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     let code: VendorErrorName;
     if (status === 401) code = 'AUTH_FAILED';
     else if (status === 403) code = 'FORBIDDEN';
-    else if (status === 404) code = 'NOT_FOUND';
+    // 410 is Dodo's answer for a deleted product.
+    else if (status === 404 || status === 410) code = 'NOT_FOUND';
+    else if (status === 409) code = 'CONFLICT';
     else if (status === 429) code = 'RATE_LIMITED';
     else if (status === 400 || status === 422) code = 'INVALID_REQUEST';
     else if (status >= 500) code = 'SERVICE_UNAVAILABLE';

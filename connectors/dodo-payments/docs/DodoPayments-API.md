@@ -166,6 +166,25 @@ Where does `customer_id` come from? `createPayment` and
 customer only by email. Store it then — it is the only place it is handed
 to you.
 
+### `createCustomerPortalSession(customerId, options?)`
+
+`POST /customers/{customer_id}/customer-portal/session` — a sign-in link to
+Dodo's hosted portal, where the customer manages their subscriptions,
+payment methods and invoices.
+
+```ts
+const { link } = await client.createCustomerPortalSession('cus_1', {
+  returnUrl: 'https://example.com/account',
+});
+```
+
+| Option      | Effect                                                    |
+| ----------- | --------------------------------------------------------- |
+| `sendEmail` | `true` also emails the link to the customer.              |
+| `returnUrl` | Where the portal sends them back; overrides your default. |
+
+> The link signs the customer in. Send it only to them and never log it.
+
 ## Querying by customer
 
 Both list methods take `customerId`, and **status comes back inline** — no
@@ -264,6 +283,147 @@ for await (const s of client.listAllSubscriptions({ customerId })) {
 > `status` as `'active'` until the date arrives and records the intent in
 > `cancel_at_next_billing_date`. Checking `status` alone will tell you the
 > cancellation did not take.
+
+### `undoScheduledCancellation(subscriptionId)`
+
+`PATCH /subscriptions/{subscription_id}` with
+`cancel_at_next_billing_date: false`. Withdraws a period-end cancellation,
+so the subscription renews as normal. An immediate cancellation cannot be
+undone.
+
+### `pauseSubscription(subscriptionId)` / `resumeSubscription(subscriptionId)`
+
+`PATCH /subscriptions/{subscription_id}` with `status: 'paused'` or
+`status: 'active'`, sent alone because Dodo rejects either combined with
+another field. Resuming also restarts an `on_hold` subscription that has an
+unpaid pause invoice, and voids that invoice.
+
+`resumeSubscription` is for a paused subscription. To keep one that is set
+to cancel at period end, use `undoScheduledCancellation`: its status is
+still `active`.
+
+### `changePlan(subscriptionId, request)`
+
+`POST /subscriptions/{subscription_id}/change-plan` — move a subscription to
+another product, for an upgrade, a downgrade or a quantity change.
+
+```ts
+await client.changePlan('sub_1', {
+  product_id: 'prd_pro_monthly',
+  quantity: 1,
+  proration_billing_mode: 'prorated_immediately',
+});
+```
+
+| Field                      | Meaning                                                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `product_id`, `quantity`   | The new plan. Required.                                                                                          |
+| `proration_billing_mode`   | Required. See below.                                                                                             |
+| `effective_at`             | `'immediately'` (default) or `'next_billing_date'`.                                                              |
+| `on_payment_failure`       | `'prevent_change'` keeps the old plan until payment succeeds; `'apply_change'` (Dodo's default) switches anyway. |
+| `collect_via_payment_link` | Charge through a hosted checkout instead of the saved card. Needs an immediate change and `prevent_change`.      |
+| `addons`                   | Addons for the new plan. An empty list removes existing ones.                                                    |
+
+| `proration_billing_mode` | Billing                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| `prorated_immediately`   | Credits the unused part of the current cycle, then charges a full cycle of the new plan.  |
+| `full_immediately`       | Charges the new plan in full, with no credit for the current cycle.                       |
+| `difference_immediately` | An upgrade charges the difference now; a downgrade keeps the remainder as renewal credit. |
+| `do_not_bill`            | Switches with no charge or credit; the billing cycle is unchanged.                        |
+
+For a change charged to the saved payment method, every field of the result
+is null; with `collect_via_payment_link`, `payment_link` is the checkout to
+send the customer to. The outcome arrives as `subscription.plan_changed`
+and `payment.succeeded` or `payment.failed` webhooks.
+
+A second change while one is still pending fails with `CONFLICT` (vendor
+code `PendingPlanChangeExists`).
+
+### `cancelScheduledPlanChange(subscriptionId)`
+
+`DELETE /subscriptions/{subscription_id}/change-plan/scheduled` — withdraw a
+change made with `effective_at: 'next_billing_date'`. `NOT_FOUND` when
+nothing is scheduled.
+
+## Products
+
+A product is what a customer pays for: a one-time price (a credit pack) or
+a recurring price (a plan). Payments and subscriptions refer to it by
+`product_id`.
+
+### `createProduct(request)`
+
+`POST /products`. Required: `name` (at most 100 characters),
+`tax_category`, `price`.
+
+```ts
+const pack = await client.createProduct({
+  name: 'Credit pack (500)',
+  tax_category: 'saas',
+  price: { type: 'one_time_price', price: 4900, currency: 'USD' },
+  metadata: { pack_code: 'credits_500' },
+});
+```
+
+`price` is either `{ type: 'one_time_price', price, currency, … }` or
+`{ type: 'recurring_price', price, currency, payment_frequency_count,
+payment_frequency_interval, subscription_period_count,
+subscription_period_interval, trial_period_days?, … }`. Usage-based prices
+can be read but not created here.
+
+> **The subscription period is how long a subscription runs, not how often
+> it bills.** When the two are equal (1 month billed monthly), the
+> subscription runs one cycle and then expires. For an ongoing plan, set a
+> long period such as `20` + `'Year'`.
+
+`tax_category` is one of `digital_products`, `saas`, `e_book`, `edtech`,
+`live_tutoring`.
+
+### `getProduct(productId)`
+
+`GET /products/{id}` — the full record, archived or not. `price` is a union
+discriminated on `type`.
+
+### `listProducts(options?)` / `listAllProducts(options?)`
+
+`GET /products`. Filters: `archived`, `recurring`, `brandId`, plus paging.
+Without `archived`, only live products are listed; `archived: true` lists
+only archived ones. Each item carries the base amount in `price` and
+`currency`, and the full price in `price_detail`.
+
+`listAllProducts` pages the same way as `listAllPayments`.
+
+### `findProductsByMetadata(match, options?)`
+
+Every product whose `metadata` contains all entries of `match`. Dodo cannot
+filter by metadata, so this pages through the catalogue: one request per
+page, and a second pass over archived products with
+`includeArchived: true`. Values compare strictly, so `{ seats: 5 }` does not
+match `{ seats: '5' }`.
+
+```ts
+const [existing] = await client.findProductsByMetadata(
+  { plan_code: 'pro_monthly' },
+  { includeArchived: true },
+);
+```
+
+Metadata values are strings, numbers or booleans, and keep their type.
+
+### `updateProduct(productId, update)`
+
+`PATCH /products/{id}`. Every field is optional; an update that changes
+nothing is rejected locally. Dodo returns no body, so this resolves to
+nothing; call `getProduct` for the new record.
+
+To change a price without moving existing subscribers, create a new
+product and archive the old one instead of updating `price`.
+
+### `archiveProduct(productId)` / `unarchiveProduct(productId)`
+
+`DELETE /products/{id}` takes a product off sale; Dodo calls this archiving.
+`POST /products/{id}/unarchive` puts it back, and fails with `CONFLICT` for
+a product that is not archived.
 
 ## Webhooks
 

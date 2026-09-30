@@ -92,6 +92,19 @@ class MockDodo extends DodoPayments {
     };
   }
 
+  /** A success with no body at all — Dodo's 204, or its empty 200. */
+  setEmptyResponse(status = 200): void {
+    this._fetch = (input, init) => {
+      this.request = {
+        url: String(input),
+        method: init?.method,
+        headers: init?.headers as Record<string, string> | undefined,
+        body: init?.body as string | undefined,
+      };
+      return Promise.resolve(new Response(null, { status }));
+    };
+  }
+
   setResponse(body: unknown, status = 200): void {
     this._fetch = (input, init) => {
       this.request = {
@@ -494,6 +507,8 @@ describe('DodoPayments — error mapping', () => {
     [401, 'AUTH_FAILED'],
     [403, 'FORBIDDEN'],
     [404, 'NOT_FOUND'],
+    [409, 'CONFLICT'],
+    [410, 'NOT_FOUND'],
     [422, 'INVALID_REQUEST'],
     [429, 'RATE_LIMITED'],
     [500, 'SERVICE_UNAVAILABLE'],
@@ -1082,6 +1097,406 @@ describe('DodoPayments — maxRetryWait (RESTler retries once)', () => {
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(c.slept, []);
+  });
+});
+
+const MONTHLY_PRICE = {
+  type: 'recurring_price' as const,
+  price: 1500,
+  currency: 'USD',
+  payment_frequency_count: 1,
+  payment_frequency_interval: 'Month' as const,
+  subscription_period_count: 20,
+  subscription_period_interval: 'Year' as const,
+};
+
+const PRODUCT = {
+  product_id: 'pdt_1',
+  business_id: 'biz_1',
+  brand_id: 'brd_1',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  is_recurring: true,
+  tax_category: 'saas',
+  price: MONTHLY_PRICE,
+  metadata: { plan_code: 'pro_monthly' },
+  name: 'Pro (monthly)',
+};
+
+const productItem = (id: string, metadata: Record<string, unknown> = {}) => ({
+  product_id: id,
+  business_id: 'biz_1',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  is_recurring: false,
+  tax_category: 'saas',
+  metadata,
+});
+
+describe('DodoPayments — products', () => {
+  it('POSTs a new product to /products and returns the record', async () => {
+    const c = client(PRODUCT);
+    const product = await c.createProduct({
+      name: 'Pro (monthly)',
+      tax_category: 'saas',
+      price: MONTHLY_PRICE,
+      metadata: { plan_code: 'pro_monthly' },
+    });
+    asserts.assertEquals(c.request!.method, 'POST');
+    asserts.assert(c.request!.url.endsWith('/products'));
+    const body = JSON.parse(c.request!.body!);
+    asserts.assertEquals(body.price.payment_frequency_interval, 'Month');
+    asserts.assertEquals(body.metadata, { plan_code: 'pro_monthly' });
+    asserts.assertEquals(product.product_id, 'pdt_1');
+  });
+
+  it('rejects an invalid product before sending', async () => {
+    const c = client(PRODUCT);
+    const err = await asserts.assertRejects(
+      () =>
+        c.createProduct({
+          name: 'Pack',
+          tax_category: 'saas',
+          price: { type: 'one_time_price', price: 49.5, currency: 'USD' },
+        }),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('GETs a product by id, url-encoded', async () => {
+    const c = client(PRODUCT);
+    const product = await c.getProduct('pdt/1');
+    asserts.assertEquals(c.request!.method, 'GET');
+    asserts.assert(c.request!.url.endsWith('/products/pdt%2F1'));
+    asserts.assertEquals(product.price.type, 'recurring_price');
+  });
+
+  it('lists products with its filters', async () => {
+    const c = client({ items: [productItem('pdt_1')] });
+    const items = await c.listProducts({
+      archived: true,
+      recurring: false,
+      brandId: 'brd_1',
+      pageSize: 50,
+    });
+    const url = new URL(c.request!.url);
+    asserts.assertEquals(url.pathname, '/products');
+    asserts.assertEquals(url.searchParams.get('archived'), 'true');
+    asserts.assertEquals(url.searchParams.get('recurring'), 'false');
+    asserts.assertEquals(url.searchParams.get('brand_id'), 'brd_1');
+    asserts.assertEquals(url.searchParams.get('page_size'), '50');
+    asserts.assertEquals(items.length, 1);
+  });
+
+  it('sends no archived flag unless asked — live products by default', async () => {
+    const c = client({ items: [] });
+    await c.listProducts();
+    asserts.assertEquals(new URL(c.request!.url).search, '');
+  });
+
+  it('PATCHes an update and resolves on an empty 200', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(200);
+    const result = await c.updateProduct('pdt_1', { name: 'Renamed' });
+    asserts.assertEquals(result, undefined);
+    asserts.assertEquals(c.request!.method, 'PATCH');
+    asserts.assert(c.request!.url.endsWith('/products/pdt_1'));
+    asserts.assertEquals(JSON.parse(c.request!.body!), { name: 'Renamed' });
+  });
+
+  it('rejects an update that changes nothing, without sending', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(200);
+    const err = await asserts.assertRejects(
+      () => c.updateProduct('pdt_1', {}),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('archives with DELETE /products/{id}', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(200);
+    await c.archiveProduct('pdt_1');
+    asserts.assertEquals(c.request!.method, 'DELETE');
+    asserts.assert(c.request!.url.endsWith('/products/pdt_1'));
+  });
+
+  it('unarchives with POST /products/{id}/unarchive', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(200);
+    await c.unarchiveProduct('pdt_1');
+    asserts.assertEquals(c.request!.method, 'POST');
+    asserts.assert(c.request!.url.endsWith('/products/pdt_1/unarchive'));
+  });
+
+  it('maps unarchiving a live product (409) to CONFLICT', async () => {
+    const c = client({ code: 'ProductNotArchived', message: 'no' }, 409);
+    const err = await asserts.assertRejects(
+      () => c.unarchiveProduct('pdt_1'),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'CONFLICT');
+  });
+
+  it('maps archiving a deleted product (410) to NOT_FOUND', async () => {
+    const c = client({ code: 'Gone', message: 'deleted' }, 410);
+    const err = await asserts.assertRejects(
+      () => c.archiveProduct('pdt_1'),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'NOT_FOUND');
+  });
+
+  it('rejects a blank product id on every product route, without sending', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(200);
+    const calls = [
+      () => c.getProduct(' '),
+      () => c.updateProduct('', { name: 'x' }),
+      () => c.archiveProduct(''),
+      () => c.unarchiveProduct(''),
+    ];
+    for (const call of calls) {
+      const err = await asserts.assertRejects(call, DodoPaymentsError);
+      asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    }
+    asserts.assertEquals(c.request, undefined);
+  });
+});
+
+describe('DodoPayments — findProductsByMetadata', () => {
+  function pager(): PagingMockDodo {
+    return new PagingMockDodo({ auth: AUTH });
+  }
+
+  it('walks every page and returns the matches', async () => {
+    const c = pager();
+    c.setPages([
+      { items: [productItem('pdt_1', { plan_code: 'starter' })] },
+      { items: [productItem('pdt_2', { plan_code: 'pro_monthly' })] },
+      { items: [] },
+    ]);
+    const found = await c.findProductsByMetadata({ plan_code: 'pro_monthly' });
+    asserts.assertEquals(found.map((p) => p.product_id), ['pdt_2']);
+    asserts.assertEquals(c.urls.length, 3);
+    asserts.assert(!c.urls[0]!.includes('archived'), c.urls[0]);
+  });
+
+  it('requires every entry to match, and compares strictly', async () => {
+    const c = pager();
+    c.setPages([
+      {
+        items: [
+          productItem('pdt_1', { plan_code: 'pro', seats: '5' }),
+          productItem('pdt_2', { plan_code: 'pro', seats: 5 }),
+          productItem('pdt_3', { plan_code: 'pro' }),
+        ],
+      },
+      { items: [] },
+    ]);
+    const found = await c.findProductsByMetadata({
+      plan_code: 'pro',
+      seats: 5,
+    });
+    asserts.assertEquals(found.map((p) => p.product_id), ['pdt_2']);
+  });
+
+  it('searches archived products in a second pass when asked', async () => {
+    const c = pager();
+    c.setPages([
+      { items: [] },
+      { items: [productItem('pdt_old', { plan_code: 'pro_monthly' })] },
+      { items: [] },
+    ]);
+    const found = await c.findProductsByMetadata(
+      { plan_code: 'pro_monthly' },
+      { includeArchived: true },
+    );
+    asserts.assertEquals(found.map((p) => p.product_id), ['pdt_old']);
+    asserts.assert(!c.urls[0]!.includes('archived'), c.urls[0]);
+    asserts.assert(c.urls[1]!.includes('archived=true'), c.urls[1]);
+  });
+
+  it('returns an empty array when nothing matches', async () => {
+    const c = pager();
+    c.setPages([{ items: [productItem('pdt_1', { plan_code: 'x' })] }]);
+    asserts.assertEquals(
+      await c.findProductsByMetadata({ plan_code: 'y' }),
+      [],
+    );
+  });
+
+  it('rejects an empty match — it would match every product', async () => {
+    const c = pager();
+    c.setPages([]);
+    const err = await asserts.assertRejects(
+      () => c.findProductsByMetadata({}),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    asserts.assertEquals(c.urls, []);
+  });
+});
+
+describe('DodoPayments — plan changes', () => {
+  const change = {
+    product_id: 'pdt_pro',
+    quantity: 1,
+    proration_billing_mode: 'prorated_immediately' as const,
+  };
+
+  it('POSTs to /subscriptions/{id}/change-plan', async () => {
+    const c = client({
+      payment_id: null,
+      payment_link: null,
+      client_secret: null,
+      expires_on: null,
+    });
+    const result = await c.changePlan('sub_1', change);
+    asserts.assertEquals(c.request!.method, 'POST');
+    asserts.assert(c.request!.url.endsWith('/subscriptions/sub_1/change-plan'));
+    asserts.assertEquals(JSON.parse(c.request!.body!), change);
+    asserts.assertEquals(result.payment_link, null);
+  });
+
+  it('accepts an empty body for an off-session change', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(200);
+    asserts.assertEquals(await c.changePlan('sub_1', change), {});
+  });
+
+  it('rejects an impossible payment-link change before sending', async () => {
+    const c = client({});
+    const err = await asserts.assertRejects(
+      () =>
+        c.changePlan('sub_1', {
+          ...change,
+          collect_via_payment_link: true,
+          effective_at: 'next_billing_date',
+          on_payment_failure: 'prevent_change',
+        }),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('maps a pending plan change (409) to CONFLICT, keeping the vendor code', async () => {
+    const c = client(
+      { code: 'PendingPlanChangeExists', message: 'pending' },
+      409,
+    );
+    const err = await asserts.assertRejects(
+      () => c.changePlan('sub_1', change),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'CONFLICT');
+    asserts.assertEquals(
+      err.getContextValue('vendorCode'),
+      'PendingPlanChangeExists',
+    );
+  });
+
+  it('cancels a scheduled change with DELETE, resolving on a 204', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(204);
+    await c.cancelScheduledPlanChange('sub_1');
+    asserts.assertEquals(c.request!.method, 'DELETE');
+    asserts.assert(
+      c.request!.url.endsWith('/subscriptions/sub_1/change-plan/scheduled'),
+    );
+  });
+});
+
+describe('DodoPayments — pause, resume and undo cancellation', () => {
+  it('pauses with status paused alone — Dodo rejects it combined', async () => {
+    const c = client({ ...SUBSCRIPTION, status: 'paused' });
+    const sub = await c.pauseSubscription('sub_1');
+    asserts.assertEquals(c.request!.method, 'PATCH');
+    asserts.assertEquals(JSON.parse(c.request!.body!), { status: 'paused' });
+    asserts.assertEquals(sub.status, 'paused');
+  });
+
+  it('resumes with status active alone', async () => {
+    const c = client(SUBSCRIPTION);
+    const sub = await c.resumeSubscription('sub_1');
+    asserts.assertEquals(JSON.parse(c.request!.body!), { status: 'active' });
+    asserts.assertEquals(sub.status, 'active');
+  });
+
+  it('undoes a period-end cancellation with cancel_at_next_billing_date false', async () => {
+    const c = client(SUBSCRIPTION);
+    const sub = await c.undoScheduledCancellation('sub_1');
+    asserts.assertEquals(JSON.parse(c.request!.body!), {
+      cancel_at_next_billing_date: false,
+    });
+    asserts.assertEquals(sub.cancel_at_next_billing_date, false);
+  });
+
+  it('rejects a blank subscription id on every route, without sending', async () => {
+    const c = client(SUBSCRIPTION);
+    const calls = [
+      () => c.pauseSubscription(''),
+      () => c.resumeSubscription(' '),
+      () => c.undoScheduledCancellation(''),
+      () =>
+        c.changePlan('', {
+          product_id: 'p',
+          quantity: 1,
+          proration_billing_mode: 'do_not_bill',
+        }),
+      () => c.cancelScheduledPlanChange(''),
+    ];
+    for (const call of calls) {
+      const err = await asserts.assertRejects(call, DodoPaymentsError);
+      asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    }
+    asserts.assertEquals(c.request, undefined);
+  });
+});
+
+describe('DodoPayments — customer portal', () => {
+  const SESSION = { link: 'https://customer.dodopayments.com/session/abc' };
+
+  it('POSTs a session and returns the link', async () => {
+    const c = client(SESSION);
+    const session = await c.createCustomerPortalSession('cus_1');
+    asserts.assertEquals(c.request!.method, 'POST');
+    const url = new URL(c.request!.url);
+    asserts.assertEquals(
+      url.pathname,
+      '/customers/cus_1/customer-portal/session',
+    );
+    asserts.assertEquals(url.search, '');
+    asserts.assertEquals(session.link, SESSION.link);
+  });
+
+  it('passes send_email and return_url as query parameters', async () => {
+    const c = client(SESSION);
+    await c.createCustomerPortalSession('cus_1', {
+      sendEmail: true,
+      returnUrl: 'https://example.com/account',
+    });
+    const url = new URL(c.request!.url);
+    asserts.assertEquals(url.searchParams.get('send_email'), 'true');
+    asserts.assertEquals(
+      url.searchParams.get('return_url'),
+      'https://example.com/account',
+    );
+  });
+
+  it('rejects a blank customer id without sending', async () => {
+    const c = client(SESSION);
+    const err = await asserts.assertRejects(
+      () => c.createCustomerPortalSession(''),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    asserts.assertEquals(c.request, undefined);
   });
 });
 

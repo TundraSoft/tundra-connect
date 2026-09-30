@@ -22,6 +22,8 @@ export const DodoPaymentsErrorCodes = {
     'The API key lacks permission for this operation (HTTP ${status}): ${detail}',
   NOT_FOUND:
     'The requested resource does not exist (HTTP ${status}): ${detail}',
+  CONFLICT:
+    "The request conflicts with the resource's current state (HTTP ${status}): ${detail}",
   RATE_LIMITED: 'Dodo Payments rate limit exceeded (HTTP ${status}): ${detail}',
   SERVICE_UNAVAILABLE:
     'Dodo Payments is currently unavailable (HTTP ${status}): ${detail}',

@@ -4,7 +4,8 @@ Typed [Dodo Payments](https://dodopayments.com) API client for Deno, Bun,
 Node.js and Cloudflare Workers. Dodo Payments is a merchant-of-record platform
 for digital products, and this client covers its checkout path end to end:
 initialize a payment, verify it actually completed, read a customer's history,
-create or cancel subscriptions, and verify Standard Webhooks signatures.
+create, change, pause or cancel subscriptions, manage the product catalogue,
+open the customer portal, and verify Standard Webhooks signatures.
 
 [![JSR](https://jsr.io/badges/@tundraconnect/dodo-payments)](https://jsr.io/@tundraconnect/dodo-payments)
 [![JSR Score](https://jsr.io/badges/@tundraconnect/dodo-payments/score)](https://jsr.io/@tundraconnect/dodo-payments)
@@ -14,15 +15,16 @@ create or cancel subscriptions, and verify Standard Webhooks signatures.
 Dodo is a **merchant of record**: it handles tax and compliance on your
 behalf, which is why `billing.country` is required on every create call.
 
-This connect deliberately wraps the payment and subscription surface a
-checkout flow actually needs, not the vendor's full ~147-endpoint API.
+This connect deliberately wraps the surface a checkout flow and its
+catalogue actually need, not the vendor's full ~147-endpoint API.
 
-| Area          | Methods                                                                                                    |
-| ------------- | ---------------------------------------------------------------------------------------------------------- |
-| Payments      | `createPayment`, `getPayment`, `isPaid`, `listPayments`, `listAllPayments`                                 |
-| Subscriptions | `createSubscription`, `getSubscription`, `listSubscriptions`, `listAllSubscriptions`, `cancelSubscription` |
-| Customers     | `getCustomer`                                                                                              |
-| Webhooks      | `verifyWebhook`                                                                                            |
+| Area          | Methods                                                                                                                                                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Payments      | `createPayment`, `getPayment`, `isPaid`, `listPayments`, `listAllPayments`                                                                                                                                                    |
+| Subscriptions | `createSubscription`, `getSubscription`, `listSubscriptions`, `listAllSubscriptions`, `changePlan`, `cancelScheduledPlanChange`, `pauseSubscription`, `resumeSubscription`, `cancelSubscription`, `undoScheduledCancellation` |
+| Products      | `createProduct`, `getProduct`, `listProducts`, `listAllProducts`, `findProductsByMetadata`, `updateProduct`, `archiveProduct`, `unarchiveProduct`                                                                             |
+| Customers     | `getCustomer`, `createCustomerPortalSession`                                                                                                                                                                                  |
+| Webhooks      | `verifyWebhook`                                                                                                                                                                                                               |
 
 Two things this connect is opinionated about, both because getting them
 wrong costs real money:
@@ -162,6 +164,30 @@ ended.cancel_at_next_billing_date; // true
 > arrives. Read `cancel_at_next_billing_date`, not `status`, or you will
 > conclude the cancellation did not take.
 
+Move a subscription to another product, pause it, or hand the customer
+Dodo's portal to manage it themselves:
+
+```ts continued
+// Upgrade now, crediting the unused part of the current cycle.
+await client.changePlan('sub_1', {
+  product_id: 'prd_pro_monthly',
+  quantity: 1,
+  proration_billing_mode: 'prorated_immediately',
+});
+
+// Keep a subscription that was set to cancel at period end.
+await client.undoScheduledCancellation('sub_1');
+
+// Pause and resume.
+await client.pauseSubscription('sub_1');
+await client.resumeSubscription('sub_1');
+
+// A sign-in link to the customer portal. Send it only to that customer.
+const { link } = await client.createCustomerPortalSession('cus_1', {
+  returnUrl: 'https://example.com/account',
+});
+```
+
 ### 4. Show a customer what they have
 
 Both list methods take `customerId`, and status comes back inline — no
@@ -236,6 +262,47 @@ Verification is constant-time, enforces a 5-minute replay window in both
 directions, and is deliberately sensitive to the raw bytes: re-serializing
 parsed JSON changes whitespace and key order and will fail. That strictness
 is the point — it guarantees you act on exactly the body that was signed.
+
+### 6. Keep a product catalogue in sync
+
+Put your own identifier in each product's `metadata`, and a re-sync finds
+the product instead of creating a duplicate. Dodo cannot filter by
+metadata, so `findProductsByMetadata` pages through the catalogue.
+
+```ts continued
+const planCode = 'pro_monthly';
+
+const [existing] = await client.findProductsByMetadata(
+  { plan_code: planCode },
+  { includeArchived: true }, // an archived match is unarchived, not duplicated
+);
+
+if (!existing) {
+  await client.createProduct({
+    name: 'Pro (monthly)',
+    tax_category: 'saas',
+    price: {
+      type: 'recurring_price',
+      price: 1500, // $15.00
+      currency: 'USD',
+      payment_frequency_count: 1,
+      payment_frequency_interval: 'Month',
+      // Longer than the billing frequency, or the subscription expires
+      // after one cycle instead of renewing.
+      subscription_period_count: 20,
+      subscription_period_interval: 'Year',
+      trial_period_days: 14,
+    },
+    metadata: { plan_code: planCode },
+  });
+} else {
+  await client.updateProduct(existing.product_id, { name: 'Pro (monthly)' });
+}
+```
+
+To change a price without moving existing subscribers, create a new
+product and `archiveProduct` the old one; `unarchiveProduct` puts a product
+back on sale.
 
 ## License
 
