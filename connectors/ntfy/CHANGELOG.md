@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/TundraSoft/tundra-connect/compare/ntfy-v0.1.0...ntfy-v0.1.1) (2026-09-30)
+
+
+### Documentation
+
+* make every connect README work on JSR and read well in search ([11bc5e6](https://github.com/TundraSoft/tundra-connect/commit/11bc5e6006bfdbc155cce141f63bb080daffa87d))
+* make READMEs work on JSR, GitHub and the wiki, and read well in search ([6d142ac](https://github.com/TundraSoft/tundra-connect/commit/6d142aca51f74200bce414c487c91e80bae5b6aa))
+
 ## 0.1.0 (2026-09-25)
 
 
