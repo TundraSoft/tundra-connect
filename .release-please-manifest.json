@@ -13,6 +13,7 @@
   "connectors/paypal": "0.1.1",
   "connectors/polymarket": "0.1.0",
   "connectors/razorpay": "0.1.1",
+  "connectors/resend": "0.0.0",
   "connectors/s3": "0.1.0",
   "connectors/sendgrid": "0.1.1",
   "connectors/sentry": "0.1.0",

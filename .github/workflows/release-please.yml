@@ -39,6 +39,7 @@ on:
           - connectors/paypal
           - connectors/polymarket
           - connectors/razorpay
+          - connectors/resend
           - connectors/s3
           - connectors/sendgrid
           - connectors/sentry

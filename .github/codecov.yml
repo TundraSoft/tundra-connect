@@ -69,6 +69,10 @@ component_management:
         name: razorpay
         paths:
           - connectors/razorpay/**
+      - component_id: resend
+        name: resend
+        paths:
+          - connectors/resend/**
       - component_id: s3
         name: s3
         paths:

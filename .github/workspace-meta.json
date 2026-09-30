@@ -13,6 +13,7 @@
   "paypal": "PayPal",
   "polymarket": "Polymarket",
   "razorpay": "Razorpay",
+  "resend": "Resend",
   "s3": "S3",
   "sendgrid": "SendGrid",
   "sentry": "Sentry",
