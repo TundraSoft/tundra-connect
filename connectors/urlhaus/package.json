@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/urlhaus",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Typed URLhaus (abuse.ch) client: look up URLs, hosts and payloads in the malware-URL database, with not-listed results instead of errors and a hard per-call deadline.",
   "keywords": [
