@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/TundraSoft/tundra-connect/compare/cloudflare-email-v0.1.1...cloudflare-email-v0.2.0) (2026-10-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cloudflare-email:** SendEmailRequestSchema's address fields widened from `string` / `string[]` to `EmailAddressSchema` / `EmailAddressSchema[]` (`string | { address: string; name?: string }`); code reading a parsed request's `from`/`to`/`cc`/`bcc`/`reply_to` as plain strings must handle the object form.
+
+### Features
+
+* **cloudflare-email:** named addresses and field-level validation errors ([7fe1be8](https://github.com/TundraSoft/tundra-connect/commit/7fe1be832107a8178eb8880fcdb4563b48774e5c))
+
 ## [0.1.1](https://github.com/TundraSoft/tundra-connect/compare/cloudflare-email-v0.1.0...cloudflare-email-v0.1.1) (2026-09-30)
 
 

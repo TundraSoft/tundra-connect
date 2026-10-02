@@ -1,7 +1,7 @@
 {
   "connectors/algolia": "0.1.1",
   "connectors/azure-blob": "0.1.1",
-  "connectors/cloudflare-email": "0.1.1",
+  "connectors/cloudflare-email": "0.2.0",
   "connectors/coingecko": "0.1.1",
   "connectors/discord": "0.1.2",
   "connectors/dodo-payments": "0.2.0",
