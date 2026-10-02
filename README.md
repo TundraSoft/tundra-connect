@@ -28,7 +28,7 @@ failures surface as one typed error class per vendor.
   Kalshi, Polymarket
 - **Search, data and operations:** Algolia, Upstash Redis, Sentry,
   OpenWeatherMap
-- **URL safety:** Google Web Risk
+- **URL safety:** Google Web Risk, URLhaus (abuse.ch)
 
 See [CONVENTIONS.md](CONVENTIONS.md) for the shared structure and
 [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
@@ -65,6 +65,7 @@ CI-verified).
 - **[Telegram](./connectors/telegram/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/telegram)](https://jsr.io/@tundraconnect/telegram) — Typed Telegram Bot API client: send messages and fetch the bot's own identity.
 - **[Twilio](./connectors/twilio/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/twilio)](https://jsr.io/@tundraconnect/twilio) — Typed Twilio client: send SMS/MMS; place, list, update and delete voice calls; and verify webhook signatures.
 - **[UpstashRedis](./connectors/upstash-redis/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/upstash-redis)](https://jsr.io/@tundraconnect/upstash-redis) — Typed Upstash Redis REST client: string, hash and list commands, TTLs, counters and pipelining over plain HTTPS — no TCP connection needed.
+- **[URLhaus](./connectors/urlhaus/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/urlhaus)](https://jsr.io/@tundraconnect/urlhaus) — Typed URLhaus (abuse.ch) client: look up URLs, hosts and payloads in the malware-URL database, with not-listed results instead of errors and a hard per-call deadline.
 
 <!-- workspace:connectors:end -->
 

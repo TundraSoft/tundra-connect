@@ -22,5 +22,6 @@
   "connectors/stripe": "0.1.2",
   "connectors/telegram": "0.1.1",
   "connectors/twilio": "0.1.2",
-  "connectors/upstash-redis": "0.1.1"
+  "connectors/upstash-redis": "0.1.1",
+  "connectors/urlhaus": "0.0.0"
 }

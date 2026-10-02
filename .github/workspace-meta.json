@@ -22,5 +22,6 @@
   "stripe": "Stripe",
   "telegram": "Telegram",
   "twilio": "Twilio",
-  "upstash-redis": "UpstashRedis"
+  "upstash-redis": "UpstashRedis",
+  "urlhaus": "URLhaus"
 }

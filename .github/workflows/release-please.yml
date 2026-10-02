@@ -49,6 +49,7 @@ on:
           - connectors/telegram
           - connectors/twilio
           - connectors/upstash-redis
+          - connectors/urlhaus
           # workspace:publish-paths:end
 
 permissions:

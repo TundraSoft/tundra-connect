@@ -15,7 +15,7 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-24 connects are implemented today:
+25 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
@@ -41,6 +41,7 @@ if you'd like to champion one.
 - **[Telegram](connectors/telegram/README.md)** — Typed Telegram Bot API client: send messages and fetch the bot's own identity.
 - **[Twilio](connectors/twilio/README.md)** — Typed Twilio client: send SMS/MMS; place, list, update and delete voice calls; and verify webhook signatures.
 - **[UpstashRedis](connectors/upstash-redis/README.md)** — Typed Upstash Redis REST client: string, hash and list commands, TTLs, counters and pipelining over plain HTTPS — no TCP connection needed.
+- **[URLhaus](connectors/urlhaus/README.md)** — Typed URLhaus (abuse.ch) client: look up URLs, hosts and payloads in the malware-URL database, with not-listed results instead of errors and a hard per-call deadline.
 
 <!-- workspace:shipped:end -->
 

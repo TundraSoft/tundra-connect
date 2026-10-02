@@ -34,6 +34,7 @@ body:
         - Telegram
         - Twilio
         - UpstashRedis
+        - URLhaus
     validations:
       required: true
   - type: dropdown

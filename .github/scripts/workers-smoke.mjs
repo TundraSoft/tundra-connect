@@ -81,6 +81,7 @@ const SPECS = [
   { dir: 'telegram', error: 'TelegramError', make: `new lib.Telegram({ botToken: '123456789:AAExampleTokenAABBCCDDEEFFGGHHIIJJKKLLMM' })`, call: `c.sendMessage({ chat_id: 1, text: 'hi' })` },
   { dir: 'twilio', error: 'TwilioError', make: `new lib.Twilio({ accountSid: 'AC' + '1'.repeat(32), authToken: 'token' })`, call: `c.getCall('CA' + '0'.repeat(32))` },
   { dir: 'upstash-redis', error: 'UpstashRedisError', make: `new lib.UpstashRedis({ auth: { type: 'BEARER', token: 'test-token', prefix: 'Bearer' }, baseURL: 'https://us1-merry-cat-32748.upstash.io' })`, call: `c.get('foo')` },
+  { dir: 'urlhaus', error: 'URLhausError', make: `new lib.URLhaus({ auth: { type: 'CUSTOM', authKey: 'test-auth-key' }, timeout: 1.5 })`, call: `c.lookupUrl({ url: 'http://example.com/x.exe' })` },
 ];
 
 function workerSource(spec) {

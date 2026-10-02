@@ -84,3 +84,6 @@ documentation:
 'connector: upstash-redis':
   - changed-files:
       - any-glob-to-any-file: connectors/upstash-redis/**
+'connector: urlhaus':
+  - changed-files:
+      - any-glob-to-any-file: connectors/urlhaus/**
