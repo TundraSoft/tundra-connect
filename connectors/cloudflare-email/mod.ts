@@ -26,9 +26,10 @@
  *
  * try {
  *   const result = await client.send({
- *     from: 'billing@yourdomain.com',
- *     // A bare string works too — both forms appear in Cloudflare's own docs.
- *     to: ['customer@example.com'],
+ *     // "Name <address>" is sent as { address, name } — a display name.
+ *     from: 'Billing <billing@yourdomain.com>',
+ *     // A single address works too — both forms appear in Cloudflare's own docs.
+ *     to: [{ address: 'customer@example.com', name: 'Jane Customer' }],
  *     cc: 'accounts@yourdomain.com',
  *     reply_to: 'support@yourdomain.com',
  *     subject: 'Your invoice',

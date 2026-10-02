@@ -157,6 +157,38 @@ describe('CloudflareEmail — send', () => {
     asserts.assertEquals(body.headers['X-Campaign-ID'], 'welcome');
   });
 
+  it('sends named addresses as { address, name } on every address field', async () => {
+    const c = client();
+    await c.send({
+      ...validSend,
+      from: 'Acme <no-reply@yourdomain.com>',
+      to: ['plain@example.com', { address: 'jane@example.com', name: 'Jane' }],
+      cc: { address: 'team@example.com', name: 'Team' },
+      bcc: '"Archive, Ops" <archive@example.com>',
+      reply_to: { address: 'support@yourdomain.com', name: 'Support' },
+    });
+    const body = JSON.parse(c.request!.body!);
+    asserts.assertEquals(body.from, {
+      address: 'no-reply@yourdomain.com',
+      name: 'Acme',
+    });
+    asserts.assertEquals(body.to, [
+      'plain@example.com',
+      { address: 'jane@example.com', name: 'Jane' },
+    ]);
+    asserts.assertEquals(body.cc, [{
+      address: 'team@example.com',
+      name: 'Team',
+    }]);
+    asserts.assertEquals(body.bcc, [
+      { address: 'archive@example.com', name: 'Archive, Ops' },
+    ]);
+    asserts.assertEquals(body.reply_to, {
+      address: 'support@yourdomain.com',
+      name: 'Support',
+    });
+  });
+
   it('unwraps the client/v4 envelope and resolves to `result`', async () => {
     const c = client();
     c.setResponse(
@@ -206,6 +238,37 @@ describe('CloudflareEmail — local request validation', () => {
     );
     asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
     asserts.assertEquals(c.request, undefined);
+  });
+
+  it('names every failing field in the reason', async () => {
+    const c = client();
+    const err = await asserts.assertRejects(
+      () =>
+        c.send({
+          ...validSend,
+          from: 'not-an-email',
+          to: ['ok@example.com', { address: 'nope' }],
+          subject: '',
+        }),
+      CloudflareEmailError,
+    );
+    const reason = String(err.getContextValue('reason'));
+    asserts.assertStringIncludes(reason, 'from: must be a valid email address');
+    asserts.assertStringIncludes(reason, 'to: ');
+    asserts.assertStringIncludes(reason, 'index 1');
+    asserts.assertStringIncludes(reason, 'subject: `subject` cannot be empty');
+    asserts.assertStringIncludes(err.message, 'from: ');
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('falls back to the schema message when the request is not an object', async () => {
+    const c = client();
+    const err = await asserts.assertRejects(
+      () => c.send('send' as unknown as SendEmailOptions),
+      CloudflareEmailError,
+    );
+    asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    asserts.assert(String(err.getContextValue('reason')).length > 0);
   });
 
   it('rejects an empty recipient list', async () => {

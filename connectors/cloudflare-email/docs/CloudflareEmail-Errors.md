@@ -62,15 +62,15 @@ hand back an empty `result` as though the mail had been sent.
 
 Read metadata with the public `getContextValue(key)`.
 
-| Key            | Present on                      | Description                              |
-| -------------- | ------------------------------- | ---------------------------------------- |
-| `vendor`       | all                             | Always `'CloudflareEmail'`.              |
-| `status`       | vendor failures                 | HTTP status code.                        |
-| `detail`       | vendor failures                 | Vendor message plus its numeric code.    |
-| `vendorCode`   | vendor failures carrying a code | Cloudflare's raw numeric code.           |
-| `body`         | vendor failures                 | The parsed response body.                |
-| `reason`       | `REQUEST_VALIDATION_ERROR`      | Which local rule failed.                 |
-| `originalCode` | `UNKNOWN_ERROR` fallback        | The unrecognized code originally passed. |
+| Key            | Present on                      | Description                                                                      |
+| -------------- | ------------------------------- | -------------------------------------------------------------------------------- |
+| `vendor`       | all                             | Always `'CloudflareEmail'`.                                                      |
+| `status`       | vendor failures                 | HTTP status code.                                                                |
+| `detail`       | vendor failures                 | Vendor message plus its numeric code.                                            |
+| `vendorCode`   | vendor failures carrying a code | Cloudflare's raw numeric code.                                                   |
+| `body`         | vendor failures                 | The parsed response body.                                                        |
+| `reason`       | `REQUEST_VALIDATION_ERROR`      | Which local rule failed — each failing field as `field: message`, joined by `;`. |
+| `originalCode` | `UNKNOWN_ERROR` fallback        | The unrecognized code originally passed.                                         |
 
 The API token never appears in an error's message or context.
 

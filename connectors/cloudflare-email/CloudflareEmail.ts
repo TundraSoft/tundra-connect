@@ -8,10 +8,11 @@ import {
   RESTlerResponseValidationError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
-import type { BaseGuardian, GuardianError } from '@guardian';
+import { type BaseGuardian, GuardianError } from '@guardian';
 import { CloudflareEmailError } from './errors/mod.ts';
 import {
   type AttachmentSchema,
+  type EmailAddressSchema,
   ErrorEnvelopeSchemaObject,
   MAX_RECIPIENTS,
   type SendEmailRequestSchema,
@@ -57,15 +58,19 @@ export type CloudflareEmailOptions = Omit<RESTlerOptions, 'auth'> & {
  *
  * Field names are Cloudflare's own (`reply_to`, not `replyTo`) so a body
  * copied straight out of the vendor's docs works unchanged — the same
- * choice the SendGrid connect makes for the same reason. The one
- * ergonomic addition is that `to`/`cc`/`bcc` accept a bare string as well
- * as an array; see {@link SendEmailRequestSchema}.
+ * choice the SendGrid connect makes for the same reason.
+ *
+ * Every address field takes a plain address (`'jane@example.com'`), a
+ * named object (`{ address: 'jane@example.com', name: 'Jane Doe' }`), or
+ * a `'Jane Doe <jane@example.com>'` string, which is parsed into the
+ * named object. `to`/`cc`/`bcc` take one address or an array, and the
+ * array may mix forms; see {@link SendEmailRequestSchema}.
  */
 export type SendEmailOptions = {
-  /** Sender address, on a domain verified in this Cloudflare account. */
-  from: string;
-  /** Recipient(s). A bare string is normalized to a single-element array. */
-  to: string | string[];
+  /** Sender, on a domain verified in this Cloudflare account. */
+  from: EmailAddressSchema;
+  /** Recipient(s). A single address is normalized to a one-element array. */
+  to: EmailAddressSchema | EmailAddressSchema[];
   /** Subject line. */
   subject: string;
   /** HTML body. At least one of `html`/`text` must be supplied. */
@@ -73,11 +78,11 @@ export type SendEmailOptions = {
   /** Plain-text body. At least one of `html`/`text` must be supplied. */
   text?: string;
   /** Carbon-copy recipient(s). */
-  cc?: string | string[];
+  cc?: EmailAddressSchema | EmailAddressSchema[];
   /** Blind-carbon-copy recipient(s). */
-  bcc?: string | string[];
+  bcc?: EmailAddressSchema | EmailAddressSchema[];
   /** Address replies should go to, when it differs from `from`. */
-  reply_to?: string;
+  reply_to?: EmailAddressSchema;
   /** Custom headers, e.g. `{ 'List-Unsubscribe': '<https://...>' }`. */
   headers?: Record<string, string>;
   /** Base64-encoded attachments. */
@@ -221,7 +226,7 @@ export class CloudflareEmail extends RESTler<CloudflareEmailOptions> {
       throw new CloudflareEmailError(
         'REQUEST_VALIDATION_ERROR',
         {
-          reason: cause instanceof Error ? cause.message : 'validation failed',
+          reason: CloudflareEmail.__describeInvalid(cause),
           responseError: (cause as GuardianError | undefined)?.toJSON?.(),
         },
         cause instanceof Error ? cause : undefined,
@@ -372,6 +377,30 @@ export class CloudflareEmail extends RESTler<CloudflareEmailOptions> {
       vendorCode: first?.code,
       body,
     });
+  }
+
+  /**
+   * Turns a request-schema failure into a `reason` that names each failing
+   * field, e.g. `from: must be a valid email address, …; subject: …`.
+   *
+   * Reads the object guardian's per-field cause map rather than
+   * `leafErrors()`: an address is a union, and a failed union reports one
+   * leaf per branch it tried ("must be a valid email address" AND
+   * "Expected object but got string"), which buries the one message that
+   * says what the field accepts. The top-level message alone ("Object
+   * validation failed with 1 error(s)") names nothing, so it is only the
+   * fallback for a failure that isn't per-field — a non-object request.
+   */
+  private static __describeInvalid(cause: unknown): string {
+    if (!(cause instanceof Error)) return 'validation failed';
+    const fields = cause instanceof GuardianError
+      ? cause.getContextValue('cause')
+      : undefined;
+    if (!fields || typeof fields !== 'object') return cause.message;
+    const lines = Object.entries(fields as Record<string, unknown>)
+      .filter((entry): entry is [string, Error] => entry[1] instanceof Error)
+      .map(([field, error]) => `${field}: ${error.message}`);
+    return lines.length > 0 ? lines.join('; ') : cause.message;
   }
 
   /** HTTP-status fallback for a failure carrying no recognizable vendor code. */

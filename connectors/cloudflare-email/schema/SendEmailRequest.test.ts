@@ -39,6 +39,110 @@ describe('CloudflareEmail.schema.SendEmailRequest', () => {
     asserts.assertEquals(body?.to, ['a@example.com', 'b@example.com']);
   });
 
+  it('accepts named objects on every address field, mixed with strings', () => {
+    const [error, body] = SendEmailRequestSchemaObject.safeParse({
+      ...base,
+      from: { address: 'welcome@yourdomain.com', name: 'Welcome' },
+      to: ['a@example.com', { address: 'b@example.com', name: 'B' }],
+      cc: { address: 'c@example.com' },
+      bcc: [{ address: 'd@example.com', name: 'D' }],
+      reply_to: { address: 'r@example.com', name: 'Support' },
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(body?.from, {
+      address: 'welcome@yourdomain.com',
+      name: 'Welcome',
+    });
+    asserts.assertEquals(body?.to, [
+      'a@example.com',
+      { address: 'b@example.com', name: 'B' },
+    ]);
+    asserts.assertEquals(body?.cc, [{ address: 'c@example.com' }]);
+    asserts.assertEquals(body?.bcc, [{ address: 'd@example.com', name: 'D' }]);
+    asserts.assertEquals(body?.reply_to, {
+      address: 'r@example.com',
+      name: 'Support',
+    });
+  });
+
+  it('parses "Name <address>" strings into named objects', () => {
+    const [error, body] = SendEmailRequestSchemaObject.safeParse({
+      ...base,
+      from: 'Acme <no-reply@yourdomain.com>',
+      to: ['  Jane Doe   <jane@example.com>  ', 'plain@example.com'],
+      reply_to: 'Support <support@yourdomain.com>',
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(body?.from, {
+      address: 'no-reply@yourdomain.com',
+      name: 'Acme',
+    });
+    asserts.assertEquals(body?.to, [
+      { address: 'jane@example.com', name: 'Jane Doe' },
+      'plain@example.com',
+    ]);
+    asserts.assertEquals(body?.reply_to, {
+      address: 'support@yourdomain.com',
+      name: 'Support',
+    });
+  });
+
+  it('unquotes a quoted display name, including escaped quotes', () => {
+    const [error, body] = SendEmailRequestSchemaObject.safeParse({
+      ...base,
+      to: [
+        '"Doe, Jane" <jane@example.com>',
+        '"The \\"Ops\\" Team" <ops@example.com>',
+      ],
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(body?.to, [
+      { address: 'jane@example.com', name: 'Doe, Jane' },
+      { address: 'ops@example.com', name: 'The "Ops" Team' },
+    ]);
+  });
+
+  it('collapses a nameless "<address>" to the plain address', () => {
+    const [error, body] = SendEmailRequestSchemaObject.safeParse({
+      ...base,
+      from: '<welcome@yourdomain.com>',
+      to: '"" <a@example.com>',
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(body?.from, 'welcome@yourdomain.com');
+    asserts.assertEquals(body?.to, ['a@example.com']);
+  });
+
+  it('rejects a "Name <address>" whose address is malformed', () => {
+    asserts.assertExists(
+      SendEmailRequestSchemaObject.safeParse({
+        ...base,
+        from: 'Acme <not-an-email>',
+      })[0],
+    );
+  });
+
+  it('wraps a single named `to` object into an array', () => {
+    const [error, body] = SendEmailRequestSchemaObject.safeParse({
+      ...base,
+      to: { address: 'jane@example.com', name: 'Jane' },
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(body?.to, [{
+      address: 'jane@example.com',
+      name: 'Jane',
+    }]);
+  });
+
+  it('rejects a malformed named reply_to', () => {
+    asserts.assertExists(
+      SendEmailRequestSchemaObject.safeParse({
+        ...base,
+        reply_to: { address: 'nope' },
+      })[0],
+    );
+  });
+
   it('accepts html instead of text', () => {
     const { text: _text, ...noText } = base;
     asserts.assertEquals(
