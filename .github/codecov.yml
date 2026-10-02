@@ -109,6 +109,10 @@ component_management:
         name: upstash-redis
         paths:
           - connectors/upstash-redis/**
+      - component_id: urlhaus
+        name: urlhaus
+        paths:
+          - connectors/urlhaus/**
 
 ignore:
   - '**/*.test.ts'

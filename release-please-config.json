@@ -333,6 +333,18 @@
           "jsonpath": "$.version"
         }
       ]
+    },
+    "connectors/urlhaus": {
+      "release-type": "node",
+      "component": "urlhaus",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
     }
   }
 }
