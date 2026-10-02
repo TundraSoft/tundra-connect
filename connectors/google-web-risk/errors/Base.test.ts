@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { GoogleWebRiskError } from './Base.ts';
-import { GoogleWebRiskErrorCodes } from './GoogleWebRiskErrorCodes.ts';
+import {
+  GOOGLE_WEB_RISK_TRANSIENT_CODES,
+  GoogleWebRiskErrorCodes,
+} from './GoogleWebRiskErrorCodes.ts';
 
 describe('GoogleWebRisk.errors.Base', () => {
   it('formats a known error code', () => {
@@ -40,5 +43,22 @@ describe('GoogleWebRisk.errors.Base', () => {
     const error = new GoogleWebRiskError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<status unavailable>');
+  });
+
+  it('flags the no-verdict-yet codes as transient, and nothing else', () => {
+    for (const code of Object.keys(GoogleWebRiskErrorCodes)) {
+      const error = new GoogleWebRiskError(
+        code as keyof typeof GoogleWebRiskErrorCodes,
+      );
+      asserts.assertEquals(
+        error.transient,
+        GOOGLE_WEB_RISK_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...GOOGLE_WEB_RISK_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });
