@@ -6,6 +6,7 @@
   "connectors/discord": "0.1.2",
   "connectors/dodo-payments": "0.2.0",
   "connectors/gcs": "0.1.1",
+  "connectors/google-web-risk": "0.0.0",
   "connectors/kalshi": "0.1.1",
   "connectors/ntfy": "0.1.1",
   "connectors/openexchange": "0.2.1",

@@ -61,6 +61,7 @@ const SPECS = [
   { dir: 'dodo-payments', error: 'DodoPaymentsError', make: `new lib.DodoPayments({ auth: { type: 'BEARER', token: 'dodo-key', prefix: 'Bearer' } })`, call: `c.getPayment('pay_1')` },
   { dir: 'gcs', error: 'GCSError', label: 'bearer', make: `new lib.GCS({ auth: { type: 'BEARER', token: 't' } })`, call: `c.listObjects({ bucket: 'my-bucket' })` },
   { dir: 'gcs', error: 'GCSError', label: 'service-account RS256 JWT', make: `new lib.GCS({ auth: { type: 'CUSTOM', clientEmail: 'svc@x.iam.gserviceaccount.com', privateKey: ${q(rsaPem)} } })`, call: `c.headObject({ bucket: 'b', key: 'a' })` },
+  { dir: 'google-web-risk', error: 'GoogleWebRiskError', make: `new lib.GoogleWebRisk({ auth: { type: 'CUSTOM', apiKey: 'test-api-key' }, timeout: 1.5 })`, call: `c.search({ uri: 'https://example.com/' })` },
   { dir: 'kalshi', error: 'KalshiError', label: 'RSA-PSS signed', make: `new lib.Kalshi({ auth: { type: 'CUSTOM', accessKey: 'key-id', privateKeyPem: ${q(rsaPem)} } })`, call: `c.getBalance()` },
   { dir: 'ntfy', error: 'NtfyError', make: `new lib.Ntfy({})`, call: `c.publish({ topic: 'mytopic', message: 'hi' })` },
   { dir: 'openexchange', error: 'OpenExchangeError', make: `new lib.OpenExchange({ auth: { type: 'CUSTOM', appId: 'test-app-id' } })`, call: `c.getRates()` },

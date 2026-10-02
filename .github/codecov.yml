@@ -41,6 +41,10 @@ component_management:
         name: gcs
         paths:
           - connectors/gcs/**
+      - component_id: google-web-risk
+        name: google-web-risk
+        paths:
+          - connectors/google-web-risk/**
       - component_id: kalshi
         name: kalshi
         paths:

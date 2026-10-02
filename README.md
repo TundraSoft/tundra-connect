@@ -28,6 +28,7 @@ failures surface as one typed error class per vendor.
   Kalshi, Polymarket
 - **Search, data and operations:** Algolia, Upstash Redis, Sentry,
   OpenWeatherMap
+- **URL safety:** Google Web Risk
 
 See [CONVENTIONS.md](CONVENTIONS.md) for the shared structure and
 [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
@@ -47,6 +48,7 @@ CI-verified).
 - **[Discord](./connectors/discord/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/discord)](https://jsr.io/@tundraconnect/discord) — Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.
 - **[DodoPayments](./connectors/dodo-payments/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/dodo-payments)](https://jsr.io/@tundraconnect/dodo-payments) — Typed Dodo Payments client: create and verify payments, manage subscriptions and plan changes, sync products, open the customer portal, and verify Standard Webhooks signatures.
 - **[GCS](./connectors/gcs/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/gcs)](https://jsr.io/@tundraconnect/gcs) — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.
+- **[GoogleWebRisk](./connectors/google-web-risk/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/google-web-risk)](https://jsr.io/@tundraconnect/google-web-risk) — Typed Google Web Risk client: check a URL against Google's malware, phishing and unwanted-software lists with the Lookup API's uris:search, under a hard per-call deadline.
 - **[Kalshi](./connectors/kalshi/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/kalshi)](https://jsr.io/@tundraconnect/kalshi) — Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders.
 - **[ntfy](./connectors/ntfy/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/ntfy)](https://jsr.io/@tundraconnect/ntfy) — Typed ntfy.sh client for publishing push notifications to a topic.
 - **[OpenExchange](./connectors/openexchange/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/openexchange)](https://jsr.io/@tundraconnect/openexchange) — Typed Open Exchange Rates client: latest and historical rates, time series, currency conversion, OHLC data and account usage.
@@ -75,20 +77,21 @@ guides for every connect live in the
 Each connect covers a focused subset of its vendor's API with no Node-only
 dependencies. Check the connect's README for exactly which endpoints.
 
-| If you use…                                       | Reach for                      |
-| ------------------------------------------------- | ------------------------------ |
-| `stripe`                                          | `@tundraconnect/stripe`        |
-| `@aws-sdk/client-s3` (also for R2, MinIO, Spaces) | `@tundraconnect/s3`            |
-| `@google-cloud/storage`                           | `@tundraconnect/gcs`           |
-| `@azure/storage-blob`                             | `@tundraconnect/azure-blob`    |
-| `@slack/web-api`                                  | `@tundraconnect/slack`         |
-| `discord.js`, for webhook and bot messages        | `@tundraconnect/discord`       |
-| `twilio`                                          | `@tundraconnect/twilio`        |
-| `@sendgrid/mail`                                  | `@tundraconnect/sendgrid`      |
-| `razorpay`                                        | `@tundraconnect/razorpay`      |
-| `algoliasearch`                                   | `@tundraconnect/algolia`       |
-| `@upstash/redis`                                  | `@tundraconnect/upstash-redis` |
-| `@polymarket/clob-client`                         | `@tundraconnect/polymarket`    |
+| If you use…                                       | Reach for                        |
+| ------------------------------------------------- | -------------------------------- |
+| `stripe`                                          | `@tundraconnect/stripe`          |
+| `@aws-sdk/client-s3` (also for R2, MinIO, Spaces) | `@tundraconnect/s3`              |
+| `@google-cloud/storage`                           | `@tundraconnect/gcs`             |
+| `@google-cloud/web-risk`, for URL lookups         | `@tundraconnect/google-web-risk` |
+| `@azure/storage-blob`                             | `@tundraconnect/azure-blob`      |
+| `@slack/web-api`                                  | `@tundraconnect/slack`           |
+| `discord.js`, for webhook and bot messages        | `@tundraconnect/discord`         |
+| `twilio`                                          | `@tundraconnect/twilio`          |
+| `@sendgrid/mail`                                  | `@tundraconnect/sendgrid`        |
+| `razorpay`                                        | `@tundraconnect/razorpay`        |
+| `algoliasearch`                                   | `@tundraconnect/algolia`         |
+| `@upstash/redis`                                  | `@tundraconnect/upstash-redis`   |
+| `@polymarket/clob-client`                         | `@tundraconnect/polymarket`      |
 
 ## 🚀 Quick start
 

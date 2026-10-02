@@ -33,6 +33,9 @@ documentation:
 'connector: gcs':
   - changed-files:
       - any-glob-to-any-file: connectors/gcs/**
+'connector: google-web-risk':
+  - changed-files:
+      - any-glob-to-any-file: connectors/google-web-risk/**
 'connector: kalshi':
   - changed-files:
       - any-glob-to-any-file: connectors/kalshi/**

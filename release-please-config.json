@@ -130,6 +130,18 @@
         }
       ]
     },
+    "connectors/google-web-risk": {
+      "release-type": "node",
+      "component": "google-web-risk",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/kalshi": {
       "release-type": "node",
       "component": "kalshi",
