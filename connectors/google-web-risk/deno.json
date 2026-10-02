@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/google-web-risk",
+  "version": "0.0.0",
+  "description": "Typed Google Web Risk client: check a URL against Google's malware, phishing and unwanted-software lists with the Lookup API's uris:search, under a hard per-call deadline.",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.4.0"
+  }
+}

@@ -15,7 +15,7 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-23 connects are implemented today:
+24 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
@@ -24,6 +24,7 @@ if you'd like to champion one.
 - **[Discord](connectors/discord/README.md)** — Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.
 - **[DodoPayments](connectors/dodo-payments/README.md)** — Typed Dodo Payments client: create and verify payments, manage subscriptions and plan changes, sync products, open the customer portal, and verify Standard Webhooks signatures.
 - **[GCS](connectors/gcs/README.md)** — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.
+- **[GoogleWebRisk](connectors/google-web-risk/README.md)** — Typed Google Web Risk client: check a URL against Google's malware, phishing and unwanted-software lists with the Lookup API's uris:search, under a hard per-call deadline.
 - **[Kalshi](connectors/kalshi/README.md)** — Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders.
 - **[ntfy](connectors/ntfy/README.md)** — Typed ntfy.sh client for publishing push notifications to a topic.
 - **[OpenExchange](connectors/openexchange/README.md)** — Typed Open Exchange Rates client: latest and historical rates, time series, currency conversion, OHLC data and account usage.

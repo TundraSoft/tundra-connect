@@ -32,6 +32,7 @@ on:
           - connectors/discord
           - connectors/dodo-payments
           - connectors/gcs
+          - connectors/google-web-risk
           - connectors/kalshi
           - connectors/ntfy
           - connectors/openexchange
