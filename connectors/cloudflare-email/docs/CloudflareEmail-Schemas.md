@@ -6,25 +6,33 @@ Public Guardian schemas, exported from
 ```ts
 import {
   AttachmentSchemaObject,
+  EmailAddressSchemaObject,
   SendEmailRequestSchemaObject,
   SendEmailResultSchemaObject,
 } from '@tundraconnect/cloudflare-email/schemas';
 ```
 
-| Export                         | Type                     | Used for                                               |
-| ------------------------------ | ------------------------ | ------------------------------------------------------ |
-| `SendEmailRequestSchemaObject` | `SendEmailRequestSchema` | The send request body, in wire shape.                  |
-| `SendEmailResultSchemaObject`  | `SendEmailResultSchema`  | The unwrapped `result` of a successful send.           |
-| `AttachmentSchemaObject`       | `AttachmentSchema`       | One entry of `attachments`.                            |
-| `ErrorItemSchemaObject`        | `ErrorItemSchema`        | One entry of an error envelope's `errors` array.       |
-| `ErrorEnvelopeSchemaObject`    | `ErrorEnvelopeSchema`    | The failure form of Cloudflare's `client/v4` envelope. |
-| `MAX_RECIPIENTS`               | `50`                     | The combined `to` + `cc` + `bcc` ceiling.              |
+| Export                          | Type                      | Used for                                               |
+| ------------------------------- | ------------------------- | ------------------------------------------------------ |
+| `SendEmailRequestSchemaObject`  | `SendEmailRequestSchema`  | The send request body, in wire shape.                  |
+| `SendEmailResultSchemaObject`   | `SendEmailResultSchema`   | The unwrapped `result` of a successful send.           |
+| `AttachmentSchemaObject`        | `AttachmentSchema`        | One entry of `attachments`.                            |
+| `EmailAddressSchemaObject`      | `EmailAddressSchema`      | One address: a plain string or `{ address, name? }`.   |
+| `NamedEmailAddressSchemaObject` | `NamedEmailAddressSchema` | The `{ address, name? }` object form alone.            |
+| `ErrorItemSchemaObject`         | `ErrorItemSchema`         | One entry of an error envelope's `errors` array.       |
+| `ErrorEnvelopeSchemaObject`     | `ErrorEnvelopeSchema`     | The failure form of Cloudflare's `client/v4` envelope. |
+| `MAX_RECIPIENTS`                | `50`                      | The combined `to` + `cc` + `bcc` ceiling.              |
 
 ## `SendEmailRequestSchema`
 
 The **wire** shape: `to`, `cc` and `bcc` are always arrays here. The schema
-accepts a bare string for any of them and normalizes it first, so only the
-array form reaches Cloudflare.
+accepts a single address for any of them and normalizes it first, so only
+the array form reaches Cloudflare.
+
+Every address field (`from`, `to`, `cc`, `bcc`, `reply_to`) is an
+`EmailAddressSchema`. A `"Name <address>"` string is parsed into
+`{ address, name }` before validation; a plain address and a named object
+pass through unchanged.
 
 That normalization is a single top-level `Guardian.preprocess` wrapping the
 whole object, never a per-field one. A `Guardian.preprocess` used _as_ a
@@ -37,6 +45,14 @@ express them. `CloudflareEmail.send` checks both before sending:
 
 - at least one of `html` / `text`
 - `to` + `cc` + `bcc` within `MAX_RECIPIENTS`
+
+## `EmailAddressSchema`
+
+`string | { address: string; name?: string }` — exactly what Cloudflare's
+REST API accepts for each address. It validates the wire shape only, so on
+its own it **rejects** a `"Name <address>"` string; the parsing into the
+named object is `SendEmailRequestSchemaObject`'s job. The object's key is
+`address`, not the Workers binding's `email`.
 
 ## `SendEmailResultSchema`
 

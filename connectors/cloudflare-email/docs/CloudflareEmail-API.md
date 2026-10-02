@@ -59,29 +59,52 @@ const result = await client.send({
 
 #### Parameters
 
-| Field         | Type                     | Required | Description                                                    |
-| ------------- | ------------------------ | -------- | -------------------------------------------------------------- |
-| `from`        | `string`                 | yes      | Sender, on a domain verified in the account.                   |
-| `to`          | `string \| string[]`     | yes      | Recipient(s). A bare string is normalized to a one-item array. |
-| `subject`     | `string`                 | yes      | Subject line. Must be non-empty.                               |
-| `html`        | `string`                 | no\*     | HTML body.                                                     |
-| `text`        | `string`                 | no\*     | Plain-text body.                                               |
-| `cc`          | `string \| string[]`     | no       | Carbon-copy recipient(s).                                      |
-| `bcc`         | `string \| string[]`     | no       | Blind-carbon-copy recipient(s).                                |
-| `reply_to`    | `string`                 | no       | Reply address, when different from `from`.                     |
-| `headers`     | `Record<string, string>` | no       | Custom headers. Numeric values are coerced to strings.         |
-| `attachments` | `AttachmentSchema[]`     | no       | Base64-encoded files.                                          |
+| Field         | Type                             | Required | Description                                                       |
+| ------------- | -------------------------------- | -------- | ----------------------------------------------------------------- |
+| `from`        | `EmailAddress`                   | yes      | Sender, on a domain verified in the account.                      |
+| `to`          | `EmailAddress \| EmailAddress[]` | yes      | Recipient(s). A single address is normalized to a one-item array. |
+| `subject`     | `string`                         | yes      | Subject line. Must be non-empty.                                  |
+| `html`        | `string`                         | no\*     | HTML body.                                                        |
+| `text`        | `string`                         | no\*     | Plain-text body.                                                  |
+| `cc`          | `EmailAddress \| EmailAddress[]` | no       | Carbon-copy recipient(s).                                         |
+| `bcc`         | `EmailAddress \| EmailAddress[]` | no       | Blind-carbon-copy recipient(s).                                   |
+| `reply_to`    | `EmailAddress`                   | no       | Reply address, when different from `from`.                        |
+| `headers`     | `Record<string, string>`         | no       | Custom headers. Numeric values are coerced to strings.            |
+| `attachments` | `AttachmentSchema[]`             | no       | Base64-encoded files.                                             |
 
 \* At least one of `html` / `text` is required.
+
+`EmailAddress` is any of:
+
+| Form           | Example                                             | Sent as               |
+| -------------- | --------------------------------------------------- | --------------------- |
+| Plain address  | `'jane@example.com'`                                | the string, unchanged |
+| Named object   | `{ address: 'jane@example.com', name: 'Jane Doe' }` | the object, unchanged |
+| Display string | `'Jane Doe <jane@example.com>'`                     | `{ address, name }`   |
+
+Arrays may mix forms. The named object's key is `address`, as the REST API
+documents — **not** `email`, which is the Workers `send_email` binding's
+key and is rejected here. A display string's name may be double-quoted
+(`'"Doe, Jane" <jane@example.com>'`); the quotes are stripped.
+
+```ts
+await client.send({
+  from: 'Acme <no-reply@yourdomain.com>',
+  to: ['plain@example.com', { address: 'jane@example.com', name: 'Jane Doe' }],
+  subject: 'Hello',
+  text: 'Hi there!',
+});
+// wire: "from": { "address": "no-reply@yourdomain.com", "name": "Acme" }
+```
 
 > Field names are Cloudflare's own — `reply_to`, not `replyTo` — so a body
 > copied from the vendor's docs works unchanged.
 
-#### Why `to` accepts both shapes
+#### Why `to` accepts a single address or an array
 
 Cloudflare's own documentation disagrees with itself: the Email Sending
 quickstart's `curl` passes `"to": "recipient@example.com"` as a plain
-string, while the API reference specifies an array of strings. This connect
+string, while the API reference specifies an array. This connect
 accepts either and always **sends** the array form, so a caller who copied
 either version of the vendor's docs gets the same wire-correct result.
 

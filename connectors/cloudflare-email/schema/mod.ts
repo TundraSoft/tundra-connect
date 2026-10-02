@@ -20,6 +20,12 @@
 
 export { type AttachmentSchema, AttachmentSchemaObject } from './Attachment.ts';
 export {
+  type EmailAddressSchema,
+  EmailAddressSchemaObject,
+  type NamedEmailAddressSchema,
+  NamedEmailAddressSchemaObject,
+} from './EmailAddress.ts';
+export {
   type ErrorEnvelopeSchema,
   ErrorEnvelopeSchemaObject,
   type ErrorItemSchema,
