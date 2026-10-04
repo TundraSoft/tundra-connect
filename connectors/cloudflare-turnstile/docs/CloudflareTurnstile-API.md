@@ -108,6 +108,15 @@ if (!verdict.success) {
 }
 ```
 
+### With the dummy keys
+
+Cloudflare's test secrets answer with `hostname: 'example.com'`, no
+`action`, and `metadata.result_with_testing_key: true`. An
+`expectedHostname` other than `example.com`, or any `expectedAction`,
+therefore turns a test-key pass into `success: false` with
+`hostname-mismatch` / `action-mismatch`. Set the expectations only in
+production, or branch on `verdict.metadata?.result_with_testing_key`.
+
 ### Idempotency
 
 A token is single-use: a second verification answers

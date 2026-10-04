@@ -101,6 +101,12 @@ const verdict = await passes.verify({ response: TURNSTILE_DUMMY_TOKEN });
 console.log(verdict.success); // true
 ```
 
+A test key's verdict carries `hostname: 'example.com'`, no `action`, and
+`metadata.result_with_testing_key: true`. So `expectedHostname` or
+`expectedAction` will turn a test-key pass into `success: false` with
+`hostname-mismatch` / `action-mismatch`. Leave them unset when testing
+with the dummy keys, or apply them only in production.
+
 ## The deadline
 
 `timeout` (on the client, or per call) is a **total** deadline in seconds:
