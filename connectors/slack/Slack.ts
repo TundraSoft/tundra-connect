@@ -639,9 +639,10 @@ export class Slack extends RESTler<SlackOptions> {
     if (err instanceof RESTlerRateLimitError) {
       // RESTler retried once (maxRetryWait) and was throttled again, or the
       // vendor's hint exceeded the cap.
+      const seconds = err.getContextValue('retryAfter') as number | undefined;
       return new SlackError('RATE_LIMITED', {
         status: 429,
-        retryAfterSeconds: err.getContextValue('retryAfter'),
+        ...Slack.__retryContext(seconds),
         retried: err.getContextValue('retried'),
       }, err);
     }
@@ -743,17 +744,12 @@ export class Slack extends RESTler<SlackOptions> {
     // inspection — a 429's body is not always Slack's own JSON (an
     // intermediating proxy may substitute its own rate-limit page).
     if (status === 429) {
-      const retryAfterHeader = response.headers?.['retry-after'];
-      const retryAfterNum = retryAfterHeader !== undefined
-        ? Number(retryAfterHeader)
-        : NaN;
       const [, envelope] = ErrorEnvelopeSchemaObject.safeParse(
         response.body,
       );
       throw new SlackError('RATE_LIMITED', {
         status,
-        retryAfterSeconds: this._parseRetryAfter(response.headers),
-        retryAfter: Number.isNaN(retryAfterNum) ? 'a few' : retryAfterNum,
+        ...Slack.__retryContext(this._parseRetryAfter(response.headers)),
         vendorError: envelope?.error,
       });
     }
@@ -774,6 +770,9 @@ export class Slack extends RESTler<SlackOptions> {
         status: status ?? undefined,
         vendorError,
         warning: envelope.warning,
+        ...(code === 'RATE_LIMITED'
+          ? Slack.__retryContext(this._parseRetryAfter(response.headers))
+          : {}),
       });
     }
 
@@ -785,5 +784,24 @@ export class Slack extends RESTler<SlackOptions> {
 
     // (5) Success: status < 400 (or null) and the body isn't `ok: false`.
     return response.body;
+  }
+
+  /**
+   * The context every `RATE_LIMITED` error carries, whichever path raised
+   * it: `retryAfterSeconds` (the hint, or `undefined`), the documented
+   * `retryAfter` (the same number, or `'a few'` without a hint), and the
+   * `retryHint` the message template renders.
+   */
+  private static __retryContext(seconds: number | undefined): {
+    retryAfterSeconds: number | undefined;
+    retryAfter: number | string;
+    retryHint: string;
+  } {
+    const known = typeof seconds === 'number' && Number.isFinite(seconds);
+    return {
+      retryAfterSeconds: known ? seconds : undefined,
+      retryAfter: known ? seconds : 'a few',
+      retryHint: known ? `retry after ${seconds}s` : 'retry later',
+    };
   }
 }

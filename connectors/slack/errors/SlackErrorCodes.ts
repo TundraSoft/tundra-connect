@@ -43,7 +43,9 @@ export const SlackErrorCodes = {
 
   // Rate limiting: a genuine HTTP 429 (with a `Retry-After` header) and an
   // `ok: false` `error: 'ratelimited'`/`'rate_limited'` both map here.
-  RATE_LIMITED: 'Slack rate limit exceeded; retry after ${retryAfter}s.',
+  // `retryHint` is filled by the client on every rate-limit path:
+  // `retry after 30s`, or `retry later` when Slack sent no usable hint.
+  RATE_LIMITED: 'Slack rate limit exceeded; ${retryHint}.',
 
   // Genuine HTTP-level failures that bypass Slack's `{ ok, error }`
   // envelope entirely.

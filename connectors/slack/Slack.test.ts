@@ -505,6 +505,32 @@ describe('Slack', () => {
     );
     asserts.assertEquals(error.code, 'RATE_LIMITED');
     asserts.assertEquals(error.getContextValue('retryAfter'), 'a few');
+    asserts.assertStringIncludes(error.message, 'retry later');
+    asserts.assertEquals(error.message.includes('unavailable'), false);
+    asserts.assertEquals(error.message.includes('fews'), false);
+  });
+
+  it('carries the retry hint on an ok:false ratelimited body', async () => {
+    const client = new MockSlack({
+      auth: { type: 'BEARER', token: 'xoxb-test-token' },
+    });
+    client.setResponse(
+      JSON.stringify({ ok: false, error: 'ratelimited' }),
+      200,
+      {
+        'content-type': 'application/json',
+        'retry-after': '12',
+      },
+    );
+
+    const error = await asserts.assertRejects(
+      () => client.postMessage({ channel: 'C1', text: 'hi' }),
+      SlackError,
+    );
+    asserts.assertEquals(error.code, 'RATE_LIMITED');
+    asserts.assertEquals(error.getContextValue('retryAfter'), 12);
+    asserts.assertEquals(error.getContextValue('retryAfterSeconds'), 12);
+    asserts.assertStringIncludes(error.message, 'retry after 12s');
   });
 
   it('maps an HTTP 5xx to SERVICE_UNAVAILABLE', async () => {
@@ -789,6 +815,9 @@ describe('Slack — maxRetryWait (RESTler rate-limit retry)', () => {
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    asserts.assertEquals(err.getContextValue('retryAfter'), 120);
+    asserts.assertStringIncludes(err.message, 'retry after 120s');
+    asserts.assertEquals(err.message.includes('unavailable'), false);
     asserts.assertEquals(slept, []);
     asserts.assertEquals(calls(), 1);
   });
