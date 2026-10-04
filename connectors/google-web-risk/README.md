@@ -102,6 +102,22 @@ class RoutedWebRisk extends GoogleWebRisk {
 }
 ```
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `GoogleWebRisk`
+instance and pass in a stand-in that returns the shapes from
+`@tundraconnect/google-web-risk/schemas` or throws a real `GoogleWebRiskError`:
+
+```ts
+import { GoogleWebRiskError } from '@tundraconnect/google-web-risk/errors';
+
+const outage = new GoogleWebRiskError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code, outage.transient);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch` (see Custom transport above).
+
 ## Documentation
 
 | Topic                                                                              | Description                                |

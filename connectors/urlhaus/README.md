@@ -115,6 +115,22 @@ class RoutedURLhaus extends URLhaus {
 }
 ```
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `URLhaus`
+instance and pass in a stand-in that returns the shapes from
+`@tundraconnect/urlhaus/schemas` or throws a real `URLhausError`:
+
+```ts
+import { URLhausError } from '@tundraconnect/urlhaus/errors';
+
+const outage = new URLhausError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code, outage.transient);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch` (see Custom transport above).
+
 ## Documentation
 
 | Topic                                                                        | Description                                |
