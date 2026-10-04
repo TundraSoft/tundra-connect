@@ -4,7 +4,7 @@
   "connectors/cloudflare-dns": "0.1.0",
   "connectors/cloudflare-email": "0.3.0",
   "connectors/cloudflare-saas": "0.1.0",
-  "connectors/cloudflare-turnstile": "0.1.0",
+  "connectors/cloudflare-turnstile": "0.1.1",
   "connectors/coingecko": "0.2.0",
   "connectors/discord": "0.2.0",
   "connectors/dodo-payments": "0.3.0",
