@@ -10,7 +10,7 @@
   "connectors/dodo-payments": "0.2.0",
   "connectors/gcs": "0.1.1",
   "connectors/google-analytics": "0.0.0",
-  "connectors/google-web-risk": "0.0.0",
+  "connectors/google-web-risk": "0.1.0",
   "connectors/kalshi": "0.1.1",
   "connectors/ntfy": "0.1.1",
   "connectors/openexchange": "0.2.1",
@@ -27,5 +27,5 @@
   "connectors/telegram": "0.1.1",
   "connectors/twilio": "0.1.2",
   "connectors/upstash-redis": "0.1.1",
-  "connectors/urlhaus": "0.0.0"
+  "connectors/urlhaus": "0.1.0"
 }
