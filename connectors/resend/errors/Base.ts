@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type ResendErrorCode, ResendErrorCodes } from './ResendErrorCodes.ts';
+import {
+  RESEND_TRANSIENT_CODES,
+  type ResendErrorCode,
+  ResendErrorCodes,
+} from './ResendErrorCodes.ts';
 
 /** Metadata supplied with a {@link ResendError}. */
 export type ResendErrorMetadata = {
@@ -25,6 +29,14 @@ export class ResendError<
    * {@link ResendErrorCodes}).
    */
   public readonly code: ResendErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `RATE_LIMITED` or `SERVICE_UNAVAILABLE` (see
+   * {@link RESEND_TRANSIENT_CODES}) — and `false` for a definite refusal or
+   * a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[resend] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -62,5 +74,6 @@ export class ResendError<
 
     super(ResendErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = RESEND_TRANSIENT_CODES.has(code);
   }
 }

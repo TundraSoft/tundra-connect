@@ -28,7 +28,27 @@ export const TelegramErrorCodes = {
   RESPONSE_ERROR: 'Telegram API response did not match the expected schema.',
   SERVICE_UNAVAILABLE:
     'The Telegram Bot API is currently unavailable (HTTP ${status}).',
+  TIMEOUT:
+    'The Telegram Bot API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to the Telegram Bot API failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Telegram error code. */
 export type TelegramErrorCode = keyof typeof TelegramErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Telegram returned a 5xx, or it
+ * rate-limited the call. {@link TelegramError.transient} is `true` for
+ * exactly these.
+ */
+export const TELEGRAM_TRANSIENT_CODES: ReadonlySet<TelegramErrorCode> = new Set<
+  TelegramErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

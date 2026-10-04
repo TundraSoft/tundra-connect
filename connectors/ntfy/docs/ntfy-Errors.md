@@ -32,8 +32,17 @@ diagnostic metadata instead.
 | `PAYLOAD_TOO_LARGE`        | ntfy returned `413` — the message/attachment exceeded a size or bandwidth limit. |
 | `RATE_LIMITED`             | ntfy returned `429` — a request, daily-message, or auth-failure limit was hit.   |
 | `RESPONSE_ERROR`           | A success response's body failed schema validation.                              |
-| `SERVICE_UNAVAILABLE`      | A `5xx` response, or any error response whose body didn't parse.                 |
+| `SERVICE_UNAVAILABLE`      | A `5xx` response, whether or not its body parsed.                                |
+| `TIMEOUT`                  | No complete answer within the `timeout` (context `timeoutSeconds`).              |
+| `NETWORK_ERROR`            | The request failed before any response (DNS, TLS, connection reset).             |
 | `UNKNOWN_ERROR`            | An unmapped status was returned, or an unknown code was supplied.                |
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` are
+**transient**: ntfy gave no definite answer, so the same call may
+succeed later. `err.transient` is `true` for exactly these and `false` for
+every other code (a definite refusal or a misconfiguration retrying won't
+fix). The set is also exported as `NTFY_TRANSIENT_CODES` from
+`@tundraconnect/ntfy/errors`.
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:

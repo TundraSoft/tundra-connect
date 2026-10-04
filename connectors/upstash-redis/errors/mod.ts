@@ -29,6 +29,7 @@
 
 export { UpstashRedisError, type UpstashRedisErrorMetadata } from './Base.ts';
 export {
+  UPSTASH_REDIS_TRANSIENT_CODES,
   type UpstashRedisErrorCode,
   UpstashRedisErrorCodes,
 } from './UpstashRedisErrorCodes.ts';

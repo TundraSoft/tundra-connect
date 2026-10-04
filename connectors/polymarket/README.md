@@ -82,6 +82,22 @@ client with these calls, the same way you would for order signing.
   half (`/positions`, `/value`) is wired up, via `getPositions()` /
   `getPortfolioValue()`.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Polymarket`
+instance and pass in a stand-in that returns the shapes from
+`@tundraconnect/polymarket/schemas` or throws a real `PolymarketError`:
+
+```ts
+import { PolymarketError } from '@tundraconnect/polymarket/errors';
+
+const outage = new PolymarketError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                           | Description                                |

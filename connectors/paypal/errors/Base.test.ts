@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { PayPalError } from './Base.ts';
-import { PayPalErrorCodes } from './PayPalErrorCodes.ts';
+import {
+  PAYPAL_TRANSIENT_CODES,
+  PayPalErrorCodes,
+} from './PayPalErrorCodes.ts';
 
 describe('PayPal.errors.Base', () => {
   it('formats a known error code', () => {
@@ -48,5 +51,20 @@ describe('PayPal.errors.Base', () => {
     const error = new PayPalError('CONFIG_INVALID_CLIENT_SECRET', {});
     const serialized = JSON.stringify(error.toJSON());
     asserts.assertEquals(serialized.includes('super-secret-value'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(PayPalErrorCodes)) {
+      const error = new PayPalError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        PAYPAL_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...PAYPAL_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

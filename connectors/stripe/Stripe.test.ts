@@ -856,6 +856,72 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('Stripe — transport failures', () => {
+  const KEY = 'sk_test_transport_secret';
+  const AUTH = { type: 'BASIC', username: KEY, password: '' } as const;
+  const ID = 'pi_3Nx0aB2c3D4e5F6g';
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockStripe({ auth: AUTH, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.retrievePaymentIntent(ID),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockStripe({ auth: AUTH });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.retrievePaymentIntent(ID),
+      StripeError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    const json = JSON.stringify(err.toJSON());
+    asserts.assertEquals(json.includes(KEY), false);
+    asserts.assertEquals(json.includes(btoa(`${KEY}:`)), false);
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockStripe({ auth: AUTH });
+    c.setResponse(
+      { error: { type: 'api_error', message: 'Something went wrong' } },
+      500,
+    );
+    const outage = await asserts.assertRejects(
+      () => c.retrievePaymentIntent(ID),
+      StripeError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse(
+      {
+        error: {
+          type: 'invalid_request_error',
+          message: 'Invalid API Key provided',
+        },
+      },
+      401,
+    );
+    const refusal = await asserts.assertRejects(
+      () => c.retrievePaymentIntent(ID),
+      StripeError,
+    );
+    asserts.assertEquals(refusal.code, 'AUTHENTICATION_ERROR');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('Stripe — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -898,6 +964,7 @@ describe('Stripe — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
     asserts.assertEquals(calls(), 2);
@@ -911,6 +978,7 @@ describe('Stripe — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
     asserts.assertEquals(calls(), 1);

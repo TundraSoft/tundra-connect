@@ -1,9 +1,12 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
   RESTlerRateLimitError,
+  RESTlerRequestError,
+  type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
   RESTlerTimeoutError,
@@ -424,8 +427,8 @@ export class PayPal extends RESTler<PayPalOptions> {
    * and sets it as the request's `Authorization` header.
    *
    * @param endpoint - The per-request endpoint copy to mutate with auth headers.
-   * @throws {PayPalError} `TOKEN_EXCHANGE_FAILED` when an access token
-   * can't be obtained.
+   * @throws {PayPalError} `TOKEN_EXCHANGE_FAILED` when the token endpoint
+   * refuses; `TIMEOUT` / `NETWORK_ERROR` when it could not be reached.
    * @protected
    */
   protected override async _authInjector(
@@ -510,7 +513,8 @@ export class PayPal extends RESTler<PayPalOptions> {
    * on failure the entry is dropped so the next call retries cleanly
    * instead of a transient failure being cached forever.
    *
-   * @throws {PayPalError} `TOKEN_EXCHANGE_FAILED`.
+   * @throws {PayPalError} `TOKEN_EXCHANGE_FAILED`, or `TIMEOUT` /
+   * `NETWORK_ERROR` when the token endpoint could not be reached.
    * @private
    */
   private async __getAccessToken(auth: PayPalAuth): Promise<string> {
@@ -593,14 +597,16 @@ export class PayPal extends RESTler<PayPalOptions> {
    * Orders/Payments API's `{ name, message, debug_id, details }` envelope,
    * but the OAuth2 token endpoint sends its own, differently-shaped error
    * body (`{ error: 'invalid_client', error_description }`) and this
-   * method's contract is to always throw `TOKEN_EXCHANGE_FAILED`
-   * regardless. A per-call `responseHandler` below overrides the default
+   * method's contract is to throw `TOKEN_EXCHANGE_FAILED` for any
+   * refusal. A per-call `responseHandler` below overrides the default
    * for this one request and does that status check itself;
    * `responseSchema` validates the token shape on a successful response.
    *
-   * @throws {PayPalError} `TOKEN_EXCHANGE_FAILED` when the request fails
-   * (including timing out), the endpoint responds with a non-2xx status,
-   * or the response body doesn't match the documented token shape.
+   * @throws {PayPalError} `TOKEN_EXCHANGE_FAILED` when the endpoint responds
+   * with a non-2xx status or the response body doesn't match the
+   * documented token shape; `TIMEOUT` / `NETWORK_ERROR` (transient) when no
+   * response arrived, or `RATE_LIMITED` when RESTler's `maxRetryWait` retry was
+   * exhausted — all mapped by the `_makeRequest` override.
    * @private
    */
   private async __exchangeToken(
@@ -655,15 +661,12 @@ export class PayPal extends RESTler<PayPalOptions> {
       // `TokenResponseSchemaObject`'s shape whenever this line is reached.
       return response.body as { access_token: string; expires_in: number };
     } catch (cause) {
-      // Already shaped by `responseHandler` above — surface unchanged.
+      // Already shaped — surface unchanged: a refusal from `responseHandler`
+      // above (`TOKEN_EXCHANGE_FAILED`), or a transport failure the
+      // `_makeRequest` override mapped (`TIMEOUT`, `NETWORK_ERROR`, or the
+      // rate-limit code under `maxRetryWait`), which stays transient.
       if (cause instanceof PayPalError) {
         throw cause;
-      }
-      if (cause instanceof RESTlerTimeoutError) {
-        throw new PayPalError('TOKEN_EXCHANGE_FAILED', {
-          status,
-          reason: 'timeout',
-        }, cause);
       }
       if (cause instanceof RESTlerResponseValidationError) {
         throw new PayPalError('TOKEN_EXCHANGE_FAILED', {
@@ -676,6 +679,7 @@ export class PayPal extends RESTler<PayPalOptions> {
       }
       throw new PayPalError('TOKEN_EXCHANGE_FAILED', {
         status,
+        // Anything else (e.g. a request that could not be built at all).
         reason: 'request failed',
       }, cause instanceof Error ? cause : undefined);
     }
@@ -861,6 +865,56 @@ export class PayPal extends RESTler<PayPalOptions> {
   }
 
   /**
+   * Single choke point for turning RESTler's transport errors into this
+   * connect's own {@link PayPalError} (see {@link __transportError}). Every
+   * request goes through here — the OAuth2 token exchange included, so a
+   * token endpoint that never answered is a transient `TIMEOUT` /
+   * `NETWORK_ERROR`, not a `TOKEN_EXCHANGE_FAILED` refusal.
+   */
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__transportError(err, endpoint.timeout);
+    }
+  }
+
+  /**
+   * `err` rewrapped as this connect's own code, or returned unchanged:
+   * `RESTlerRateLimitError` (RESTler retried once under `maxRetryWait` and
+   * was throttled again, or the vendor's hint exceeded the cap) becomes
+   * `RATE_LIMITED`; `RESTlerTimeoutError` becomes `TIMEOUT`; a bare
+   * `RESTlerRequestError` (the request failed before any response — DNS,
+   * TLS, connection reset) becomes `NETWORK_ERROR`.
+   */
+  private __transportError(err: unknown, timeout: number | undefined): unknown {
+    if (err instanceof RESTlerRateLimitError) {
+      return new PayPalError('RATE_LIMITED', {
+        status: 429,
+        retryAfterSeconds: err.getContextValue('retryAfter'),
+        retried: err.getContextValue('retried'),
+      }, err);
+    }
+    if (err instanceof RESTlerTimeoutError) {
+      return new PayPalError('TIMEOUT', {
+        timeoutSeconds: timeout ?? this._getOption('timeout'),
+      }, err);
+    }
+    // RESTlerResponseValidationError (and the two above) extend
+    // RESTlerRequestError: only a bare one is a failure before any response.
+    if (
+      err instanceof RESTlerRequestError &&
+      !(err instanceof RESTlerResponseValidationError)
+    ) {
+      return new PayPalError('NETWORK_ERROR', {}, err);
+    }
+    return err;
+  }
+
+  /**
    * Makes a request and validates its response body against `guard`,
    * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
    * into a {@link PayPalError} — see CONVENTIONS.md's "HTTP client"
@@ -887,16 +941,6 @@ export class PayPal extends RESTler<PayPalOptions> {
       if (err instanceof RESTlerResponseValidationError) {
         throw new PayPalError('RESPONSE_ERROR', {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
-        }, err);
-      }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new PayPalError('RATE_LIMITED', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
         }, err);
       }
       throw err;

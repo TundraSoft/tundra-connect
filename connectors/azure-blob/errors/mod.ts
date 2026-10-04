@@ -29,6 +29,7 @@
 
 export { AzureBlobError, type AzureBlobErrorMetadata } from './Base.ts';
 export {
+  AZURE_BLOB_TRANSIENT_CODES,
   type AzureBlobErrorCode,
   AzureBlobErrorCodes,
 } from './AzureBlobErrorCodes.ts';

@@ -28,4 +28,8 @@
  */
 
 export { SentryError, type SentryErrorMetadata } from './Base.ts';
-export { type SentryErrorCode, SentryErrorCodes } from './SentryErrorCodes.ts';
+export {
+  SENTRY_TRANSIENT_CODES,
+  type SentryErrorCode,
+  SentryErrorCodes,
+} from './SentryErrorCodes.ts';

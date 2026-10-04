@@ -1115,7 +1115,7 @@ describe('GCS', () => {
   });
 
   describe('service-account token exchange timeout', () => {
-    it('times out the raw token-exchange fetch instead of hanging forever', async () => {
+    it('times out the raw token-exchange fetch as a transient TIMEOUT instead of hanging forever', async () => {
       const client = new MockGCS({
         auth: {
           type: 'CUSTOM',
@@ -1132,14 +1132,17 @@ describe('GCS', () => {
       const error = await asserts.assertRejects(
         () => client.headObject({ bucket: 'b', key: 'a' }),
         GCSError,
-        'Failed to exchange the signed JWT for an OAuth2 access token',
       );
       const elapsed = performance.now() - start;
 
-      asserts.assertEquals(
-        (error as GCSError).getContextValue('reason'),
-        'timeout',
-      );
+      // A token endpoint that never answered is "retry later", not a
+      // refusal: the `_makeRequest` override maps it to TIMEOUT, which the
+      // exchange's own catch rethrows unchanged.
+      asserts.assertEquals(error.code, 'TIMEOUT');
+      asserts.assertEquals(error.transient, true);
+      asserts.assertEquals(error.getContextValue('timeoutSeconds'), 1);
+      asserts.assertEquals(client.requests.length, 1);
+      asserts.assertStringIncludes(client.requests[0]!.url, 'oauth2');
       // Comfortably below what an actually-hung (never aborted) request
       // would take — proves the timeout fired rather than the promise
       // eventually settling some other way.
@@ -1662,6 +1665,140 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('GCS — transport failures', () => {
+  const TOKEN = 'ya29.secret-bearer-token';
+  const make = (timeout?: number) =>
+    new MockGCS({
+      auth: { type: 'BEARER', token: TOKEN },
+      ...(timeout === undefined ? {} : { timeout }),
+    });
+  const META = { name: 'k', bucket: 'my-bucket' };
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = make(1);
+    c.queueHang();
+    const err = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient TIMEOUT when a streamed download gets no headers within the timeout', async () => {
+    const c = make(1);
+    c.queueJSON(META);
+    c.queueHang();
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+    asserts.assertEquals(c.requests.length, 2);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = make();
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(JSON.stringify(err.toJSON()).includes(TOKEN), false);
+
+    const streamed = make();
+    streamed.queueJSON(META);
+    streamed.queueResponse(() =>
+      Promise.reject(new TypeError('error sending request'))
+    );
+    const streamErr = await asserts.assertRejects(
+      () => streamed.getObjectStream({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(streamErr.code, 'NETWORK_ERROR');
+    asserts.assertEquals(streamErr.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(streamErr.toJSON()).includes(TOKEN),
+      false,
+    );
+  });
+
+  it('keeps a response-schema failure as RESPONSE_ERROR, not NETWORK_ERROR', async () => {
+    const c = make();
+    c.queueJSON({ unexpected: true });
+    const err = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertEquals(err.transient, false);
+  });
+
+  it('never reports an HTTP answer on the stream path as NETWORK_ERROR', async () => {
+    // A 3xx reaches the stream path's failure branch, `__toError` lets it
+    // through (status < 400), and RESTler throws a bare RESTlerRequestError.
+    const c = make();
+    c.queueJSON(META);
+    c.queueEmpty(304);
+    const err = await asserts.assertRejects(() =>
+      c.getObjectStream({ bucket: 'my-bucket', key: 'k' })
+    );
+    asserts.assertEquals(
+      err instanceof GCSError && err.code === 'NETWORK_ERROR',
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = make();
+    c.queueJSON({}, 503);
+    const outage = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(outage.code, 'BACKEND_ERROR');
+    asserts.assertEquals(outage.transient, true);
+
+    c.queueJSON(META);
+    c.queueBlob('upstream connect error', 502, 'text/plain');
+    const streamed = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(streamed.code, 'BACKEND_ERROR');
+    asserts.assertEquals(streamed.transient, true);
+
+    c.queueJSON({}, 403);
+    const refusal = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(refusal.code, 'FORBIDDEN');
+    asserts.assertEquals(refusal.transient, false);
+
+    c.queueJSON({}, 404);
+    const missing = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(missing.code, 'NOT_FOUND');
+    asserts.assertEquals(missing.transient, false);
+
+    c.queueJSON({}, 412);
+    const precondition = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'my-bucket', key: 'k' }),
+      GCSError,
+    );
+    asserts.assertEquals(precondition.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(precondition.transient, false);
+  });
+});
+
 describe('GCS — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -1703,6 +1840,7 @@ describe('GCS — maxRetryWait (RESTler rate-limit retry)', () => {
       GCSError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMIT_EXCEEDED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -1716,6 +1854,7 @@ describe('GCS — maxRetryWait (RESTler rate-limit retry)', () => {
       GCSError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMIT_EXCEEDED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
@@ -1740,6 +1879,7 @@ describe('GCS — maxRetryWait (RESTler rate-limit retry)', () => {
       const { c } = throttled(5, '120');
       const err = await asserts.assertRejects(() => path(c), GCSError);
       asserts.assertEquals(err.code, 'RATE_LIMIT_EXCEEDED');
+      asserts.assertEquals(err.transient, true);
       asserts.assertEquals(err.getContextValue('retried'), false);
     }
   });
@@ -1778,6 +1918,7 @@ describe('GCS — maxRetryWait (RESTler rate-limit retry)', () => {
       GCSError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMIT_EXCEEDED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(slept, [1000]);
     asserts.assertEquals(mediaCalls, 2);
@@ -1833,16 +1974,32 @@ describe('GCS — service-account token exchange failures', () => {
     );
     asserts.assertEquals(err.code, 'TOKEN_EXCHANGE_FAILED');
     asserts.assertExists(err.getContextValue('responseError'));
+    asserts.assertEquals(err.transient, false);
   });
-  it('reports a transport failure as TOKEN_EXCHANGE_FAILED ("request failed")', async () => {
+  it('reports a transport failure as a transient NETWORK_ERROR', async () => {
     const c = serviceAccount();
     c['_fetch'] = () => Promise.reject(new TypeError('network down'));
     const err = await asserts.assertRejects(
       () => c.headObject({ bucket: 'b', key: 'a' }),
       GCSError,
     );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(TEST_PRIVATE_KEY_PEM),
+      false,
+    );
+  });
+  it('keeps a token-endpoint refusal as a non-transient TOKEN_EXCHANGE_FAILED', async () => {
+    const c = serviceAccount();
+    c.queueJSON({ error: 'invalid_grant', error_description: 'bad' }, 400);
+    const err = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'b', key: 'a' }),
+      GCSError,
+    );
     asserts.assertEquals(err.code, 'TOKEN_EXCHANGE_FAILED');
-    asserts.assertEquals(err.getContextValue('reason'), 'request failed');
+    asserts.assertEquals(err.getContextValue('status'), 400);
+    asserts.assertEquals(err.transient, false);
   });
 });
 

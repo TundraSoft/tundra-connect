@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type NtfyErrorCode, NtfyErrorCodes } from './NtfyErrorCodes.ts';
+import {
+  NTFY_TRANSIENT_CODES,
+  type NtfyErrorCode,
+  NtfyErrorCodes,
+} from './NtfyErrorCodes.ts';
 
 /** Metadata supplied with a {@link NtfyError}. */
 export type NtfyErrorMetadata = {
@@ -22,6 +26,14 @@ export class NtfyError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link NtfyErrorCodes}). */
   public readonly code: NtfyErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link NTFY_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[ntfy] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -58,5 +70,6 @@ export class NtfyError<
     }
     super(NtfyErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = NTFY_TRANSIENT_CODES.has(code);
   }
 }

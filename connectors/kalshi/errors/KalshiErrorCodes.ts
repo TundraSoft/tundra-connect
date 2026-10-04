@@ -25,7 +25,27 @@ export const KalshiErrorCodes = {
     'Kalshi `auth.privateKeyPem` is not a valid PKCS#8 RSA private key.',
 
   ORDER_REJECTED: 'Kalshi rejected the order: ${detail}',
+  TIMEOUT:
+    'The Kalshi API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to Kalshi failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Kalshi error code. */
 export type KalshiErrorCode = keyof typeof KalshiErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Kalshi returned a 5xx, or it
+ * rate-limited the call. {@link KalshiError.transient} is `true` for
+ * exactly these.
+ */
+export const KALSHI_TRANSIENT_CODES: ReadonlySet<KalshiErrorCode> = new Set<
+  KalshiErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'RATE_LIMITED',
+  'SERVICE_UNAVAILABLE',
+]);

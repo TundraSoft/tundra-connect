@@ -28,4 +28,8 @@
  */
 
 export { GCSError, type GCSErrorMetadata } from './Base.ts';
-export { type GCSErrorCode, GCSErrorCodes } from './GCSErrorCodes.ts';
+export {
+  GCS_TRANSIENT_CODES,
+  type GCSErrorCode,
+  GCSErrorCodes,
+} from './GCSErrorCodes.ts';

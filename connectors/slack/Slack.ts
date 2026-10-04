@@ -1,11 +1,15 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
   RESTlerRateLimitError,
+  RESTlerRequestError,
+  type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
+  RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
 import { constantTimeEqual, signHMAC } from '@crypt';
@@ -612,6 +616,53 @@ export class Slack extends RESTler<SlackOptions> {
   }
 
   /**
+   * Every request funnels through here, so a transport failure surfaces as
+   * this connect's own error on every path: a timeout as `TIMEOUT`, a
+   * failure before any response as `NETWORK_ERROR`, and an exhausted
+   * RESTler rate-limit retry (`maxRetryWait`) as `RATE_LIMITED` — all
+   * `transient`. A {@link SlackError} from the response handler passes
+   * through unchanged.
+   */
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__transportError(err, endpoint.timeout);
+    }
+  }
+
+  /** `err` rewrapped as this connect's transient code, or returned unchanged. */
+  private __transportError(err: unknown, timeout: number | undefined): unknown {
+    if (err instanceof RESTlerRateLimitError) {
+      // RESTler retried once (maxRetryWait) and was throttled again, or the
+      // vendor's hint exceeded the cap.
+      const seconds = err.getContextValue('retryAfter') as number | undefined;
+      return new SlackError('RATE_LIMITED', {
+        status: 429,
+        ...Slack.__retryContext(seconds),
+        retried: err.getContextValue('retried'),
+      }, err);
+    }
+    if (err instanceof RESTlerTimeoutError) {
+      return new SlackError('TIMEOUT', {
+        timeoutSeconds: timeout ?? this._getOption('timeout'),
+      }, err);
+    }
+    // RESTlerResponseValidationError (and the two above) extend
+    // RESTlerRequestError: only a bare one is a failure before any response.
+    if (
+      err instanceof RESTlerRequestError &&
+      !(err instanceof RESTlerResponseValidationError)
+    ) {
+      return new SlackError('NETWORK_ERROR', {}, err);
+    }
+    return err;
+  }
+
+  /**
    * Makes a request and validates its response body against `guard`,
    * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
    * into a {@link SlackError} — so `SlackError` stays the only thing a
@@ -644,16 +695,6 @@ export class Slack extends RESTler<SlackOptions> {
       if (err instanceof RESTlerResponseValidationError) {
         throw new SlackError('RESPONSE_ERROR', {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
-        }, err);
-      }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new SlackError('RATE_LIMITED', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
         }, err);
       }
       throw err;
@@ -703,17 +744,12 @@ export class Slack extends RESTler<SlackOptions> {
     // inspection — a 429's body is not always Slack's own JSON (an
     // intermediating proxy may substitute its own rate-limit page).
     if (status === 429) {
-      const retryAfterHeader = response.headers?.['retry-after'];
-      const retryAfterNum = retryAfterHeader !== undefined
-        ? Number(retryAfterHeader)
-        : NaN;
       const [, envelope] = ErrorEnvelopeSchemaObject.safeParse(
         response.body,
       );
       throw new SlackError('RATE_LIMITED', {
         status,
-        retryAfterSeconds: this._parseRetryAfter(response.headers),
-        retryAfter: Number.isNaN(retryAfterNum) ? 'a few' : retryAfterNum,
+        ...Slack.__retryContext(this._parseRetryAfter(response.headers)),
         vendorError: envelope?.error,
       });
     }
@@ -734,6 +770,9 @@ export class Slack extends RESTler<SlackOptions> {
         status: status ?? undefined,
         vendorError,
         warning: envelope.warning,
+        ...(code === 'RATE_LIMITED'
+          ? Slack.__retryContext(this._parseRetryAfter(response.headers))
+          : {}),
       });
     }
 
@@ -745,5 +784,24 @@ export class Slack extends RESTler<SlackOptions> {
 
     // (5) Success: status < 400 (or null) and the body isn't `ok: false`.
     return response.body;
+  }
+
+  /**
+   * The context every `RATE_LIMITED` error carries, whichever path raised
+   * it: `retryAfterSeconds` (the hint, or `undefined`), the documented
+   * `retryAfter` (the same number, or `'a few'` without a hint), and the
+   * `retryHint` the message template renders.
+   */
+  private static __retryContext(seconds: number | undefined): {
+    retryAfterSeconds: number | undefined;
+    retryAfter: number | string;
+    retryHint: string;
+  } {
+    const known = typeof seconds === 'number' && Number.isFinite(seconds);
+    return {
+      retryAfterSeconds: known ? seconds : undefined,
+      retryAfter: known ? seconds : 'a few',
+      retryHint: known ? `retry after ${seconds}s` : 'retry later',
+    };
   }
 }

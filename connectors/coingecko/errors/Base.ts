@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  COINGECKO_TRANSIENT_CODES,
   type CoinGeckoErrorCode,
   CoinGeckoErrorCodes,
 } from './CoinGeckoErrorCodes.ts';
@@ -25,6 +26,14 @@ export class CoinGeckoError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link CoinGeckoErrorCodes}). */
   public readonly code: CoinGeckoErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link COINGECKO_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[CoinGecko] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -60,5 +69,6 @@ export class CoinGeckoError<
     }
     super(CoinGeckoErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = COINGECKO_TRANSIENT_CODES.has(code);
   }
 }

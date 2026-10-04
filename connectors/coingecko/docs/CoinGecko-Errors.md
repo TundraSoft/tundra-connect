@@ -41,8 +41,17 @@ CoinGecko documents; every other failure is dispatched on HTTP status.
 | `INVALID_REQUEST`            | HTTP 400 or 422.                                                                                   |
 | `NOT_FOUND`                  | HTTP 404.                                                                                          |
 | `RESPONSE_ERROR`             | A successful (< 400) response body failed schema validation.                                       |
-| `SERVICE_UNAVAILABLE`        | HTTP 5xx, or no response was received at all (request failed before a status came back).           |
+| `SERVICE_UNAVAILABLE`        | HTTP 5xx.                                                                                          |
+| `TIMEOUT`                    | No complete answer within the `timeout` (context `timeoutSeconds`).                                |
+| `NETWORK_ERROR`              | The request failed before any response (DNS, TLS, connection reset).                               |
 | `UNKNOWN_ERROR`              | An unmapped status >= 400 with no matching status/error_code rule, or an invalid constructor code. |
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` are
+**transient**: CoinGecko gave no definite answer, so the same call may
+succeed later. `err.transient` is `true` for exactly these and `false` for
+every other code (a definite refusal or a misconfiguration retrying won't
+fix). The set is also exported as `COINGECKO_TRANSIENT_CODES` from
+`@tundraconnect/coingecko/errors`.
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:

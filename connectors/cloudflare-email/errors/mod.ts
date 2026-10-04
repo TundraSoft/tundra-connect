@@ -32,6 +32,7 @@ export {
   type CloudflareEmailErrorMetadata,
 } from './Base.ts';
 export {
+  CLOUDFLARE_EMAIL_TRANSIENT_CODES,
   type CloudflareEmailErrorCode,
   CloudflareEmailErrorCodes,
 } from './CloudflareEmailErrorCodes.ts';

@@ -1112,6 +1112,132 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('AzureBlob — transport failures', () => {
+  const make = (timeout?: number) =>
+    new MockAzureBlob({
+      auth: { type: 'CUSTOM', account: ACCOUNT, accountKey: ACCOUNT_KEY },
+      ...(timeout === undefined ? {} : { timeout }),
+    });
+  /** A `_fetch` that never answers, rejecting only when RESTler aborts it. */
+  const hang = (c: MockAzureBlob) => {
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+  };
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = make(1);
+    hang(c);
+    const err = await asserts.assertRejects(
+      () => c.getObject({ bucket: 'my-container', key: 'k' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient TIMEOUT when a streamed download gets no headers within the timeout', async () => {
+    const c = make(1);
+    hang(c);
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-container', key: 'k' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    for (
+      const call of [
+        (c: MockAzureBlob) => c.getObject({ bucket: 'my-container', key: 'k' }),
+        (c: MockAzureBlob) =>
+          c.getObjectStream({ bucket: 'my-container', key: 'k' }),
+      ]
+    ) {
+      const c = make();
+      c['_fetch'] = () =>
+        Promise.reject(new TypeError('error sending request'));
+      const err = await asserts.assertRejects(() => call(c), AzureBlobError);
+      asserts.assertEquals(err.code, 'NETWORK_ERROR');
+      asserts.assertEquals(err.transient, true);
+      asserts.assertEquals(
+        JSON.stringify(err.toJSON()).includes(ACCOUNT_KEY),
+        false,
+      );
+    }
+  });
+
+  it('keeps a response-schema failure as RESPONSE_ERROR, not NETWORK_ERROR', async () => {
+    const c = make();
+    c.setResponse('<NotEnumerationResults/>', 200, {
+      'Content-Type': 'application/xml',
+    });
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'my-container' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertEquals(err.transient, false);
+  });
+
+  it('never reports an HTTP answer on the stream path as NETWORK_ERROR', async () => {
+    // A 3xx reaches the stream path's failure branch, `__toError` lets it
+    // through (status < 400), and RESTler throws a bare RESTlerRequestError.
+    const c = make();
+    c.setResponse(null, 304);
+    const err = await asserts.assertRejects(() =>
+      c.getObjectStream({ bucket: 'my-container', key: 'k' })
+    );
+    asserts.assertEquals(
+      err instanceof AzureBlobError && err.code === 'NETWORK_ERROR',
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = make();
+    c.setResponse(null, 500, { 'x-ms-error-code': 'InternalError' });
+    const outage = await asserts.assertRejects(
+      () => c.getObject({ bucket: 'my-container', key: 'k' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(outage.code, 'INTERNAL_ERROR');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse(null, 503);
+    const busy = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-container', key: 'k' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(busy.code, 'SERVER_BUSY');
+    asserts.assertEquals(busy.transient, true);
+
+    c.setResponse(null, 403, { 'x-ms-error-code': 'AuthenticationFailed' });
+    const refusal = await asserts.assertRejects(
+      () => c.getObject({ bucket: 'my-container', key: 'k' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(refusal.code, 'AUTHENTICATION_FAILED');
+    asserts.assertEquals(refusal.transient, false);
+
+    c.setResponse(NOT_FOUND_ERROR_XML, 404, {
+      'Content-Type': 'application/xml',
+      'x-ms-error-code': 'BlobNotFound',
+    });
+    const missing = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'my-container', key: 'k' }),
+      AzureBlobError,
+    );
+    asserts.assertEquals(missing.code, 'BLOB_NOT_FOUND');
+    asserts.assertEquals(missing.transient, false);
+  });
+});
+
 describe('AzureBlob — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -1153,6 +1279,7 @@ describe('AzureBlob — maxRetryWait (RESTler rate-limit retry)', () => {
       AzureBlobError,
     );
     asserts.assertEquals(err.code, 'SERVER_BUSY');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -1166,6 +1293,7 @@ describe('AzureBlob — maxRetryWait (RESTler rate-limit retry)', () => {
       AzureBlobError,
     );
     asserts.assertEquals(err.code, 'SERVER_BUSY');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
@@ -1192,6 +1320,7 @@ describe('AzureBlob — maxRetryWait (RESTler rate-limit retry)', () => {
       const { c } = throttled(5, '120');
       const err = await asserts.assertRejects(() => path(c), AzureBlobError);
       asserts.assertEquals(err.code, 'SERVER_BUSY');
+      asserts.assertEquals(err.transient, true);
       asserts.assertEquals(err.getContextValue('retried'), false);
     }
   });
@@ -1203,6 +1332,7 @@ describe('AzureBlob — maxRetryWait (RESTler rate-limit retry)', () => {
       AzureBlobError,
     );
     asserts.assertEquals(err.code, 'SERVER_BUSY');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -1216,6 +1346,7 @@ describe('AzureBlob — maxRetryWait (RESTler rate-limit retry)', () => {
       AzureBlobError,
     );
     asserts.assertEquals(err.code, 'SERVER_BUSY');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(slept, []);
     asserts.assertEquals(calls(), 1);

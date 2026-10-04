@@ -70,9 +70,45 @@
         }
       ]
     },
+    "connectors/cloudflare-dns": {
+      "release-type": "node",
+      "component": "cloudflare-dns",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/cloudflare-email": {
       "release-type": "node",
       "component": "cloudflare-email",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "connectors/cloudflare-saas": {
+      "release-type": "node",
+      "component": "cloudflare-saas",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "connectors/cloudflare-turnstile": {
+      "release-type": "node",
+      "component": "cloudflare-turnstile",
       "bump-minor-pre-major": true,
       "extra-files": [
         {
@@ -121,6 +157,18 @@
     "connectors/gcs": {
       "release-type": "node",
       "component": "gcs",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "connectors/google-analytics": {
+      "release-type": "node",
+      "component": "google-analytics",
       "bump-minor-pre-major": true,
       "extra-files": [
         {

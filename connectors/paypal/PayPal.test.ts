@@ -1007,6 +1007,7 @@ describe('PayPal — maxRetryWait (RESTler rate-limit retry)', () => {
       PayPalError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -1020,6 +1021,7 @@ describe('PayPal — maxRetryWait (RESTler rate-limit retry)', () => {
       PayPalError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
@@ -1028,32 +1030,155 @@ describe('PayPal — maxRetryWait (RESTler rate-limit retry)', () => {
 });
 
 describe('PayPal — token exchange failures', () => {
-  it('times out a hung token exchange as TOKEN_EXCHANGE_FAILED ("timeout")', async () => {
-    const c = new MockPayPal({ auth: TEST_AUTH, timeout: 1 });
-    c['_fetch'] = (_input, init) =>
+  /** A `_fetch` that never answers, rejecting only when RESTler aborts it. */
+  const hang = (c: MockPayPal) => {
+    const urls: string[] = [];
+    c['_fetch'] = (input, init) =>
       new Promise<Response>((_resolve, reject) => {
+        urls.push(String(input));
         init?.signal?.addEventListener('abort', () => {
           reject(
             init.signal?.reason ?? new DOMException('Aborted', 'AbortError'),
           );
         });
       });
+    return urls;
+  };
+
+  it('times out a hung token exchange as a transient TIMEOUT', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH, timeout: 1 });
+    const urls = hang(c);
     const err = await asserts.assertRejects(
       () => c.getOrder('5O190127TN364715T'),
       PayPalError,
     );
-    asserts.assertEquals(err.code, 'TOKEN_EXCHANGE_FAILED');
-    asserts.assertEquals(err.getContextValue('reason'), 'timeout');
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+    asserts.assertEquals(urls.length, 1);
+    asserts.assertStringIncludes(urls[0]!, '/v1/oauth2/token');
   });
-  it('reports a transport failure as TOKEN_EXCHANGE_FAILED ("request failed")', async () => {
+  it('reports a transport failure during the exchange as a transient NETWORK_ERROR', async () => {
     const c = new MockPayPal({ auth: TEST_AUTH });
     c['_fetch'] = () => Promise.reject(new TypeError('network down'));
     const err = await asserts.assertRejects(
       () => c.getOrder('5O190127TN364715T'),
       PayPalError,
     );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(TEST_AUTH.clientSecret),
+      false,
+    );
+  });
+  it('reports an exhausted maxRetryWait retry on the token endpoint as RATE_LIMITED', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH, maxRetryWait: 5 });
+    c.queueResponse(() =>
+      new Response('{}', {
+        status: 429,
+        headers: {
+          'content-type': 'application/json',
+          'retry-after': '120',
+        },
+      })
+    );
+    const err = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
+    asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('retried'), false);
+  });
+  it('keeps a token-endpoint refusal as a non-transient TOKEN_EXCHANGE_FAILED', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH });
+    c.queueJSON({ error: 'invalid_client' }, 401);
+    const err = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
     asserts.assertEquals(err.code, 'TOKEN_EXCHANGE_FAILED');
-    asserts.assertEquals(err.getContextValue('reason'), 'request failed');
+    asserts.assertEquals(err.getContextValue('status'), 401);
+    asserts.assertEquals(err.transient, false);
+  });
+});
+
+describe('PayPal — transport failures', () => {
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH, timeout: 1 });
+    c.queueTokenThen([]);
+    c.queueResponse((init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      })
+    );
+    const err = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+    asserts.assertEquals(c.requests.length, 2);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH });
+    c.queueTokenThen([], 'exchanged-secret-token');
+    c.queueResponse(() =>
+      Promise.reject(new TypeError('error sending request'))
+    );
+    const err = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    const dumped = JSON.stringify(err.toJSON());
+    asserts.assertEquals(dumped.includes(TEST_AUTH.clientSecret), false);
+    asserts.assertEquals(dumped.includes('exchanged-secret-token'), false);
+  });
+
+  it('keeps a response-schema failure as RESPONSE_ERROR, not NETWORK_ERROR', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH });
+    c.queueTokenThen([{ body: { unexpected: true } }]);
+    const err = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertEquals(err.transient, false);
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockPayPal({ auth: TEST_AUTH });
+    c.queueTokenThen([
+      { body: { name: 'INTERNAL_SERVER_ERROR', message: 'x' }, status: 503 },
+      { body: { name: 'NOT_AUTHORIZED', message: 'x' }, status: 403 },
+      { body: { name: 'RESOURCE_NOT_FOUND', message: 'x' }, status: 404 },
+    ]);
+    const outage = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    const refusal = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
+    asserts.assertEquals(refusal.code, 'FORBIDDEN');
+    asserts.assertEquals(refusal.transient, false);
+
+    const missing = await asserts.assertRejects(
+      () => c.getOrder('5O190127TN364715T'),
+      PayPalError,
+    );
+    asserts.assertEquals(missing.code, 'NOT_FOUND');
+    asserts.assertEquals(missing.transient, false);
   });
 });
 

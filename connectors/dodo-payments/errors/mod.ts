@@ -29,6 +29,7 @@
 
 export { DodoPaymentsError, type DodoPaymentsErrorMetadata } from './Base.ts';
 export {
+  DODO_PAYMENTS_TRANSIENT_CODES,
   type DodoPaymentsErrorCode,
   DodoPaymentsErrorCodes,
 } from './DodoPaymentsErrorCodes.ts';

@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { CoinGeckoError } from './Base.ts';
-import { CoinGeckoErrorCodes } from './CoinGeckoErrorCodes.ts';
+import {
+  COINGECKO_TRANSIENT_CODES,
+  CoinGeckoErrorCodes,
+} from './CoinGeckoErrorCodes.ts';
 
 describe('CoinGecko.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -76,5 +79,20 @@ describe('CoinGecko.errors.Base', () => {
         'string',
       );
     }
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(CoinGeckoErrorCodes)) {
+      const error = new CoinGeckoError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        COINGECKO_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...COINGECKO_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { TelegramError } from './Base.ts';
-import { TelegramErrorCodes } from './TelegramErrorCodes.ts';
+import {
+  TELEGRAM_TRANSIENT_CODES,
+  TelegramErrorCodes,
+} from './TelegramErrorCodes.ts';
 
 describe('Telegram.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -66,5 +69,20 @@ describe('Telegram.errors.Base', () => {
     const error = new TelegramError('SERVICE_UNAVAILABLE');
     asserts.assertStringIncludes(error.message, '<status unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(TelegramErrorCodes)) {
+      const error = new TelegramError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        TELEGRAM_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...TELEGRAM_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

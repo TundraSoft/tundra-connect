@@ -1447,6 +1447,132 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('S3 — transport failures', () => {
+  const xml = (body: string, status = 200) =>
+    new Response(body, {
+      status,
+      headers: { 'Content-Type': 'application/xml' },
+    });
+  /** A `_fetch` that never answers, rejecting only when RESTler aborts it. */
+  const hang = (c: MockS3) => {
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+  };
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = client({ timeout: 1 });
+    hang(c);
+    const err = await asserts.assertRejects(
+      () => c.getObject({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient TIMEOUT when a streamed download gets no headers within the timeout', async () => {
+    const c = client({ timeout: 1 });
+    hang(c);
+    const err = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    for (
+      const call of [
+        (c: MockS3) => c.getObject({ bucket: 'examplebucket', key: 'k' }),
+        (c: MockS3) => c.getObjectStream({ bucket: 'examplebucket', key: 'k' }),
+      ]
+    ) {
+      const c = client();
+      c['_fetch'] = () =>
+        Promise.reject(new TypeError('error sending request'));
+      const err = await asserts.assertRejects(() => call(c), S3Error);
+      asserts.assertEquals(err.code, 'NETWORK_ERROR');
+      asserts.assertEquals(err.transient, true);
+      const dumped = JSON.stringify(err.toJSON());
+      asserts.assertEquals(dumped.includes(CREDENTIALS.secretAccessKey), false);
+    }
+  });
+
+  it('keeps a response-schema failure as RESPONSE_ERROR, not NETWORK_ERROR', async () => {
+    const c = client();
+    c.enqueue(() =>
+      xml(
+        '<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>',
+      )
+    );
+    const err = await asserts.assertRejects(
+      () => c.listObjects({ bucket: 'examplebucket' }),
+      S3Error,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertEquals(err.transient, false);
+  });
+
+  it('never reports an HTTP answer on the stream path as NETWORK_ERROR', async () => {
+    // A 3xx reaches the stream path's failure branch, `__toError` lets it
+    // through (status < 400), and RESTler throws a bare RESTlerRequestError.
+    const c = client();
+    c.enqueue(() => new Response(null, { status: 301 }));
+    const err = await asserts.assertRejects(() =>
+      c.getObjectStream({ bucket: 'examplebucket', key: 'k' })
+    );
+    asserts.assertEquals(
+      err instanceof S3Error && err.code === 'NETWORK_ERROR',
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = client();
+    c.enqueue(() =>
+      xml('<Error><Code>InternalError</Code><Message>x</Message></Error>', 500)
+    );
+    const outage = await asserts.assertRejects(
+      () => c.getObject({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(outage.code, 'INTERNAL_ERROR');
+    asserts.assertEquals(outage.transient, true);
+
+    c.enqueue(() => new Response(null, { status: 503 }));
+    const unavailable = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(unavailable.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(unavailable.transient, true);
+
+    c.enqueue(() =>
+      xml('<Error><Code>AccessDenied</Code><Message>x</Message></Error>', 403)
+    );
+    const refusal = await asserts.assertRejects(
+      () => c.getObjectStream({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(refusal.code, 'ACCESS_DENIED');
+    asserts.assertEquals(refusal.transient, false);
+
+    c.enqueue(() => new Response(null, { status: 404 }));
+    const missing = await asserts.assertRejects(
+      () => c.headObject({ bucket: 'examplebucket', key: 'k' }),
+      S3Error,
+    );
+    asserts.assertEquals(missing.code, 'NO_SUCH_KEY');
+    asserts.assertEquals(missing.transient, false);
+  });
+});
+
 describe('S3 — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -1485,6 +1611,7 @@ describe('S3 — maxRetryWait (RESTler rate-limit retry)', () => {
       S3Error,
     );
     asserts.assertEquals(err.code, 'SLOW_DOWN');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -1498,6 +1625,7 @@ describe('S3 — maxRetryWait (RESTler rate-limit retry)', () => {
       S3Error,
     );
     asserts.assertEquals(err.code, 'SLOW_DOWN');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
@@ -1524,6 +1652,8 @@ describe('S3 — maxRetryWait (RESTler rate-limit retry)', () => {
       const { c } = throttled(5, '120');
       const err = await asserts.assertRejects(() => path(c), S3Error);
       asserts.assertEquals(err.code, 'SLOW_DOWN');
+      asserts.assertEquals(err.transient, true);
+      asserts.assertEquals(err.transient, true);
       asserts.assertEquals(err.getContextValue('retried'), false);
     }
   });
@@ -1535,6 +1665,7 @@ describe('S3 — maxRetryWait (RESTler rate-limit retry)', () => {
       S3Error,
     );
     asserts.assertEquals(err.code, 'SLOW_DOWN');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -1548,6 +1679,7 @@ describe('S3 — maxRetryWait (RESTler rate-limit retry)', () => {
       S3Error,
     );
     asserts.assertEquals(err.code, 'SLOW_DOWN');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(slept, []);
     asserts.assertEquals(calls(), 1);

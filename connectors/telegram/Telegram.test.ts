@@ -519,6 +519,95 @@ const credentials = {
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
 
+describe('Telegram — transport failures', () => {
+  // The token is in the URL path, which RESTler's own redaction doesn't
+  // cover — every error below is checked for it.
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockTelegram({ botToken: TEST_TOKEN, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.getMe(),
+      TelegramError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+    asserts.assertEquals(dumpError(err).includes(TEST_TOKEN), false);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockTelegram({ botToken: TEST_TOKEN });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.getMe(),
+      TelegramError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(TEST_TOKEN),
+      false,
+    );
+    asserts.assertEquals(dumpError(err).includes(TEST_TOKEN), false);
+  });
+
+  it('scrubs the token from a fetch error message that embeds the URL', async () => {
+    // Deno's message is `error sending request for url (<url>)`.
+    const c = new MockTelegram({ botToken: TEST_TOKEN });
+    c['_fetch'] = (input) =>
+      Promise.reject(new TypeError(`error sending request for url (${input})`));
+    const err = await asserts.assertRejects(
+      () => c.getMe(),
+      TelegramError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(dumpError(err).includes(TEST_TOKEN), false);
+    asserts.assertStringIncludes(dumpError(err), '/bot[REDACTED]/getMe');
+  });
+
+  it('scrubs the token from a RESPONSE_ERROR cause', async () => {
+    const c = new MockTelegram({ botToken: TEST_TOKEN });
+    c.setResponse(envelope({ unexpected: true }));
+    const err = await asserts.assertRejects(
+      () => c.getMe(),
+      TelegramError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertEquals(err.transient, false);
+    asserts.assertEquals(dumpError(err).includes(TEST_TOKEN), false);
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockTelegram({ botToken: TEST_TOKEN });
+    c.setResponse('<html>502</html>', 502, { 'content-type': 'text/html' });
+    const outage = await asserts.assertRejects(
+      () => c.getMe(),
+      TelegramError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse(
+      JSON.stringify({
+        ok: false,
+        error_code: 401,
+        description: 'Unauthorized',
+      }),
+      401,
+    );
+    const refusal = await asserts.assertRejects(
+      () => c.getMe(),
+      TelegramError,
+    );
+    asserts.assertEquals(refusal.code, 'AUTH_FAILED');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('Telegram — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -558,6 +647,7 @@ describe('Telegram — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
     asserts.assertEquals(calls(), 2);
@@ -571,7 +661,10 @@ describe('Telegram — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
+    // The rewrapped RESTler error (its `cause`) carries the request URL.
+    asserts.assertEquals(dumpError(err).includes(TEST_TOKEN), false);
     asserts.assertEquals(slept, []);
     asserts.assertEquals(calls(), 1);
   });

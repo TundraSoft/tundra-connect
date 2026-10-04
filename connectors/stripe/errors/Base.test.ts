@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { StripeError } from './Base.ts';
-import { StripeErrorCodes } from './StripeErrorCodes.ts';
+import {
+  STRIPE_TRANSIENT_CODES,
+  StripeErrorCodes,
+} from './StripeErrorCodes.ts';
 
 describe('Stripe.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -53,5 +56,20 @@ describe('Stripe.errors.Base', () => {
     const error = new StripeError('CARD_DECLINED', {});
     asserts.assertStringIncludes(error.message, '<vendorMessage unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(StripeErrorCodes)) {
+      const error = new StripeError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        STRIPE_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...STRIPE_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

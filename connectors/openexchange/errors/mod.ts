@@ -29,6 +29,7 @@
 
 export { OpenExchangeError, type OpenExchangeErrorMetadata } from './Base.ts';
 export {
+  OPENEXCHANGE_TRANSIENT_CODES,
   type OpenExchangeErrorCode,
   OpenExchangeErrorCodes,
 } from './OpenExchangeErrorCodes.ts';

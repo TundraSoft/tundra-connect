@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  OPENEXCHANGE_TRANSIENT_CODES,
   type OpenExchangeErrorCode,
   OpenExchangeErrorCodes,
 } from './OpenExchangeErrorCodes.ts';
@@ -25,6 +26,14 @@ export class OpenExchangeError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link OpenExchangeErrorCodes}). */
   public readonly code: OpenExchangeErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `RATE_LIMITED` or `SERVICE_UNAVAILABLE` (see
+   * {@link OPENEXCHANGE_TRANSIENT_CODES}) — and `false` for a definite
+   * refusal or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[OpenExchange] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -61,5 +70,6 @@ export class OpenExchangeError<
     }
     super(OpenExchangeErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = OPENEXCHANGE_TRANSIENT_CODES.has(code);
   }
 }

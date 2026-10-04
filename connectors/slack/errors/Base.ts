@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type SlackErrorCode, SlackErrorCodes } from './SlackErrorCodes.ts';
+import {
+  SLACK_TRANSIENT_CODES,
+  type SlackErrorCode,
+  SlackErrorCodes,
+} from './SlackErrorCodes.ts';
 
 /** Metadata supplied with a {@link SlackError}. */
 export type SlackErrorMetadata = {
@@ -25,6 +29,14 @@ export class SlackError<
    * {@link SlackErrorCodes}).
    */
   public readonly code: SlackErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link SLACK_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[slack] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -62,5 +74,6 @@ export class SlackError<
 
     super(SlackErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = SLACK_TRANSIENT_CODES.has(code);
   }
 }

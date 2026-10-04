@@ -43,7 +43,9 @@ export const SlackErrorCodes = {
 
   // Rate limiting: a genuine HTTP 429 (with a `Retry-After` header) and an
   // `ok: false` `error: 'ratelimited'`/`'rate_limited'` both map here.
-  RATE_LIMITED: 'Slack rate limit exceeded; retry after ${retryAfter}s.',
+  // `retryHint` is filled by the client on every rate-limit path:
+  // `retry after 30s`, or `retry later` when Slack sent no usable hint.
+  RATE_LIMITED: 'Slack rate limit exceeded; ${retryHint}.',
 
   // Genuine HTTP-level failures that bypass Slack's `{ ok, error }`
   // envelope entirely.
@@ -55,7 +57,27 @@ export const SlackErrorCodes = {
     'The webhook timestamp is outside the allowed tolerance: ${reason}',
   WEBHOOK_SIGNATURE_INVALID:
     'The webhook signature does not match — treat this request as forged.',
+  TIMEOUT:
+    'The Slack API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to the Slack API failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Slack error code. */
 export type SlackErrorCode = keyof typeof SlackErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Slack returned a 5xx, or it
+ * rate-limited the call. {@link SlackError.transient} is `true` for
+ * exactly these.
+ */
+export const SLACK_TRANSIENT_CODES: ReadonlySet<SlackErrorCode> = new Set<
+  SlackErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

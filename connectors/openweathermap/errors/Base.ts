@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  OPENWEATHERMAP_TRANSIENT_CODES,
   type OpenWeatherMapErrorCode,
   OpenWeatherMapErrorCodes,
 } from './OpenWeatherMapErrorCodes.ts';
@@ -26,6 +27,14 @@ export class OpenWeatherMapError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link OpenWeatherMapErrorCodes}). */
   public readonly code: OpenWeatherMapErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `RATE_LIMITED` or `SERVICE_UNAVAILABLE` (see
+   * {@link OPENWEATHERMAP_TRANSIENT_CODES}) — and `false` for a definite
+   * refusal or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[OpenWeatherMap] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -64,5 +73,6 @@ export class OpenWeatherMapError<
     }
     super(OpenWeatherMapErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = OPENWEATHERMAP_TRANSIENT_CODES.has(code);
   }
 }

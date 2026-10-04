@@ -29,6 +29,7 @@
 
 export { DiscordError, type DiscordErrorMetadata } from './Base.ts';
 export {
+  DISCORD_TRANSIENT_CODES,
   type DiscordErrorCode,
   DiscordErrorCodes,
 } from './DiscordErrorCodes.ts';

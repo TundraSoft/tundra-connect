@@ -32,6 +32,8 @@ the HTTP status is the fallback.
 | `INVALID_REQUEST`           | Request options failed local Guardian validation.                                                                        |
 | `RESPONSE_ERROR`            | The response body (success or error) failed schema validation.                                                           |
 | `SERVICE_UNAVAILABLE`       | A 5xx response, or an error body that failed to parse at all.                                                            |
+| `TIMEOUT`                   | Stripe did not answer within the client `timeout` (`timeoutSeconds` in context).                                         |
+| `NETWORK_ERROR`             | `fetch` failed before any response (DNS, TLS, connection reset); the transport error is the `cause`.                     |
 | `AUTHENTICATION_ERROR`      | Status 401, no more specific `error.code` — invalid/revoked key.                                                         |
 | `PERMISSION_ERROR`          | Status 403 — the key lacks permission for this request.                                                                  |
 | `RESOURCE_MISSING`          | Status 404, or `error.code = resource_missing`.                                                                          |
@@ -64,6 +66,34 @@ Use `getContextValue()` to read diagnostic metadata such as `vendor`,
 `declineCode`, or `docUrl` (Stripe's
 [error-codes reference](https://docs.stripe.com/error-codes) URL, when the
 vendor supplies one).
+
+## Transient failures
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` mean
+"no answer yet": retrying later can help. Every other code is a definite
+refusal or a misconfiguration that retrying will not fix. Branch on the
+readonly `err.transient`, which is `true` for exactly these four, rather
+than listing codes yourself. The set is also exported as
+`STRIPE_TRANSIENT_CODES` from `@tundraconnect/stripe/errors`.
+
+```ts
+import { StripeError } from '@tundraconnect/stripe/errors';
+
+declare function callTheClient(): Promise<unknown>;
+
+try {
+  await callTheClient();
+} catch (err) {
+  if (err instanceof StripeError && err.transient) {
+    // queue it and try again later
+  }
+  throw err;
+}
+```
+
+| Context          | Present on | Meaning                                   |
+| ---------------- | ---------- | ----------------------------------------- |
+| `timeoutSeconds` | `TIMEOUT`  | The deadline that was missed, in seconds. |
 
 ## Backing off after a 429
 

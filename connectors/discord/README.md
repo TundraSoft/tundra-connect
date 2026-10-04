@@ -28,6 +28,22 @@ never both, never neither — validated at construction time. It uses
 RESTler for transport and Guardian for runtime request/response
 validation.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Discord` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/discord/schemas` or throws a real `DiscordError`:
+
+```ts
+import { DiscordError } from '@tundraconnect/discord/errors';
+
+const outage = new DiscordError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                        | Description                                |

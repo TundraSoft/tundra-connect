@@ -27,26 +27,34 @@ try {
 
 ## Codes
 
-| Code                        | Raised when                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| `CONFIG_INVALID_API_KEY`    | `auth` is missing, isn't `BEARER`, or its `token` is blank.                    |
-| `REQUEST_VALIDATION_ERROR`  | Arguments failed local validation — nothing was sent.                          |
-| `INVALID_REQUEST`           | Resend rejected the request's fields or parameters.                            |
-| `AUTH_FAILED`               | The API key is missing, invalid, or sending-only for a full-access call.       |
-| `FORBIDDEN`                 | The key is suspended, inactive, lacks a scope, or the domain isn't allowed.    |
-| `NOT_FOUND`                 | No such email (or endpoint).                                                   |
-| `IDEMPOTENCY_CONFLICT`      | The idempotency key is in flight elsewhere, or was used with a different body. |
-| `CONFLICT`                  | Another request is already updating the resource.                              |
-| `QUOTA_EXCEEDED`            | The daily or monthly sending quota is exhausted.                               |
-| `RATE_LIMITED`              | Too many requests per second.                                                  |
-| `SERVICE_UNAVAILABLE`       | Resend returned a 5xx.                                                         |
-| `RESPONSE_ERROR`            | A successful response's body did not match the expected schema.                |
-| `WEBHOOK_INVALID_HEADERS`   | A `svix-id` / `svix-timestamp` / `svix-signature` header is missing.           |
-| `WEBHOOK_TIMESTAMP_INVALID` | The timestamp is not Unix seconds, or is outside the tolerance window.         |
-| `WEBHOOK_SIGNATURE_INVALID` | No `v1` signature matches the payload and secret.                              |
-| `WEBHOOK_INVALID_SECRET`    | The signing secret is empty or not base64.                                     |
-| `WEBHOOK_INVALID_PAYLOAD`   | The verified body is not JSON, or not a `{ type, created_at, data }` event.    |
-| `UNKNOWN_ERROR`             | Any unmapped failure, or an unrecognized code passed to the constructor.       |
+| Code                        | Raised when                                                                                                 |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `CONFIG_INVALID_API_KEY`    | `auth` is missing, isn't `BEARER`, or its `token` is blank.                                                 |
+| `REQUEST_VALIDATION_ERROR`  | Arguments failed local validation — nothing was sent.                                                       |
+| `INVALID_REQUEST`           | Resend rejected the request's fields or parameters.                                                         |
+| `AUTH_FAILED`               | The API key is missing, invalid, or sending-only for a full-access call.                                    |
+| `FORBIDDEN`                 | The key is suspended, inactive, lacks a scope, or the domain isn't allowed.                                 |
+| `NOT_FOUND`                 | No such email (or endpoint).                                                                                |
+| `IDEMPOTENCY_CONFLICT`      | The idempotency key is in flight elsewhere, or was used with a different body.                              |
+| `CONFLICT`                  | Another request is already updating the resource.                                                           |
+| `QUOTA_EXCEEDED`            | The daily or monthly sending quota is exhausted.                                                            |
+| `RATE_LIMITED`              | Too many requests per second.                                                                               |
+| `TIMEOUT`                   | No answer from Resend within the `timeout` (seconds); `timeoutSeconds` says which deadline passed.          |
+| `NETWORK_ERROR`             | The request failed before any response (DNS, TLS or connection failure); the original error is the `cause`. |
+| `SERVICE_UNAVAILABLE`       | Resend returned a 5xx.                                                                                      |
+| `RESPONSE_ERROR`            | A successful response's body did not match the expected schema.                                             |
+| `WEBHOOK_INVALID_HEADERS`   | A `svix-id` / `svix-timestamp` / `svix-signature` header is missing.                                        |
+| `WEBHOOK_TIMESTAMP_INVALID` | The timestamp is not Unix seconds, or is outside the tolerance window.                                      |
+| `WEBHOOK_SIGNATURE_INVALID` | No `v1` signature matches the payload and secret.                                                           |
+| `WEBHOOK_INVALID_SECRET`    | The signing secret is empty or not base64.                                                                  |
+| `WEBHOOK_INVALID_PAYLOAD`   | The verified body is not JSON, or not a `{ type, created_at, data }` event.                                 |
+| `UNKNOWN_ERROR`             | Any unmapped failure, or an unrecognized code passed to the constructor.                                    |
+
+`TIMEOUT`, `NETWORK_ERROR`, `RATE_LIMITED` and `SERVICE_UNAVAILABLE` are
+**transient**: they mean "no answer yet — try again later". `err.transient`
+is `true` for exactly these and `false` for every other code (a definite
+refusal, or a misconfiguration that retrying will not fix). The set is also
+exported as `RESEND_TRANSIENT_CODES` from `@tundraconnect/resend/errors`.
 
 ## Vendor error mapping
 
@@ -77,17 +85,18 @@ reason.
 
 ## Context
 
-| Key                 | Present on                                  | Meaning                                          |
-| ------------------- | ------------------------------------------- | ------------------------------------------------ |
-| `status`            | vendor errors                               | HTTP status.                                     |
-| `vendorName`        | vendor errors with a Resend body            | Resend's error `name`.                           |
-| `detail`            | vendor errors                               | `message (name)`, or `no detail`.                |
-| `body`              | vendor errors                               | The raw response body.                           |
-| `retryAfterSeconds` | `RATE_LIMITED` / any error with a hint      | Parsed `Retry-After`.                            |
-| `retried`           | `RATE_LIMITED` via `maxRetryWait`           | Whether RESTler already waited and retried once. |
-| `reason`            | `REQUEST_VALIDATION_ERROR`, webhook codes   | What failed.                                     |
-| `index`             | `REQUEST_VALIDATION_ERROR` from `sendBatch` | Position of the offending email.                 |
-| `responseError`     | validation codes                            | The Guardian error, serialized.                  |
+| Key                 | Present on                                  | Meaning                                               |
+| ------------------- | ------------------------------------------- | ----------------------------------------------------- |
+| `status`            | vendor errors                               | HTTP status.                                          |
+| `vendorName`        | vendor errors with a Resend body            | Resend's error `name`.                                |
+| `detail`            | vendor errors                               | `message (name)`, or `no detail`.                     |
+| `body`              | vendor errors                               | The raw response body.                                |
+| `retryAfterSeconds` | `RATE_LIMITED` / any error with a hint      | Parsed `Retry-After`.                                 |
+| `retried`           | `RATE_LIMITED` via `maxRetryWait`           | Whether RESTler already waited and retried once.      |
+| `timeoutSeconds`    | `TIMEOUT`                                   | The deadline, in seconds, that passed with no answer. |
+| `reason`            | `REQUEST_VALIDATION_ERROR`, webhook codes   | What failed.                                          |
+| `index`             | `REQUEST_VALIDATION_ERROR` from `sendBatch` | Position of the offending email.                      |
+| `responseError`     | validation codes                            | The Guardian error, serialized.                       |
 
 ## Rate limits
 

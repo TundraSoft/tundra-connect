@@ -39,6 +39,22 @@ payment-method union (cards, wallets, BNPL, local payment methods, ...) are
 out of scope for this v1 — see [docs/PayPal-API.md](https://github.com/TundraSoft/tundra-connect/wiki/PayPal-API) for
 the exact boundary.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `PayPal` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/paypal/schemas` or throws a real `PayPalError`:
+
+```ts
+import { PayPalError } from '@tundraconnect/paypal/errors';
+
+const outage = new PayPalError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                       | Description                                |

@@ -24,18 +24,20 @@ codes are connect-specific, keyed off that status, plus a couple of
 client-side configuration/local-validation codes that never come from the
 wire.
 
-| Code                       | Meaning                                                                                         |
-| -------------------------- | ----------------------------------------------------------------------------------------------- |
-| `CONFIG_INVALID_BOT_TOKEN` | The configured bot token is missing, blank, or not a string.                                    |
-| `REQUEST_VALIDATION_ERROR` | A request failed local schema validation and was not sent.                                      |
-| `BAD_REQUEST`              | Telegram returned `400 Bad Request` (e.g. chat not found, malformed `parse_mode` entities).     |
-| `AUTH_FAILED`              | Telegram returned `401 Unauthorized` (invalid or revoked bot token).                            |
-| `FORBIDDEN`                | Telegram returned `403 Forbidden` (e.g. the bot was blocked by the user).                       |
-| `NOT_FOUND`                | Telegram returned `404 Not Found`.                                                              |
-| `RATE_LIMITED`             | Telegram returned `429 Too Many Requests`; `parameters.retry_after` is carried as `retryAfter`. |
-| `RESPONSE_ERROR`           | A response body failed envelope or result schema validation.                                    |
-| `SERVICE_UNAVAILABLE`      | A `5xx` response, or any response whose body didn't parse.                                      |
-| `UNKNOWN_ERROR`            | An unmapped status was returned, or an unknown code was supplied.                               |
+| Code                       | Meaning                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `CONFIG_INVALID_BOT_TOKEN` | The configured bot token is missing, blank, or not a string.                                         |
+| `REQUEST_VALIDATION_ERROR` | A request failed local schema validation and was not sent.                                           |
+| `BAD_REQUEST`              | Telegram returned `400 Bad Request` (e.g. chat not found, malformed `parse_mode` entities).          |
+| `AUTH_FAILED`              | Telegram returned `401 Unauthorized` (invalid or revoked bot token).                                 |
+| `FORBIDDEN`                | Telegram returned `403 Forbidden` (e.g. the bot was blocked by the user).                            |
+| `NOT_FOUND`                | Telegram returned `404 Not Found`.                                                                   |
+| `RATE_LIMITED`             | Telegram returned `429 Too Many Requests`; `parameters.retry_after` is carried as `retryAfter`.      |
+| `RESPONSE_ERROR`           | A response body failed envelope or result schema validation.                                         |
+| `SERVICE_UNAVAILABLE`      | A `5xx` response, or any response whose body didn't parse.                                           |
+| `TIMEOUT`                  | The Telegram Bot API did not answer within the client `timeout` (`timeoutSeconds` in context).       |
+| `NETWORK_ERROR`            | `fetch` failed before any response (DNS, TLS, connection reset); the transport error is the `cause`. |
+| `UNKNOWN_ERROR`            | An unmapped status was returned, or an unknown code was supplied.                                    |
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:
@@ -69,6 +71,38 @@ try {
   }
 }
 ```
+
+## Transient failures
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` mean
+"no answer yet": retrying later can help. Every other code is a definite
+refusal or a misconfiguration that retrying will not fix. Branch on the
+readonly `err.transient`, which is `true` for exactly these four, rather
+than listing codes yourself. The set is also exported as
+`TELEGRAM_TRANSIENT_CODES` from `@tundraconnect/telegram/errors`.
+
+```ts
+import { TelegramError } from '@tundraconnect/telegram/errors';
+
+declare function callTheClient(): Promise<unknown>;
+
+try {
+  await callTheClient();
+} catch (err) {
+  if (err instanceof TelegramError && err.transient) {
+    // queue it and try again later
+  }
+  throw err;
+}
+```
+
+| Context          | Present on | Meaning                                   |
+| ---------------- | ---------- | ----------------------------------------- |
+| `timeoutSeconds` | `TIMEOUT`  | The deadline that was missed, in seconds. |
+
+The bot token is part of the request path, so it is scrubbed (as
+`/bot[REDACTED]`) from the `cause` chain of every error before it reaches
+you.
 
 ## Backing off after a 429
 

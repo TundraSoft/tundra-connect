@@ -23,6 +23,22 @@ GCS's own field names differ from the canonical interface (`name` instead of
 client translates between them internally so the public method/parameter
 names stay consistent with this repository's other object-storage connects.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `GCS` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/gcs/schemas` or throws a real `GCSError`:
+
+```ts
+import { GCSError } from '@tundraconnect/gcs/errors';
+
+const outage = new GCSError('BACKEND_ERROR', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                    | Description                                |

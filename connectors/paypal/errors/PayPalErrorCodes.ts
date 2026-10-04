@@ -66,6 +66,9 @@ export const PayPalErrorCodes = {
   RESPONSE_ERROR: 'PayPal API response did not match the expected schema.',
   SERVICE_UNAVAILABLE:
     'PayPal service is currently unavailable (HTTP ${status}).',
+  TIMEOUT: 'PayPal did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to PayPal failed before a response (DNS, TLS or connection failure).',
   WEBHOOK_INVALID_HEADERS:
     'The webhook request is missing a required PayPal transmission header: ${reason}',
   WEBHOOK_SIGNATURE_INVALID:
@@ -74,3 +77,19 @@ export const PayPalErrorCodes = {
 
 /** Valid PayPal error code. */
 export type PayPalErrorCode = keyof typeof PayPalErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed (including during the OAuth2 token exchange), the network
+ * failed, PayPal returned a 5xx, or it rate-limited the call.
+ * {@link PayPalError.transient} is `true` for exactly these.
+ */
+export const PAYPAL_TRANSIENT_CODES: ReadonlySet<PayPalErrorCode> = new Set<
+  PayPalErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'RATE_LIMITED',
+  'SERVICE_UNAVAILABLE',
+]);

@@ -29,6 +29,7 @@
 
 export { PolymarketError, type PolymarketErrorMetadata } from './Base.ts';
 export {
+  POLYMARKET_TRANSIENT_CODES,
   type PolymarketErrorCode,
   PolymarketErrorCodes,
 } from './PolymarketErrorCodes.ts';

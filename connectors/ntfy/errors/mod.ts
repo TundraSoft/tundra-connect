@@ -28,4 +28,8 @@
  */
 
 export { NtfyError, type NtfyErrorMetadata } from './Base.ts';
-export { type NtfyErrorCode, NtfyErrorCodes } from './NtfyErrorCodes.ts';
+export {
+  NTFY_TRANSIENT_CODES,
+  type NtfyErrorCode,
+  NtfyErrorCodes,
+} from './NtfyErrorCodes.ts';

@@ -27,11 +27,15 @@ on:
           # workspace:publish-paths:start
           - connectors/algolia
           - connectors/azure-blob
+          - connectors/cloudflare-dns
           - connectors/cloudflare-email
+          - connectors/cloudflare-saas
+          - connectors/cloudflare-turnstile
           - connectors/coingecko
           - connectors/discord
           - connectors/dodo-payments
           - connectors/gcs
+          - connectors/google-analytics
           - connectors/google-web-risk
           - connectors/kalshi
           - connectors/ntfy

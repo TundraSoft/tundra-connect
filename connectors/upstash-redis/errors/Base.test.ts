@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { UpstashRedisError } from './Base.ts';
-import { UpstashRedisErrorCodes } from './UpstashRedisErrorCodes.ts';
+import {
+  UPSTASH_REDIS_TRANSIENT_CODES,
+  UpstashRedisErrorCodes,
+} from './UpstashRedisErrorCodes.ts';
 
 describe('UpstashRedis.errors.Base', () => {
   it('formats a known error code', () => {
@@ -40,5 +43,20 @@ describe('UpstashRedis.errors.Base', () => {
     const error = new UpstashRedisError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<reason unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(UpstashRedisErrorCodes)) {
+      const error = new UpstashRedisError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        UPSTASH_REDIS_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...UPSTASH_REDIS_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  POLYMARKET_TRANSIENT_CODES,
   type PolymarketErrorCode,
   PolymarketErrorCodes,
 } from './PolymarketErrorCodes.ts';
@@ -28,6 +29,14 @@ export class PolymarketError<
    * {@link PolymarketErrorCodes}).
    */
   public readonly code: PolymarketErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `RATE_LIMITED` or `SERVICE_UNAVAILABLE` (see
+   * {@link POLYMARKET_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[polymarket] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -65,5 +74,6 @@ export class PolymarketError<
 
     super(PolymarketErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = POLYMARKET_TRANSIENT_CODES.has(code);
   }
 }

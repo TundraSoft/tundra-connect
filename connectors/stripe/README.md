@@ -18,6 +18,22 @@ nested objects/arrays) and validating JSON responses. It uses RESTler for
 transport (HTTP Basic auth, built in) and Guardian for runtime
 request/response validation.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Stripe` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/stripe/schemas` or throws a real `StripeError`:
+
+```ts
+import { StripeError } from '@tundraconnect/stripe/errors';
+
+const outage = new StripeError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                       | Description                                |

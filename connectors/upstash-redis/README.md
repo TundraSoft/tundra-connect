@@ -33,6 +33,22 @@ await client.set('foo', 'bar', { ex: 60 });
 console.log(await client.get('foo')); // 'bar'
 ```
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `UpstashRedis`
+instance and pass in a stand-in that returns the shapes from
+`@tundraconnect/upstash-redis/schemas` or throws a real `UpstashRedisError`:
+
+```ts
+import { UpstashRedisError } from '@tundraconnect/upstash-redis/errors';
+
+const outage = new UpstashRedisError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                             | Description                                |

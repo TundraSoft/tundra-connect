@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  TELEGRAM_TRANSIENT_CODES,
   type TelegramErrorCode,
   TelegramErrorCodes,
 } from './TelegramErrorCodes.ts';
@@ -26,6 +27,14 @@ export class TelegramError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link TelegramErrorCodes}). */
   public readonly code: TelegramErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link TELEGRAM_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[Telegram] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -62,5 +71,6 @@ export class TelegramError<
     }
     super(TelegramErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = TELEGRAM_TRANSIENT_CODES.has(code);
   }
 }

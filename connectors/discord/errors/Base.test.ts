@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { DiscordError } from './Base.ts';
-import { DiscordErrorCodes } from './DiscordErrorCodes.ts';
+import {
+  DISCORD_TRANSIENT_CODES,
+  DiscordErrorCodes,
+} from './DiscordErrorCodes.ts';
 
 describe('Discord.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -67,5 +70,20 @@ describe('Discord.errors.Base', () => {
     const error = new DiscordError('NOT_FOUND');
     asserts.assertStringIncludes(error.message, '<status unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(DiscordErrorCodes)) {
+      const error = new DiscordError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        DISCORD_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...DISCORD_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

@@ -1469,6 +1469,142 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('Polymarket — transport failures', () => {
+  const failing = () => Promise.reject(new TypeError('error sending request'));
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockPolymarket({ timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.getMarkets(),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR from a signed CLOB read', async () => {
+    const c = new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        privateKey: TEST_KEY,
+        funder: PROXY,
+        apiCredentials: CREDS,
+      },
+    });
+    c['_fetch'] = failing;
+    const err = await asserts.assertRejects(
+      () => c.getBalance(),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    const json = JSON.stringify(err.toJSON());
+    asserts.assertEquals(json.includes(TEST_KEY.slice(2)), false);
+    asserts.assertEquals(json.includes(CREDS.secret), false);
+  });
+
+  it('throws NETWORK_ERROR from the order-submission path', async () => {
+    const c = new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        privateKey: TEST_KEY,
+        funder: PROXY,
+        apiCredentials: CREDS,
+      },
+    });
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    c['_fetch'] = (input) => {
+      const url = String(input);
+      if (url.includes('/version')) {
+        return Promise.resolve(json({ version: 2 }));
+      }
+      if (url.includes('/neg-risk')) {
+        return Promise.resolve(json({ neg_risk: false }));
+      }
+      if (url.includes('/tick-size')) {
+        return Promise.resolve(json({ minimum_tick_size: '0.01' }));
+      }
+      return failing();
+    };
+    const err = await asserts.assertRejects(
+      () =>
+        c.submitOrder({
+          tokenId: TOKEN,
+          side: 'BUY',
+          price: 0.55,
+          shares: 9.0,
+          orderType: 'FAK',
+        }),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+  });
+
+  it('throws NETWORK_ERROR from a Relayer call', async () => {
+    const c = new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        privateKey: TEST_KEY,
+        funder: PROXY,
+        relayerApiKey: 'relayer-key',
+        relayerApiKeyAddress: TEST_ADDR,
+      },
+    });
+    c['_fetch'] = failing;
+    const err = await asserts.assertRejects(
+      () =>
+        c.redeem({
+          conditionId:
+            '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+          negRisk: false,
+        }),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes('relayer-key'),
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockPolymarket();
+    c.setResponse({ error: 'oops' }, 503);
+    const outage = await asserts.assertRejects(
+      () => c.getMarkets(),
+      PolymarketError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse({ error: 'nope' }, 401);
+    const refusal = await asserts.assertRejects(
+      () => c.getMarkets(),
+      PolymarketError,
+    );
+    asserts.assertEquals(refusal.code, 'AUTH_FAILED');
+    asserts.assertEquals(refusal.transient, false);
+  });
+
+  it('keepalive still resolves false on a transport failure', async () => {
+    const c = new MockPolymarket();
+    c['_fetch'] = failing;
+    asserts.assertEquals(await c.keepalive(), false);
+  });
+});
+
 describe('Polymarket — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -1507,6 +1643,7 @@ describe('Polymarket — maxRetryWait (RESTler rate-limit retry)', () => {
       PolymarketError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -1520,6 +1657,7 @@ describe('Polymarket — maxRetryWait (RESTler rate-limit retry)', () => {
       PolymarketError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
@@ -1581,6 +1719,7 @@ describe('Polymarket — order-path validation and rate limiting', () => {
       PolymarketError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
   });
 

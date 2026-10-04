@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { RazorpayError } from './Base.ts';
-import { RazorpayErrorCodes } from './RazorpayErrorCodes.ts';
+import {
+  RAZORPAY_TRANSIENT_CODES,
+  RazorpayErrorCodes,
+} from './RazorpayErrorCodes.ts';
 
 describe('Razorpay.errors.Base', () => {
   it('formats a known error code', () => {
@@ -38,5 +41,26 @@ describe('Razorpay.errors.Base', () => {
     const error = new RazorpayError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<reason unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(RazorpayErrorCodes)) {
+      const error = new RazorpayError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        RAZORPAY_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...RAZORPAY_TRANSIENT_CODES].sort(),
+      [
+        'NETWORK_ERROR',
+        'RATE_LIMITED',
+        'SERVER_ERROR',
+        'SERVICE_UNAVAILABLE',
+        'TIMEOUT',
+      ],
+    );
   });
 });

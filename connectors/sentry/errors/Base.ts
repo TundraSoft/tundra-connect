@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type SentryErrorCode, SentryErrorCodes } from './SentryErrorCodes.ts';
+import {
+  SENTRY_TRANSIENT_CODES,
+  type SentryErrorCode,
+  SentryErrorCodes,
+} from './SentryErrorCodes.ts';
 
 /** Metadata supplied with a {@link SentryError}. */
 export type SentryErrorMetadata = {
@@ -25,6 +29,14 @@ export class SentryError<
    * {@link SentryErrorCodes}).
    */
   public readonly code: SentryErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link SENTRY_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[sentry] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -62,5 +74,6 @@ export class SentryError<
 
     super(SentryErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = SENTRY_TRANSIENT_CODES.has(code);
   }
 }

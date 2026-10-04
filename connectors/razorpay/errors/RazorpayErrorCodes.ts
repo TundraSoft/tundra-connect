@@ -50,7 +50,28 @@ export const RazorpayErrorCodes = {
     'The webhook signature does not match — treat this request as forged.',
   RATE_LIMITED:
     'Razorpay rate limit exceeded (HTTP ${status}) — retry after the hinted delay.',
+  TIMEOUT:
+    'The Razorpay API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to Razorpay failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Razorpay error code. */
 export type RazorpayErrorCode = keyof typeof RazorpayErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Razorpay returned an internal error
+ * or a 5xx, or it rate-limited the call. {@link RazorpayError.transient} is `true` for
+ * exactly these.
+ */
+export const RAZORPAY_TRANSIENT_CODES: ReadonlySet<RazorpayErrorCode> = new Set<
+  RazorpayErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'RATE_LIMITED',
+  'SERVER_ERROR',
+  'SERVICE_UNAVAILABLE',
+]);

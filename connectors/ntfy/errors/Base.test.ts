@@ -1,7 +1,7 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { NtfyError } from './Base.ts';
-import { NtfyErrorCodes } from './NtfyErrorCodes.ts';
+import { NTFY_TRANSIENT_CODES, NtfyErrorCodes } from './NtfyErrorCodes.ts';
 
 describe('Ntfy.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -58,5 +58,20 @@ describe('Ntfy.errors.Base', () => {
     const error = new NtfyError('BAD_REQUEST');
     asserts.assertStringIncludes(error.message, '<status unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(NtfyErrorCodes)) {
+      const error = new NtfyError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        NTFY_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...NTFY_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

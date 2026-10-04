@@ -20,6 +20,22 @@ request/response validation. The Calls resource covers placing and
 managing calls only — not TwiML/IVR generation (the markup that tells
 Twilio what a call should say/do), which is out of scope for this connect.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Twilio` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/twilio/schemas` or throws a real `TwilioError`:
+
+```ts
+import { TwilioError } from '@tundraconnect/twilio/errors';
+
+const outage = new TwilioError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                       | Description                                |

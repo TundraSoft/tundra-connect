@@ -29,4 +29,8 @@
  */
 
 export { ResendError, type ResendErrorMetadata } from './Base.ts';
-export { type ResendErrorCode, ResendErrorCodes } from './ResendErrorCodes.ts';
+export {
+  RESEND_TRANSIENT_CODES,
+  type ResendErrorCode,
+  ResendErrorCodes,
+} from './ResendErrorCodes.ts';

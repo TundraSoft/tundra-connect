@@ -36,7 +36,27 @@ export const SendGridErrorCodes = {
     'The webhook signature does not match — treat this request as forged.',
   WEBHOOK_INVALID_KEY:
     'The Event Webhook verification key is not a valid P-256 public key (base64 SPKI or PEM).',
+  TIMEOUT:
+    'The SendGrid API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to the SendGrid API failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid SendGrid error code. */
 export type SendGridErrorCode = keyof typeof SendGridErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, SendGrid returned a 5xx, or it
+ * rate-limited the call. {@link SendGridError.transient} is `true` for
+ * exactly these.
+ */
+export const SENDGRID_TRANSIENT_CODES: ReadonlySet<SendGridErrorCode> = new Set<
+  SendGridErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

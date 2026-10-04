@@ -27,7 +27,25 @@ export const CoinGeckoErrorCodes = {
   RESPONSE_ERROR: 'CoinGecko API response did not match the expected schema.',
   SERVICE_UNAVAILABLE:
     'CoinGecko service is currently unavailable (status ${status}).',
+  TIMEOUT: 'CoinGecko did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to CoinGecko failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid CoinGecko error code. */
 export type CoinGeckoErrorCode = keyof typeof CoinGeckoErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, CoinGecko returned a 5xx, or it
+ * rate-limited the call. {@link CoinGeckoError.transient} is `true` for
+ * exactly these.
+ */
+export const COINGECKO_TRANSIENT_CODES: ReadonlySet<CoinGeckoErrorCode> =
+  new Set<CoinGeckoErrorCode>([
+    'TIMEOUT',
+    'NETWORK_ERROR',
+    'SERVICE_UNAVAILABLE',
+    'RATE_LIMITED',
+  ]);

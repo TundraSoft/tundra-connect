@@ -64,7 +64,27 @@ export const StripeErrorCodes = {
     'The webhook timestamp is outside the allowed tolerance: ${reason}',
   WEBHOOK_SIGNATURE_INVALID:
     'The webhook signature does not match — treat this request as forged.',
+  TIMEOUT:
+    'The Stripe API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to the Stripe API failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Stripe error code. */
 export type StripeErrorCode = keyof typeof StripeErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Stripe returned a 5xx, or it
+ * rate-limited the call. {@link StripeError.transient} is `true` for
+ * exactly these.
+ */
+export const STRIPE_TRANSIENT_CODES: ReadonlySet<StripeErrorCode> = new Set<
+  StripeErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

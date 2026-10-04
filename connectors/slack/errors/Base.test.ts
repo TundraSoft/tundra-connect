@@ -1,7 +1,7 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { SlackError } from './Base.ts';
-import { SlackErrorCodes } from './SlackErrorCodes.ts';
+import { SLACK_TRANSIENT_CODES, SlackErrorCodes } from './SlackErrorCodes.ts';
 
 describe('Slack.errors.Base', () => {
   it('formats a known error code', () => {
@@ -44,5 +44,20 @@ describe('Slack.errors.Base', () => {
     const error = new SlackError('NOT_FOUND');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<vendorError unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(SlackErrorCodes)) {
+      const error = new SlackError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        SLACK_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...SLACK_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

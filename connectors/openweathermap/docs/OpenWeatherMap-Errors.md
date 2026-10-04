@@ -22,17 +22,30 @@ status echoed back, inconsistently typed, in a `cod` field). Because of
 that, error mapping keys off the **HTTP status code** the vendor returned
 rather than the `message` text, and these codes are connect-specific:
 
-| Code                     | HTTP status | Meaning                                                                                |
-| ------------------------ | ----------- | -------------------------------------------------------------------------------------- |
-| `CONFIG_INVALID_API_KEY` | —           | The configured API key is blank.                                                       |
-| `INVALID_REQUEST`        | —           | Local validation failed before a request was sent (e.g. no location variant supplied). |
-| `INVALID_API_KEY`        | 401         | OpenWeatherMap rejected the configured API key.                                        |
-| `BAD_REQUEST`            | 400         | OpenWeatherMap rejected the request as invalid.                                        |
-| `LOCATION_NOT_FOUND`     | 404         | The requested location could not be found.                                             |
-| `RATE_LIMITED`           | 429         | OpenWeatherMap rate limit exceeded.                                                    |
-| `SERVICE_UNAVAILABLE`    | 5xx         | A server-side error response.                                                          |
-| `RESPONSE_ERROR`         | —           | A successful-looking response body was malformed.                                      |
-| `UNKNOWN_ERROR`          | other 4xx   | An undocumented client-error status, or an unknown constructor code was supplied.      |
+| Code                     | HTTP status | Meaning                                                                                                     |
+| ------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------- |
+| `CONFIG_INVALID_API_KEY` | —           | The configured API key is blank.                                                                            |
+| `INVALID_REQUEST`        | —           | Local validation failed before a request was sent (e.g. no location variant supplied).                      |
+| `INVALID_API_KEY`        | 401         | OpenWeatherMap rejected the configured API key.                                                             |
+| `BAD_REQUEST`            | 400         | OpenWeatherMap rejected the request as invalid.                                                             |
+| `LOCATION_NOT_FOUND`     | 404         | The requested location could not be found.                                                                  |
+| `RATE_LIMITED`           | 429         | OpenWeatherMap rate limit exceeded.                                                                         |
+| `TIMEOUT`                | —           | No answer from OpenWeatherMap within the `timeout` (seconds); `timeoutSeconds` says which deadline passed.  |
+| `NETWORK_ERROR`          | —           | The request failed before any response (DNS, TLS or connection failure); the original error is the `cause`. |
+| `SERVICE_UNAVAILABLE`    | 5xx         | A server-side error response.                                                                               |
+| `RESPONSE_ERROR`         | —           | A successful-looking response body was malformed.                                                           |
+| `UNKNOWN_ERROR`          | other 4xx   | An undocumented client-error status, or an unknown constructor code was supplied.                           |
+
+`TIMEOUT`, `NETWORK_ERROR`, `RATE_LIMITED` and `SERVICE_UNAVAILABLE` are
+**transient**: they mean "no answer yet — try again later". `err.transient`
+is `true` for exactly these and `false` for every other code (a definite
+refusal, or a misconfiguration that retrying will not fix). The set is also
+exported as `OPENWEATHERMAP_TRANSIENT_CODES` from
+`@tundraconnect/openweathermap/errors`.
+
+| Context          | Meaning                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeoutSeconds` | Set on `TIMEOUT`: the deadline, in seconds, that passed with no answer (the call's own `timeout`, else the client's `timeout` option). |
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:

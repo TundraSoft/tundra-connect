@@ -15,15 +15,19 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-25 connects are implemented today:
+29 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
+- **[CloudflareDNS](connectors/cloudflare-dns/README.md)** — Typed Cloudflare DNS client: list, create, update, replace, delete and batch-edit DNS records in a zone, export the zone as BIND, and look up zones by name.
 - **[CloudflareEmail](connectors/cloudflare-email/README.md)** — Typed Cloudflare Email Sending client: send transactional email with attachments, validated locally before the request is made.
+- **[CloudflareSaaS](connectors/cloudflare-saas/README.md)** — Typed Cloudflare for SaaS client: create, list, inspect, update and delete custom hostnames with their TLS and ownership validation state, manage the fallback origin, and read the hostname quota.
+- **[CloudflareTurnstile](connectors/cloudflare-turnstile/README.md)** — Typed Cloudflare Turnstile client: verify a widget token server-side with siteverify, with hostname and action checks, a hard per-call deadline, and failed challenges as answers instead of errors.
 - **[CoinGecko](connectors/coingecko/README.md)** — Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.
 - **[Discord](connectors/discord/README.md)** — Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.
 - **[DodoPayments](connectors/dodo-payments/README.md)** — Typed Dodo Payments client: create and verify payments, manage subscriptions and plan changes, sync products, open the customer portal, and verify Standard Webhooks signatures.
 - **[GCS](connectors/gcs/README.md)** — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.
+- **[GoogleAnalytics](connectors/google-analytics/README.md)** — Typed Google Analytics 4 Measurement Protocol client: send server-side events and validate them against the debug endpoint, with GA4's event, parameter and user-property limits checked before the request is made.
 - **[GoogleWebRisk](connectors/google-web-risk/README.md)** — Typed Google Web Risk client: check a URL against Google's malware, phishing and unwanted-software lists with the Lookup API's uris:search, under a hard per-call deadline.
 - **[Kalshi](connectors/kalshi/README.md)** — Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders.
 - **[ntfy](connectors/ntfy/README.md)** — Typed ntfy.sh client for publishing push notifications to a topic.

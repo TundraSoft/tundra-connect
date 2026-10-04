@@ -1212,6 +1212,64 @@ const credentials = {
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
 
+describe('Twilio — transport failures', () => {
+  const TOKEN = 'twilio-transport-secret';
+  const msg = { to: '+14155552671', from: '+15017122661', body: 'hi' };
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockTwilio({
+      accountSid: ACCOUNT_SID,
+      authToken: TOKEN,
+      timeout: 1,
+    });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.sendMessage(msg),
+      TwilioError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockTwilio({ accountSid: ACCOUNT_SID, authToken: TOKEN });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.sendMessage(msg),
+      TwilioError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    const json = JSON.stringify(err.toJSON());
+    asserts.assertEquals(json.includes(TOKEN), false);
+    asserts.assertEquals(json.includes(btoa(`${ACCOUNT_SID}:${TOKEN}`)), false);
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockTwilio({ accountSid: ACCOUNT_SID, authToken: TOKEN });
+    c.setResponse({ message: 'internal error' }, 503);
+    const outage = await asserts.assertRejects(
+      () => c.sendMessage(msg),
+      TwilioError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse({ code: 20003, message: 'Authenticate', status: 401 }, 401);
+    const refusal = await asserts.assertRejects(
+      () => c.sendMessage(msg),
+      TwilioError,
+    );
+    asserts.assertEquals(refusal.code, 'AUTH_FAILED');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('Twilio — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -1255,6 +1313,7 @@ describe('Twilio — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
     asserts.assertEquals(calls(), 2);
@@ -1268,6 +1327,7 @@ describe('Twilio — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
     asserts.assertEquals(calls(), 1);
@@ -1285,6 +1345,7 @@ describe('Twilio — maxRetryWait (RESTler rate-limit retry)', () => {
       const err = await asserts.assertRejects(() => path(c), TwilioError);
       asserts.assertEquals(err.code, 'RATE_LIMITED');
       asserts.assertEquals(err.getContextValue('retried'), false);
+      asserts.assertEquals(err.transient, true);
     }
   });
 });

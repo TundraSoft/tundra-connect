@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { ResendError } from './Base.ts';
-import { ResendErrorCodes } from './ResendErrorCodes.ts';
+import {
+  RESEND_TRANSIENT_CODES,
+  ResendErrorCodes,
+} from './ResendErrorCodes.ts';
 
 describe('Resend.errors.Base', () => {
   it('formats a known error code', () => {
@@ -38,5 +41,20 @@ describe('Resend.errors.Base', () => {
     const error = new ResendError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<status unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(ResendErrorCodes)) {
+      const error = new ResendError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        RESEND_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...RESEND_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

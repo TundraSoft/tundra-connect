@@ -819,6 +819,76 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('Razorpay — transport failures', () => {
+  const ORDER_ID = 'order_EKwxwAgItmmXdp';
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockRazorpay({ auth: validAuth, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.getOrder(ORDER_ID),
+      RazorpayError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockRazorpay({ auth: validAuth });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.getOrder(ORDER_ID),
+      RazorpayError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    const json = JSON.stringify(err.toJSON());
+    asserts.assertEquals(json.includes(validAuth.password), false);
+    asserts.assertEquals(
+      json.includes(btoa(`${validAuth.username}:${validAuth.password}`)),
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockRazorpay({ auth: validAuth });
+    c.setResponse({
+      error: { code: 'SERVER_ERROR', description: 'Internal trouble.' },
+    }, 500);
+    const internal = await asserts.assertRejects(
+      () => c.getOrder(ORDER_ID),
+      RazorpayError,
+    );
+    asserts.assertEquals(internal.code, 'SERVER_ERROR');
+    asserts.assertEquals(internal.transient, true);
+
+    c.setResponse({
+      error: { code: 'SERVICE_UNAVAILABLE', description: 'Try later.' },
+    }, 503);
+    const outage = await asserts.assertRejects(
+      () => c.getOrder(ORDER_ID),
+      RazorpayError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse({
+      error: { code: 'BAD_REQUEST_ERROR', description: 'The id is invalid.' },
+    }, 400);
+    const refusal = await asserts.assertRejects(
+      () => c.getOrder(ORDER_ID),
+      RazorpayError,
+    );
+    asserts.assertEquals(refusal.code, 'BAD_REQUEST_ERROR');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('Razorpay — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -857,6 +927,7 @@ describe('Razorpay — maxRetryWait (RESTler rate-limit retry)', () => {
       RazorpayError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -870,6 +941,7 @@ describe('Razorpay — maxRetryWait (RESTler rate-limit retry)', () => {
       RazorpayError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);

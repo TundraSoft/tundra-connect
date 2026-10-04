@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { SendGridError } from './Base.ts';
-import { SendGridErrorCodes } from './SendGridErrorCodes.ts';
+import {
+  SENDGRID_TRANSIENT_CODES,
+  SendGridErrorCodes,
+} from './SendGridErrorCodes.ts';
 
 describe('SendGrid.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -62,5 +65,20 @@ describe('SendGrid.errors.Base', () => {
     const error = new SendGridError('RATE_LIMITED');
     asserts.assertStringIncludes(error.message, '<status unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(SendGridErrorCodes)) {
+      const error = new SendGridError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        SENDGRID_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...SENDGRID_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

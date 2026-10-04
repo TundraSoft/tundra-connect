@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { AlgoliaError } from './Base.ts';
-import { AlgoliaErrorCodes } from './AlgoliaErrorCodes.ts';
+import {
+  ALGOLIA_TRANSIENT_CODES,
+  AlgoliaErrorCodes,
+} from './AlgoliaErrorCodes.ts';
 
 describe('Algolia.errors.Base', () => {
   it('formats a known error code', () => {
@@ -38,5 +41,20 @@ describe('Algolia.errors.Base', () => {
     const error = new AlgoliaError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<status unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(AlgoliaErrorCodes)) {
+      const error = new AlgoliaError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        ALGOLIA_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...ALGOLIA_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

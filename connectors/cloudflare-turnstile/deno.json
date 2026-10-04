@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/cloudflare-turnstile",
+  "version": "0.0.0",
+  "description": "Typed Cloudflare Turnstile client: verify a widget token server-side with siteverify, with hostname and action checks, a hard per-call deadline, and failed challenges as answers instead of errors.",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.4.0"
+  }
+}

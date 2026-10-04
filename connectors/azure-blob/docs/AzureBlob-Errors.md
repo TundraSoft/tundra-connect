@@ -1,7 +1,8 @@
 # AzureBlob Errors
 
 AzureBlob throws `AzureBlobError` for invalid configuration, invalid request
-input, documented vendor error codes, and malformed payloads.
+input, documented vendor error codes, malformed payloads, timeouts and
+network failures — one `instanceof` covers everything.
 
 ```ts
 import {
@@ -25,30 +26,49 @@ to one of the codes below.
 
 ## Codes
 
-| Code                            | Meaning                                                                                                                               |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `CONFIG_INVALID_ACCOUNT`        | `auth` is absent, or `auth.account` is missing/empty.                                                                                 |
-| `CONFIG_MISSING_CREDENTIALS`    | Neither `accountKey` nor `sasToken` was supplied.                                                                                     |
-| `CONFIG_INVALID_API_VERSION`    | `apiVersion` is not a non-empty string.                                                                                               |
-| `INVALID_BUCKET`                | `bucket` is missing/empty.                                                                                                            |
-| `INVALID_KEY`                   | `key` is missing/empty.                                                                                                               |
-| `INVALID_PATH_SEGMENT`          | `bucket`/`key` contains a `.`/`..` path segment — rejected up front to prevent a path-traversal/signature-divergence bug (see below). |
-| `BLOB_NOT_FOUND`                | Vendor `BlobNotFound` (404).                                                                                                          |
-| `CONTAINER_NOT_FOUND`           | Vendor `ContainerNotFound` (404).                                                                                                     |
-| `BLOB_ALREADY_EXISTS`           | Vendor `BlobAlreadyExists` (409).                                                                                                     |
-| `CONTAINER_ALREADY_EXISTS`      | Vendor `ContainerAlreadyExists` (409).                                                                                                |
-| `INVALID_BLOB_TYPE`             | Vendor `InvalidBlobType` (409).                                                                                                       |
-| `AUTHENTICATION_FAILED`         | Vendor `AuthenticationFailed` (403).                                                                                                  |
-| `INVALID_AUTHENTICATION_INFO`   | Vendor `InvalidAuthenticationInfo` (401 or 400).                                                                                      |
-| `NO_AUTHENTICATION_INFORMATION` | Vendor `NoAuthenticationInformation` (401).                                                                                           |
-| `ACCOUNT_IS_DISABLED`           | Vendor `AccountIsDisabled` (403).                                                                                                     |
-| `MISSING_REQUIRED_HEADER`       | Vendor `MissingRequiredHeader` (400).                                                                                                 |
-| `INVALID_HEADER_VALUE`          | Vendor `InvalidHeaderValue` (400).                                                                                                    |
-| `REQUEST_BODY_TOO_LARGE`        | Vendor `RequestBodyTooLarge` (413).                                                                                                   |
-| `SERVER_BUSY`                   | Vendor `ServerBusy` (503), or a 429/503 that carries no `x-ms-error-code` at all.                                                     |
-| `INTERNAL_ERROR`                | Vendor `InternalError` (500).                                                                                                         |
-| `RESPONSE_ERROR`                | An unrecognised vendor code, or a response that failed local schema validation.                                                       |
-| `UNKNOWN_ERROR`                 | An unknown constructor code was supplied.                                                                                             |
+| Code                            | Transient | Meaning                                                                                                                                                                                           |
+| ------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CONFIG_INVALID_ACCOUNT`        | no        | `auth` is absent, or `auth.account` is missing/empty.                                                                                                                                             |
+| `CONFIG_MISSING_CREDENTIALS`    | no        | Neither `accountKey` nor `sasToken` was supplied.                                                                                                                                                 |
+| `CONFIG_INVALID_API_VERSION`    | no        | `apiVersion` is not a non-empty string.                                                                                                                                                           |
+| `INVALID_BUCKET`                | no        | `bucket` is missing/empty.                                                                                                                                                                        |
+| `INVALID_KEY`                   | no        | `key` is missing/empty.                                                                                                                                                                           |
+| `INVALID_PATH_SEGMENT`          | no        | `bucket`/`key` contains a `.`/`..` path segment — rejected up front to prevent a path-traversal/signature-divergence bug (see below).                                                             |
+| `BLOB_NOT_FOUND`                | no        | Vendor `BlobNotFound` (404).                                                                                                                                                                      |
+| `CONTAINER_NOT_FOUND`           | no        | Vendor `ContainerNotFound` (404).                                                                                                                                                                 |
+| `BLOB_ALREADY_EXISTS`           | no        | Vendor `BlobAlreadyExists` (409).                                                                                                                                                                 |
+| `CONTAINER_ALREADY_EXISTS`      | no        | Vendor `ContainerAlreadyExists` (409).                                                                                                                                                            |
+| `INVALID_BLOB_TYPE`             | no        | Vendor `InvalidBlobType` (409).                                                                                                                                                                   |
+| `AUTHENTICATION_FAILED`         | no        | Vendor `AuthenticationFailed` (403).                                                                                                                                                              |
+| `INVALID_AUTHENTICATION_INFO`   | no        | Vendor `InvalidAuthenticationInfo` (401 or 400).                                                                                                                                                  |
+| `NO_AUTHENTICATION_INFORMATION` | no        | Vendor `NoAuthenticationInformation` (401).                                                                                                                                                       |
+| `ACCOUNT_IS_DISABLED`           | no        | Vendor `AccountIsDisabled` (403).                                                                                                                                                                 |
+| `MISSING_REQUIRED_HEADER`       | no        | Vendor `MissingRequiredHeader` (400).                                                                                                                                                             |
+| `INVALID_HEADER_VALUE`          | no        | Vendor `InvalidHeaderValue` (400).                                                                                                                                                                |
+| `REQUEST_BODY_TOO_LARGE`        | no        | Vendor `RequestBodyTooLarge` (413).                                                                                                                                                               |
+| `SERVER_BUSY`                   | **yes**   | Vendor `ServerBusy` (503), or a 429/503 that carries no `x-ms-error-code` at all.                                                                                                                 |
+| `INTERNAL_ERROR`                | **yes**   | Vendor `InternalError` (500).                                                                                                                                                                     |
+| `TIMEOUT`                       | **yes**   | No response headers within the `timeout` (seconds; `timeoutSeconds` in context). For `getObjectStream()` this bounds the wait for headers; an `idleTimeout` stall later errors the stream itself. |
+| `NETWORK_ERROR`                 | **yes**   | `fetch` failed before any response (DNS, TLS, connection reset). The original is the `cause`.                                                                                                     |
+| `RESPONSE_ERROR`                | no        | An unrecognised vendor code, or a response that failed local schema validation.                                                                                                                   |
+| `UNKNOWN_ERROR`                 | no        | An unknown constructor code was supplied.                                                                                                                                                         |
+
+`error.transient` is `true` for exactly the codes marked **yes** above —
+`TIMEOUT`, `NETWORK_ERROR`, `SERVER_BUSY` and `INTERNAL_ERROR` (Azure
+documents `ServerBusy` and `InternalError` as retryable) — and `false` for a
+definite refusal or a misconfiguration. Branch on it to tell "no answer yet,
+retry later" from "Azure said no". The set is also exported as
+`AZURE_BLOB_TRANSIENT_CODES` from `@tundraconnect/azure-blob/errors`.
+
+```ts
+if (error instanceof AzureBlobError && error.transient) {
+  // keep the job queued and try again later
+}
+```
+
+A 5xx other than 503 that carries no recognised vendor code (for example a
+bare 502 from a proxy in front of the account) still surfaces as
+`RESPONSE_ERROR`, which is not transient.
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:
@@ -60,7 +80,8 @@ if (error instanceof AzureBlobError && error.code === 'BLOB_NOT_FOUND') {
 ```
 
 Use `getContextValue()` to read diagnostic metadata such as `vendor`,
-`status`, `vendorCode`, `vendorMessage`, `bucket`, or `key`. `bucket`/`key`
+`status`, `vendorCode`, `vendorMessage`, `bucket`, `key`, or
+`timeoutSeconds` (on `TIMEOUT`: the deadline that was missed). `bucket`/`key`
 are populated from the calling method's own arguments whenever they're
 known — including on `BLOB_NOT_FOUND`/`CONTAINER_NOT_FOUND`, whose message
 templates interpolate them.

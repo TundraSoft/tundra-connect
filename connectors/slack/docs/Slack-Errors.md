@@ -35,18 +35,20 @@ as `vendorError`, even when it was mapped to a specific code — see
 
 ## Codes
 
-| Code                   | Meaning                                                                                                                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `CONFIG_INVALID_TOKEN` | `auth` is missing, isn't `type: 'BEARER'`, or its `token` is blank or not a string.                                                                                                        |
-| `INVALID_REQUEST`      | A request failed local schema validation before being sent, or Slack rejected its shape/content (e.g. `invalid_blocks`, `msg_too_long`, `invalid_cursor`, `invalid_limit`, `is_archived`). |
-| `RESPONSE_ERROR`       | A response whose `ok` wasn't `false` still failed schema validation.                                                                                                                       |
-| `AUTH_FAILED`          | Slack reported `invalid_auth`, `not_authed`, `account_inactive`, `token_revoked`, or `token_expired`.                                                                                      |
-| `FORBIDDEN`            | Slack reported `missing_scope`, `no_permission`, `access_denied`, `restricted_action`, `cant_update_message`, `cant_delete_message`, `user_not_visible`, or `ekm_access_denied`.           |
-| `NOT_FOUND`            | Slack reported `channel_not_found`, `user_not_found`, or `message_not_found`.                                                                                                              |
-| `NOT_IN_CHANNEL`       | Slack reported `not_in_channel` — the bot isn't a member of the target conversation.                                                                                                       |
-| `RATE_LIMITED`         | A real HTTP `429` (see the `Retry-After`-derived `retryAfter` context value), or `ok: false` with `error: 'ratelimited'`/`'rate_limited'`.                                                 |
-| `SERVICE_UNAVAILABLE`  | A real HTTP `5xx`, or `ok: false` with `error: 'internal_error'`/`'service_unavailable'`/`'fatal_error'`.                                                                                  |
-| `UNKNOWN_ERROR`        | An undocumented `error` string, or a non-2xx status Slack didn't explain via its own envelope.                                                                                             |
+| Code                   | Meaning                                                                                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CONFIG_INVALID_TOKEN` | `auth` is missing, isn't `type: 'BEARER'`, or its `token` is blank or not a string.                                                                                                                                                                                |
+| `INVALID_REQUEST`      | A request failed local schema validation before being sent, or Slack rejected its shape/content (e.g. `invalid_blocks`, `msg_too_long`, `invalid_cursor`, `invalid_limit`, `is_archived`).                                                                         |
+| `RESPONSE_ERROR`       | A response whose `ok` wasn't `false` still failed schema validation.                                                                                                                                                                                               |
+| `AUTH_FAILED`          | Slack reported `invalid_auth`, `not_authed`, `account_inactive`, `token_revoked`, or `token_expired`.                                                                                                                                                              |
+| `FORBIDDEN`            | Slack reported `missing_scope`, `no_permission`, `access_denied`, `restricted_action`, `cant_update_message`, `cant_delete_message`, `user_not_visible`, or `ekm_access_denied`.                                                                                   |
+| `NOT_FOUND`            | Slack reported `channel_not_found`, `user_not_found`, or `message_not_found`.                                                                                                                                                                                      |
+| `NOT_IN_CHANNEL`       | Slack reported `not_in_channel` — the bot isn't a member of the target conversation.                                                                                                                                                                               |
+| `RATE_LIMITED`         | A real HTTP `429`, `ok: false` with `error: 'ratelimited'`/`'rate_limited'`, or RESTler's exhausted `maxRetryWait` retry. Every path carries `retryAfterSeconds` (number or absent) and `retryAfter` (the same number, or `'a few'` without a `Retry-After` hint). |
+| `SERVICE_UNAVAILABLE`  | A real HTTP `5xx`, or `ok: false` with `error: 'internal_error'`/`'service_unavailable'`/`'fatal_error'`.                                                                                                                                                          |
+| `TIMEOUT`              | Slack did not answer within the client `timeout` (`timeoutSeconds` in context).                                                                                                                                                                                    |
+| `NETWORK_ERROR`        | `fetch` failed before any response (DNS, TLS, connection reset); the transport error is the `cause`.                                                                                                                                                               |
+| `UNKNOWN_ERROR`        | An undocumented `error` string, or a non-2xx status Slack didn't explain via its own envelope.                                                                                                                                                                     |
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:
@@ -72,6 +74,34 @@ try {
   }
 }
 ```
+
+## Transient failures
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` mean
+"no answer yet": retrying later can help. Every other code is a definite
+refusal or a misconfiguration that retrying will not fix. Branch on the
+readonly `err.transient`, which is `true` for exactly these four, rather
+than listing codes yourself. The set is also exported as
+`SLACK_TRANSIENT_CODES` from `@tundraconnect/slack/errors`.
+
+```ts
+import { SlackError } from '@tundraconnect/slack/errors';
+
+declare function callTheClient(): Promise<unknown>;
+
+try {
+  await callTheClient();
+} catch (err) {
+  if (err instanceof SlackError && err.transient) {
+    // queue it and try again later
+  }
+  throw err;
+}
+```
+
+| Context          | Present on | Meaning                                   |
+| ---------------- | ---------- | ----------------------------------------- |
+| `timeoutSeconds` | `TIMEOUT`  | The deadline that was missed, in seconds. |
 
 ## Backing off after a 429
 

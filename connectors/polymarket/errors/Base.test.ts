@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { PolymarketError } from './Base.ts';
-import { PolymarketErrorCodes } from './PolymarketErrorCodes.ts';
+import {
+  POLYMARKET_TRANSIENT_CODES,
+  PolymarketErrorCodes,
+} from './PolymarketErrorCodes.ts';
 
 describe('Polymarket.errors.Base', () => {
   it('formats a known error code', () => {
@@ -38,5 +41,20 @@ describe('Polymarket.errors.Base', () => {
     const error = new PolymarketError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<status unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(PolymarketErrorCodes)) {
+      const error = new PolymarketError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        POLYMARKET_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...POLYMARKET_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

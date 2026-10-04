@@ -55,6 +55,22 @@ const created = await client.createPayment({
 console.log(created.payment_link); // send the buyer here
 ```
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `DodoPayments` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/dodo-payments/schemas` or throws a real `DodoPaymentsError`:
+
+```ts
+import { DodoPaymentsError } from '@tundraconnect/dodo-payments/errors';
+
+const outage = new DodoPaymentsError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                             | Description                                         |

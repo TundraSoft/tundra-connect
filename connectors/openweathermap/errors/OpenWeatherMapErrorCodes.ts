@@ -29,7 +29,29 @@ export const OpenWeatherMapErrorCodes = {
     'OpenWeatherMap API response did not match the expected schema.',
   SERVICE_UNAVAILABLE:
     'OpenWeatherMap service is currently unavailable (HTTP ${status}).',
+  TIMEOUT:
+    'The OpenWeatherMap API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to OpenWeatherMap failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid OpenWeatherMap error code. */
 export type OpenWeatherMapErrorCode = keyof typeof OpenWeatherMapErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, OpenWeatherMap returned a 5xx, or it
+ * rate-limited the call. {@link OpenWeatherMapError.transient} is `true` for
+ * exactly these.
+ */
+export const OPENWEATHERMAP_TRANSIENT_CODES: ReadonlySet<
+  OpenWeatherMapErrorCode
+> = new Set<
+  OpenWeatherMapErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'RATE_LIMITED',
+  'SERVICE_UNAVAILABLE',
+]);

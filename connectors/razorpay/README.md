@@ -23,6 +23,22 @@ decimal major-unit amount. ₹299.00 is sent (and returned) as `29900`, not
 `299` or `299.00`. This is the most common Razorpay integration mistake;
 see [API](https://github.com/TundraSoft/tundra-connect/wiki/Razorpay-API) for details.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Razorpay`
+instance and pass in a stand-in that returns the shapes from
+`@tundraconnect/razorpay/schemas` or throws a real `RazorpayError`:
+
+```ts
+import { RazorpayError } from '@tundraconnect/razorpay/errors';
+
+const outage = new RazorpayError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                         | Description                                |

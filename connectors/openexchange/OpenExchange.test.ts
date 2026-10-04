@@ -480,6 +480,65 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('OpenExchange — transport failures', () => {
+  const AUTH = { type: 'CUSTOM' as const, appId: 'SECRET-APP-ID-MARKER' };
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockOpenExchange({ auth: AUTH, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.getRates(),
+      OpenExchangeError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockOpenExchange({ auth: AUTH });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.getRates(),
+      OpenExchangeError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes('SECRET-APP-ID-MARKER'),
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockOpenExchange({ auth: AUTH });
+    c.setResponse({ error: 'unavailable' }, 503);
+    const outage = await asserts.assertRejects(
+      () => c.getRates(),
+      OpenExchangeError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse({
+      error: true,
+      status: 403,
+      message: 'not_allowed',
+      description: 'Vendor error.',
+    }, 403);
+    const refusal = await asserts.assertRejects(
+      () => c.getRates(),
+      OpenExchangeError,
+    );
+    asserts.assertEquals(refusal.code, 'NOT_ALLOWED');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('OpenExchange — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -521,6 +580,7 @@ describe('OpenExchange — maxRetryWait (RESTler rate-limit retry)', () => {
       OpenExchangeError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -534,6 +594,7 @@ describe('OpenExchange — maxRetryWait (RESTler rate-limit retry)', () => {
       OpenExchangeError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);

@@ -35,7 +35,26 @@ export const DodoPaymentsErrorCodes = {
     'The webhook signature does not match — treat this request as forged.',
   WEBHOOK_INVALID_SECRET:
     'The webhook signing secret is not valid base64 (with or without a `whsec_` prefix).',
+  TIMEOUT:
+    'Dodo Payments did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to Dodo Payments failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid DodoPayments error code. */
 export type DodoPaymentsErrorCode = keyof typeof DodoPaymentsErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Dodo Payments returned a 5xx, or it
+ * rate-limited the call. {@link DodoPaymentsError.transient} is `true` for
+ * exactly these.
+ */
+export const DODO_PAYMENTS_TRANSIENT_CODES: ReadonlySet<DodoPaymentsErrorCode> =
+  new Set<DodoPaymentsErrorCode>([
+    'TIMEOUT',
+    'NETWORK_ERROR',
+    'SERVICE_UNAVAILABLE',
+    'RATE_LIMITED',
+  ]);

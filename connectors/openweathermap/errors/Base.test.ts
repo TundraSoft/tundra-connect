@@ -1,6 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
-import { OpenWeatherMapError, OpenWeatherMapErrorCodes } from './mod.ts';
+import {
+  OPENWEATHERMAP_TRANSIENT_CODES,
+  OpenWeatherMapError,
+  OpenWeatherMapErrorCodes,
+} from './mod.ts';
 
 describe('OpenWeatherMap.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -33,5 +37,20 @@ describe('OpenWeatherMap.errors.Base', () => {
     const error = new OpenWeatherMapError('RATE_LIMITED');
     asserts.assertStringIncludes(error.message, '<status unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(OpenWeatherMapErrorCodes)) {
+      const error = new OpenWeatherMapError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        OPENWEATHERMAP_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...OPENWEATHERMAP_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { KalshiError } from './Base.ts';
-import { KalshiErrorCodes } from './KalshiErrorCodes.ts';
+import {
+  KALSHI_TRANSIENT_CODES,
+  KalshiErrorCodes,
+} from './KalshiErrorCodes.ts';
 
 describe('Kalshi.errors.Base', () => {
   it('formats a known error code', () => {
@@ -38,5 +41,20 @@ describe('Kalshi.errors.Base', () => {
     const error = new KalshiError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<status unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(KalshiErrorCodes)) {
+      const error = new KalshiError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        KALSHI_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...KALSHI_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

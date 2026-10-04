@@ -28,4 +28,8 @@
  */
 
 export { StripeError, type StripeErrorMetadata } from './Base.ts';
-export { type StripeErrorCode, StripeErrorCodes } from './StripeErrorCodes.ts';
+export {
+  STRIPE_TRANSIENT_CODES,
+  type StripeErrorCode,
+  StripeErrorCodes,
+} from './StripeErrorCodes.ts';

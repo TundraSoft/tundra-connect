@@ -31,8 +31,20 @@ vendor's `error.message` (or the bare string) when present.
 | `AUTH_FAILED`                | A `401` response — bad/expired credentials, or a signature that doesn't verify (see `KalshiAuth.ts`'s doc comment for the quirks that cause this silently: mismatched timestamp, a query string left in the signed path, seconds instead of milliseconds).                                                                                                 |
 | `RATE_LIMITED`               | A `429` response.                                                                                                                                                                                                                                                                                                                                          |
 | `RESPONSE_ERROR`             | A success response's body failed schema validation.                                                                                                                                                                                                                                                                                                        |
+| `TIMEOUT`                    | No answer from Kalshi within the `timeout` (seconds); `timeoutSeconds` says which deadline passed.                                                                                                                                                                                                                                                         |
+| `NETWORK_ERROR`              | The request failed before any response (DNS, TLS or connection failure); the original error is the `cause`.                                                                                                                                                                                                                                                |
 | `SERVICE_UNAVAILABLE`        | A `5xx` response.                                                                                                                                                                                                                                                                                                                                          |
 | `UNKNOWN_ERROR`              | An unmapped status was returned, or an unknown code was supplied.                                                                                                                                                                                                                                                                                          |
+
+`TIMEOUT`, `NETWORK_ERROR`, `RATE_LIMITED` and `SERVICE_UNAVAILABLE` are
+**transient**: they mean "no answer yet — try again later". `err.transient`
+is `true` for exactly these and `false` for every other code (a definite
+refusal, or a misconfiguration that retrying will not fix). The set is also
+exported as `KALSHI_TRANSIENT_CODES` from `@tundraconnect/kalshi/errors`.
+
+| Context          | Meaning                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeoutSeconds` | Set on `TIMEOUT`: the deadline, in seconds, that passed with no answer (the call's own `timeout`, else the client's `timeout` option). |
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:

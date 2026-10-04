@@ -40,7 +40,27 @@ export const ResendErrorCodes = {
     'The webhook signing secret is not a valid `whsec_` base64 secret.',
   WEBHOOK_INVALID_PAYLOAD:
     'The verified webhook payload is not a valid Resend event: ${reason}',
+  TIMEOUT:
+    'The Resend API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to Resend failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Resend error code. */
 export type ResendErrorCode = keyof typeof ResendErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Resend returned a 5xx, or it
+ * rate-limited the call. {@link ResendError.transient} is `true` for
+ * exactly these.
+ */
+export const RESEND_TRANSIENT_CODES: ReadonlySet<ResendErrorCode> = new Set<
+  ResendErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'RATE_LIMITED',
+  'SERVICE_UNAVAILABLE',
+]);
