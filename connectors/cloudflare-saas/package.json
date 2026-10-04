@@ -1,0 +1,33 @@
+{
+  "name": "@tundraconnect/cloudflare-saas",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Typed Cloudflare for SaaS client: create, list, inspect, update and delete custom hostnames with their TLS and ownership validation state, manage the fallback origin, and read the hostname quota.",
+  "keywords": [
+    "cloudflare",
+    "cloudflare-saas",
+    "cloudflare-for-saas",
+    "custom-hostnames",
+    "custom-domains",
+    "ssl-for-saas",
+    "multi-tenant",
+    "tls",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "tundraconnect"
+  ],
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@tundralibs/utils": "npm:@jsr/tundralibs__utils@^1.3.1"
+  }
+}
