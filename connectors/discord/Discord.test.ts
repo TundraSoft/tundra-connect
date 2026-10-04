@@ -729,6 +729,100 @@ const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
 
 // Sends a real, visible message — gated behind LIVE_TEST_ALLOW_VISIBLE_EFFECTS
 // so it never fires on the unattended monthly schedule.
+describe('Discord — transport failures', () => {
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockDiscord({ botToken: BOT_TOKEN, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.sendChannelMessage(CHANNEL_ID, { content: 'hi' }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockDiscord({ botToken: BOT_TOKEN });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.sendChannelMessage(CHANNEL_ID, { content: 'hi' }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(BOT_TOKEN),
+      false,
+    );
+  });
+
+  it('wraps a webhook-mode failure too (sendWebhookMessage calls _makeRequest directly), without leaking the webhook token', async () => {
+    const c = new MockDiscord({ webhookUrl: WEBHOOK_URL });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.sendWebhookMessage({ content: 'hi' }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(WEBHOOK_TOKEN),
+      false,
+    );
+  });
+
+  it('drops the cause of a webhook-mode RESPONSE_ERROR, so the webhook token never surfaces', async () => {
+    const c = new MockDiscord({ webhookUrl: WEBHOOK_URL });
+    c.setResponse({ id: 'not-enough-fields' }, 200);
+    const err = await asserts.assertRejects(
+      () => c.sendWebhookMessage({ content: 'hi' }, { wait: true }),
+      DiscordError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+    asserts.assertEquals(err.transient, false);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(WEBHOOK_TOKEN),
+      false,
+    );
+    asserts.assertEquals(err.message.includes(WEBHOOK_TOKEN), false);
+    let cause: unknown = err.cause;
+    while (cause !== undefined && cause !== null) {
+      asserts.assertEquals(String(cause).includes(WEBHOOK_TOKEN), false);
+      asserts.assertEquals(
+        JSON.stringify(
+          (cause as { toJSON?: () => unknown }).toJSON?.() ?? null,
+        ).includes(WEBHOOK_TOKEN),
+        false,
+      );
+      cause = (cause as { cause?: unknown }).cause;
+    }
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockDiscord({ botToken: BOT_TOKEN });
+    c.setResponse({ message: 'internal error' }, 500);
+    const outage = await asserts.assertRejects(
+      () => c.sendChannelMessage(CHANNEL_ID, { content: 'hi' }),
+      DiscordError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse({ oops: true }, 403);
+    const refusal = await asserts.assertRejects(
+      () => c.sendChannelMessage(CHANNEL_ID, { content: 'hi' }),
+      DiscordError,
+    );
+    asserts.assertEquals(refusal.code, 'FORBIDDEN');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('Discord — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -767,6 +861,7 @@ describe('Discord — maxRetryWait (RESTler rate-limit retry)', () => {
       DiscordError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -780,6 +875,7 @@ describe('Discord — maxRetryWait (RESTler rate-limit retry)', () => {
       DiscordError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
@@ -802,7 +898,12 @@ describe('Discord — maxRetryWait (RESTler rate-limit retry)', () => {
       DiscordError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(WEBHOOK_TOKEN),
+      false,
+    );
   });
 });
 

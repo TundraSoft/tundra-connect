@@ -55,7 +55,29 @@ export const AzureBlobErrorCodes = {
     'The server is currently unable to receive requests — please retry.',
   INTERNAL_ERROR:
     'The server encountered an internal error — please retry the request.',
+  TIMEOUT:
+    'Azure Blob Storage did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to Azure Blob Storage failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid AzureBlob error code. */
 export type AzureBlobErrorCode = keyof typeof AzureBlobErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, or Azure answered `ServerBusy`
+ * (throttling, or a bare 429/503) or `InternalError` — both documented by
+ * Azure as retryable. {@link AzureBlobError.transient} is `true` for
+ * exactly these.
+ */
+export const AZURE_BLOB_TRANSIENT_CODES: ReadonlySet<AzureBlobErrorCode> =
+  new Set<
+    AzureBlobErrorCode
+  >([
+    'TIMEOUT',
+    'NETWORK_ERROR',
+    'SERVER_BUSY',
+    'INTERNAL_ERROR',
+  ]);

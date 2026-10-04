@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  RAZORPAY_TRANSIENT_CODES,
   type RazorpayErrorCode,
   RazorpayErrorCodes,
 } from './RazorpayErrorCodes.ts';
@@ -28,6 +29,14 @@ export class RazorpayError<
    * {@link RazorpayErrorCodes}).
    */
   public readonly code: RazorpayErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `RATE_LIMITED`, `SERVER_ERROR` or `SERVICE_UNAVAILABLE` (see
+   * {@link RAZORPAY_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[razorpay] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -65,5 +74,6 @@ export class RazorpayError<
 
     super(RazorpayErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = RAZORPAY_TRANSIENT_CODES.has(code);
   }
 }

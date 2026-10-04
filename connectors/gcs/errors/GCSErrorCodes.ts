@@ -50,7 +50,29 @@ export const GCSErrorCodes = {
   // Local validation / unexpected-response fallbacks.
   RESPONSE_ERROR: 'GCS API response did not match the expected schema.',
   SERVICE_UNAVAILABLE: 'GCS service is currently unavailable.',
+  TIMEOUT: 'GCS did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to GCS failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid GCS error code. */
 export type GCSErrorCode = keyof typeof GCSErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed (including during a service-account token exchange), the
+ * network failed, GCS returned a 5xx (`BACKEND_ERROR`), or it rate-limited
+ * the call. `SERVICE_UNAVAILABLE` is deliberately absent: every 5xx already
+ * maps to `BACKEND_ERROR`, so it only ever means "a status nothing else
+ * maps" — in practice a 4xx such as a 412 precondition failure.
+ * {@link GCSError.transient} is `true` for exactly these.
+ */
+export const GCS_TRANSIENT_CODES: ReadonlySet<GCSErrorCode> = new Set<
+  GCSErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'RATE_LIMIT_EXCEEDED',
+  'BACKEND_ERROR',
+]);

@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { DodoPaymentsError } from './Base.ts';
-import { DodoPaymentsErrorCodes } from './DodoPaymentsErrorCodes.ts';
+import {
+  DODO_PAYMENTS_TRANSIENT_CODES,
+  DodoPaymentsErrorCodes,
+} from './DodoPaymentsErrorCodes.ts';
 
 describe('DodoPayments.errors.Base', () => {
   it('formats a known error code', () => {
@@ -38,5 +41,20 @@ describe('DodoPayments.errors.Base', () => {
     const error = new DodoPaymentsError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<status unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(DodoPaymentsErrorCodes)) {
+      const error = new DodoPaymentsError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        DODO_PAYMENTS_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...DODO_PAYMENTS_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

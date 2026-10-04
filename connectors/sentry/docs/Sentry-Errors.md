@@ -24,18 +24,20 @@ the HTTP status Sentry actually returned
 (https://docs.sentry.io/api/), plus configuration and local
 request-validation failures that never come from the wire.
 
-| Code                          | Meaning                                                                                            |
-| ----------------------------- | -------------------------------------------------------------------------------------------------- |
-| `CONFIG_INVALID_TOKEN`        | `auth` is missing, isn't `type: 'BEARER'`, or its `token` is blank/not a string.                   |
-| `CONFIG_INVALID_ORGANIZATION` | `organization` is missing, blank, or not a string.                                                 |
-| `INVALID_REQUEST`             | Local request validation failed (before a request was sent), or Sentry returned `400 Bad Request`. |
-| `AUTH_FAILED`                 | Sentry returned `401 Unauthorized`.                                                                |
-| `FORBIDDEN`                   | Sentry returned `403 Forbidden` (token scope/permissions).                                         |
-| `NOT_FOUND`                   | Sentry returned `404 Not Found`.                                                                   |
-| `RATE_LIMITED`                | Sentry returned `429 Too Many Requests`.                                                           |
-| `RESPONSE_ERROR`              | A success response's body failed schema validation.                                                |
-| `SERVICE_UNAVAILABLE`         | A `5xx` response, or any response whose body didn't parse.                                         |
-| `UNKNOWN_ERROR`               | An unmapped status was returned, or an unknown code was supplied.                                  |
+| Code                          | Meaning                                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `CONFIG_INVALID_TOKEN`        | `auth` is missing, isn't `type: 'BEARER'`, or its `token` is blank/not a string.                     |
+| `CONFIG_INVALID_ORGANIZATION` | `organization` is missing, blank, or not a string.                                                   |
+| `INVALID_REQUEST`             | Local request validation failed (before a request was sent), or Sentry returned `400 Bad Request`.   |
+| `AUTH_FAILED`                 | Sentry returned `401 Unauthorized`.                                                                  |
+| `FORBIDDEN`                   | Sentry returned `403 Forbidden` (token scope/permissions).                                           |
+| `NOT_FOUND`                   | Sentry returned `404 Not Found`.                                                                     |
+| `RATE_LIMITED`                | Sentry returned `429 Too Many Requests`.                                                             |
+| `RESPONSE_ERROR`              | A success response's body failed schema validation.                                                  |
+| `SERVICE_UNAVAILABLE`         | A `5xx` response, or any response whose body didn't parse.                                           |
+| `TIMEOUT`                     | Sentry did not answer within the client `timeout` (`timeoutSeconds` in context).                     |
+| `NETWORK_ERROR`               | `fetch` failed before any response (DNS, TLS, connection reset); the transport error is the `cause`. |
+| `UNKNOWN_ERROR`               | An unmapped status was returned, or an unknown code was supplied.                                    |
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:
@@ -80,6 +82,34 @@ try {
   }
 }
 ```
+
+## Transient failures
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` mean
+"no answer yet": retrying later can help. Every other code is a definite
+refusal or a misconfiguration that retrying will not fix. Branch on the
+readonly `err.transient`, which is `true` for exactly these four, rather
+than listing codes yourself. The set is also exported as
+`SENTRY_TRANSIENT_CODES` from `@tundraconnect/sentry/errors`.
+
+```ts
+import { SentryError } from '@tundraconnect/sentry/errors';
+
+declare function callTheClient(): Promise<unknown>;
+
+try {
+  await callTheClient();
+} catch (err) {
+  if (err instanceof SentryError && err.transient) {
+    // queue it and try again later
+  }
+  throw err;
+}
+```
+
+| Context          | Present on | Meaning                                   |
+| ---------------- | ---------- | ----------------------------------------- |
+| `timeoutSeconds` | `TIMEOUT`  | The deadline that was missed, in seconds. |
 
 ## Backing off after a 429
 

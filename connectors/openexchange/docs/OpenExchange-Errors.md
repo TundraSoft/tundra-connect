@@ -15,18 +15,31 @@ console.log(OpenExchangeErrorCodes.INVALID_APP_ID);
 
 ## Codes
 
-| Code                           | Meaning                                                                            |
-| ------------------------------ | ---------------------------------------------------------------------------------- |
-| `CONFIG_INVALID_APP_ID`        | The configured application ID is blank.                                            |
-| `CONFIG_INVALID_BASE_CURRENCY` | The base currency is not three characters.                                         |
-| `INVALID_DATE`                 | A historical date failed local validation (not `YYYY-MM-DD`); no request was sent. |
-| `MISSING_APP_ID`               | Open Exchange Rates returned `missing_app_id`.                                     |
-| `INVALID_APP_ID`               | Open Exchange Rates returned `invalid_app_id`.                                     |
-| `NOT_ALLOWED`                  | The plan or rate limit does not permit the request.                                |
-| `NOT_FOUND`                    | The requested resource was not found.                                              |
-| `RESPONSE_ERROR`               | A vendor response was malformed or unrecognised.                                   |
-| `SERVICE_UNAVAILABLE`          | An undocumented server-side (5xx) error response.                                  |
-| `UNKNOWN_ERROR`                | An undocumented client-error (4xx) status, or an unknown constructor code.         |
+| Code                           | Meaning                                                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `CONFIG_INVALID_APP_ID`        | The configured application ID is blank.                                                                         |
+| `CONFIG_INVALID_BASE_CURRENCY` | The base currency is not three characters.                                                                      |
+| `INVALID_DATE`                 | A historical date failed local validation (not `YYYY-MM-DD`); no request was sent.                              |
+| `MISSING_APP_ID`               | Open Exchange Rates returned `missing_app_id`.                                                                  |
+| `INVALID_APP_ID`               | Open Exchange Rates returned `invalid_app_id`.                                                                  |
+| `NOT_ALLOWED`                  | The plan or rate limit does not permit the request.                                                             |
+| `NOT_FOUND`                    | The requested resource was not found.                                                                           |
+| `RESPONSE_ERROR`               | A vendor response was malformed or unrecognised.                                                                |
+| `TIMEOUT`                      | No answer from Open Exchange Rates within the `timeout` (seconds); `timeoutSeconds` says which deadline passed. |
+| `NETWORK_ERROR`                | The request failed before any response (DNS, TLS or connection failure); the original error is the `cause`.     |
+| `SERVICE_UNAVAILABLE`          | An undocumented server-side (5xx) error response.                                                               |
+| `UNKNOWN_ERROR`                | An undocumented client-error (4xx) status, or an unknown constructor code.                                      |
+
+`TIMEOUT`, `NETWORK_ERROR`, `RATE_LIMITED` and `SERVICE_UNAVAILABLE` are
+**transient**: they mean "no answer yet — try again later". `err.transient`
+is `true` for exactly these and `false` for every other code (a definite
+refusal, or a misconfiguration that retrying will not fix). The set is also
+exported as `OPENEXCHANGE_TRANSIENT_CODES` from
+`@tundraconnect/openexchange/errors`.
+
+| Context          | Meaning                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeoutSeconds` | Set on `TIMEOUT`: the deadline, in seconds, that passed with no answer (the call's own `timeout`, else the client's `timeout` option). |
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:

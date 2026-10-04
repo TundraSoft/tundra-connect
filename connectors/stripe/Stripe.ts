@@ -1,12 +1,16 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerAuth,
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
   RESTlerRateLimitError,
+  RESTlerRequestError,
+  type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
+  RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
 import { constantTimeEqual, signHMAC } from '@crypt';
@@ -587,6 +591,52 @@ export class Stripe extends RESTler<StripeOptions> {
   }
 
   /**
+   * Every request funnels through here, so a transport failure surfaces as
+   * this connect's own error on every path: a timeout as `TIMEOUT`, a
+   * failure before any response as `NETWORK_ERROR`, and an exhausted
+   * RESTler rate-limit retry (`maxRetryWait`) as `RATE_LIMITED` — all
+   * `transient`. A {@link StripeError} from the response handler passes
+   * through unchanged.
+   */
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__transportError(err, endpoint.timeout);
+    }
+  }
+
+  /** `err` rewrapped as this connect's transient code, or returned unchanged. */
+  private __transportError(err: unknown, timeout: number | undefined): unknown {
+    if (err instanceof RESTlerRateLimitError) {
+      // RESTler retried once (maxRetryWait) and was throttled again, or the
+      // vendor's hint exceeded the cap.
+      return new StripeError('RATE_LIMITED', {
+        status: 429,
+        retryAfterSeconds: err.getContextValue('retryAfter'),
+        retried: err.getContextValue('retried'),
+      }, err);
+    }
+    if (err instanceof RESTlerTimeoutError) {
+      return new StripeError('TIMEOUT', {
+        timeoutSeconds: timeout ?? this._getOption('timeout'),
+      }, err);
+    }
+    // RESTlerResponseValidationError (and the two above) extend
+    // RESTlerRequestError: only a bare one is a failure before any response.
+    if (
+      err instanceof RESTlerRequestError &&
+      !(err instanceof RESTlerResponseValidationError)
+    ) {
+      return new StripeError('NETWORK_ERROR', {}, err);
+    }
+    return err;
+  }
+
+  /**
    * Makes a request and validates its response body against `guard`,
    * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
    * into a {@link StripeError} — so `StripeError` stays the only thing a
@@ -620,16 +670,6 @@ export class Stripe extends RESTler<StripeOptions> {
       if (err instanceof RESTlerResponseValidationError) {
         throw new StripeError('RESPONSE_ERROR', {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
-        }, err);
-      }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new StripeError('RATE_LIMITED', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
         }, err);
       }
       throw err;

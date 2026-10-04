@@ -31,6 +31,22 @@ const client = new Sentry({
 });
 ```
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Sentry` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/sentry/schemas` or throws a real `SentryError`:
+
+```ts
+import { SentryError } from '@tundraconnect/sentry/errors';
+
+const outage = new SentryError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                       | Description                                |

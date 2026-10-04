@@ -51,7 +51,8 @@ needed to trigger or refresh it.
 Concurrent calls that all find a cold or expired cache share a single
 in-flight exchange rather than each independently hitting the token
 endpoint — see [Errors](PayPal-Errors.md) for what happens if that exchange
-fails (`TOKEN_EXCHANGE_FAILED`).
+fails (`TOKEN_EXCHANGE_FAILED` when the token endpoint refuses, the
+transient `TIMEOUT` / `NETWORK_ERROR` when it can't be reached).
 
 ## Endpoints
 

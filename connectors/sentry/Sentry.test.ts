@@ -513,6 +513,65 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('Sentry — transport failures', () => {
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockSentry({
+      auth: { type: 'BEARER', token: SECRET_TOKEN },
+      organization: 'my-org',
+      timeout: 1,
+    });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.getIssue('PUMP-STATION-1'),
+      SentryError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = client();
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.getIssue('PUMP-STATION-1'),
+      SentryError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(SECRET_TOKEN),
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = client();
+    c.setResponse('<html>503</html>', 503, { 'content-type': 'text/html' });
+    const outage = await asserts.assertRejects(
+      () => c.getIssue('PUMP-STATION-1'),
+      SentryError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse(
+      JSON.stringify({ detail: 'Invalid token' }),
+      401,
+    );
+    const refusal = await asserts.assertRejects(
+      () => c.getIssue('PUMP-STATION-1'),
+      SentryError,
+    );
+    asserts.assertEquals(refusal.code, 'AUTH_FAILED');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('Sentry — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -556,6 +615,7 @@ describe('Sentry — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
     asserts.assertEquals(calls(), 2);
@@ -569,6 +629,7 @@ describe('Sentry — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
     asserts.assertEquals(calls(), 1);
@@ -604,6 +665,7 @@ describe('Sentry — paginated responses', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.transient, true);
   });
 });
 

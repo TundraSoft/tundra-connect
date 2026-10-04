@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type StripeErrorCode, StripeErrorCodes } from './StripeErrorCodes.ts';
+import {
+  STRIPE_TRANSIENT_CODES,
+  type StripeErrorCode,
+  StripeErrorCodes,
+} from './StripeErrorCodes.ts';
 
 /** Metadata supplied with a {@link StripeError}. */
 export type StripeErrorMetadata = {
@@ -23,6 +27,14 @@ export class StripeError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link StripeErrorCodes}). */
   public readonly code: StripeErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link STRIPE_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[Stripe] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -59,5 +71,6 @@ export class StripeError<
     }
     super(StripeErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = STRIPE_TRANSIENT_CODES.has(code);
   }
 }

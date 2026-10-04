@@ -13,6 +13,23 @@ OpenWeatherMap provides validated current weather and 5-day/3-hour forecast
 responses from the free-tier `data/2.5` endpoints. It uses RESTler for
 transport and Guardian for runtime response validation.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take an `OpenWeatherMap`
+instance and pass in a stand-in that returns the shapes from
+`@tundraconnect/openweathermap/schemas` or throws a real
+`OpenWeatherMapError`:
+
+```ts
+import { OpenWeatherMapError } from '@tundraconnect/openweathermap/errors';
+
+const outage = new OpenWeatherMapError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                               | Description                                |

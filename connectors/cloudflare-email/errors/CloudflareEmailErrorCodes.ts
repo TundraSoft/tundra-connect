@@ -32,7 +32,27 @@ export const CloudflareEmailErrorCodes = {
     'Cloudflare Email Sending rate limit exceeded (HTTP ${status}): ${detail}',
   SERVICE_UNAVAILABLE:
     'Cloudflare Email Sending is currently unavailable (HTTP ${status}): ${detail}',
+  TIMEOUT:
+    'Cloudflare Email Sending did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to Cloudflare Email Sending failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid CloudflareEmail error code. */
 export type CloudflareEmailErrorCode = keyof typeof CloudflareEmailErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Cloudflare Email Sending returned a 5xx, or it
+ * rate-limited the call. {@link CloudflareEmailError.transient} is `true` for
+ * exactly these.
+ */
+export const CLOUDFLARE_EMAIL_TRANSIENT_CODES: ReadonlySet<
+  CloudflareEmailErrorCode
+> = new Set<CloudflareEmailErrorCode>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

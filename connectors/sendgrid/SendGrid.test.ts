@@ -513,6 +513,68 @@ const credentials = {
 };
 const liveTestsEnabled = Object.values(credentials).every((v) => !!v);
 
+describe('SendGrid — transport failures', () => {
+  const AUTH = {
+    type: 'BEARER',
+    token: 'SG.test-key',
+    prefix: 'Bearer',
+  } as const;
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockSendGrid({ auth: AUTH, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.sendMail(validMailRequest),
+      SendGridError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockSendGrid({ auth: AUTH });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.sendMail(validMailRequest),
+      SendGridError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes('SG.test-key'),
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockSendGrid({ auth: AUTH });
+    c.setResponse('<html>503</html>', 503, { 'content-type': 'text/html' });
+    const outage = await asserts.assertRejects(
+      () => c.sendMail(validMailRequest),
+      SendGridError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse(
+      JSON.stringify({ errors: [{ message: 'denied', field: null }] }),
+      401,
+      { 'content-type': 'application/json' },
+    );
+    const refusal = await asserts.assertRejects(
+      () => c.sendMail(validMailRequest),
+      SendGridError,
+    );
+    asserts.assertEquals(refusal.code, 'AUTH_REQUIRED');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('SendGrid — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -555,6 +617,7 @@ describe('SendGrid — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), true);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
     asserts.assertEquals(calls(), 2);
@@ -568,6 +631,7 @@ describe('SendGrid — maxRetryWait (RESTler rate-limit retry)', () => {
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
     asserts.assertEquals(err.getContextValue('retried'), false);
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);
     asserts.assertEquals(calls(), 1);

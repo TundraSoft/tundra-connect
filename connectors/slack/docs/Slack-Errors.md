@@ -46,6 +46,8 @@ as `vendorError`, even when it was mapped to a specific code — see
 | `NOT_IN_CHANNEL`       | Slack reported `not_in_channel` — the bot isn't a member of the target conversation.                                                                                                       |
 | `RATE_LIMITED`         | A real HTTP `429` (see the `Retry-After`-derived `retryAfter` context value), or `ok: false` with `error: 'ratelimited'`/`'rate_limited'`.                                                 |
 | `SERVICE_UNAVAILABLE`  | A real HTTP `5xx`, or `ok: false` with `error: 'internal_error'`/`'service_unavailable'`/`'fatal_error'`.                                                                                  |
+| `TIMEOUT`              | Slack did not answer within the client `timeout` (`timeoutSeconds` in context).                                                                                                            |
+| `NETWORK_ERROR`        | `fetch` failed before any response (DNS, TLS, connection reset); the transport error is the `cause`.                                                                                       |
 | `UNKNOWN_ERROR`        | An undocumented `error` string, or a non-2xx status Slack didn't explain via its own envelope.                                                                                             |
 
 The resolved code is also available as a public, readonly `error.code`
@@ -72,6 +74,34 @@ try {
   }
 }
 ```
+
+## Transient failures
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` mean
+"no answer yet": retrying later can help. Every other code is a definite
+refusal or a misconfiguration that retrying will not fix. Branch on the
+readonly `err.transient`, which is `true` for exactly these four, rather
+than listing codes yourself. The set is also exported as
+`SLACK_TRANSIENT_CODES` from `@tundraconnect/slack/errors`.
+
+```ts
+import { SlackError } from '@tundraconnect/slack/errors';
+
+declare function callTheClient(): Promise<unknown>;
+
+try {
+  await callTheClient();
+} catch (err) {
+  if (err instanceof SlackError && err.transient) {
+    // queue it and try again later
+  }
+  throw err;
+}
+```
+
+| Context          | Present on | Meaning                                   |
+| ---------------- | ---------- | ----------------------------------------- |
+| `timeoutSeconds` | `TIMEOUT`  | The deadline that was missed, in seconds. |
 
 ## Backing off after a 429
 

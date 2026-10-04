@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { TwilioError } from './Base.ts';
-import { TwilioErrorCodes } from './TwilioErrorCodes.ts';
+import {
+  TWILIO_TRANSIENT_CODES,
+  TwilioErrorCodes,
+} from './TwilioErrorCodes.ts';
 
 describe('Twilio.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -43,5 +46,20 @@ describe('Twilio.errors.Base', () => {
     asserts.assertStringIncludes(error.message, '<accountSid unavailable>');
     asserts.assertEquals(error.message.includes('${accountSid}'), false);
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(TwilioErrorCodes)) {
+      const error = new TwilioError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        TWILIO_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...TWILIO_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

@@ -43,8 +43,22 @@ console.log(DiscordErrorCodes.EMPTY_MESSAGE);
 | `NOT_FOUND`                    | HTTP 404 with an undocumented/unparseable error body.                                 |
 | `RATE_LIMITED`                 | HTTP 429 — see `retryAfter`/`global` metadata to back off correctly.                  |
 | `RESPONSE_ERROR`               | A 2xx response whose body failed schema validation.                                   |
-| `SERVICE_UNAVAILABLE`          | A 5xx response, or a 4xx body that failed to parse at all.                            |
+| `SERVICE_UNAVAILABLE`          | A 5xx response.                                                                       |
+| `TIMEOUT`                      | No complete answer within the `timeout` (context `timeoutSeconds`).                   |
+| `NETWORK_ERROR`                | The request failed before any response (DNS, TLS, connection reset).                  |
 | `UNKNOWN_ERROR`                | An unknown constructor code was supplied, or an unmapped 4xx status.                  |
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` are
+**transient**: Discord gave no definite answer, so the same call may
+succeed later. `err.transient` is `true` for exactly these and `false` for
+every other code (a definite refusal or a misconfiguration retrying won't
+fix). The set is also exported as `DISCORD_TRANSIENT_CODES` from
+`@tundraconnect/discord/errors`.
+
+In webhook mode a transient error or a `RESPONSE_ERROR` carries no
+`cause`: RESTler's own error records the request URL, and the webhook token
+is part of that URL. In bot mode the RESTler error is attached as `cause`
+as usual.
 
 Discord's numeric `code` (e.g. `50006`) is reused verbatim in the
 message templates above, per this repository's convention of preferring

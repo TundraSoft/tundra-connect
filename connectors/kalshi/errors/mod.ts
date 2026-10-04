@@ -28,4 +28,8 @@
  */
 
 export { KalshiError, type KalshiErrorMetadata } from './Base.ts';
-export { type KalshiErrorCode, KalshiErrorCodes } from './KalshiErrorCodes.ts';
+export {
+  KALSHI_TRANSIENT_CODES,
+  type KalshiErrorCode,
+  KalshiErrorCodes,
+} from './KalshiErrorCodes.ts';

@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  SENDGRID_TRANSIENT_CODES,
   type SendGridErrorCode,
   SendGridErrorCodes,
 } from './SendGridErrorCodes.ts';
@@ -25,6 +26,14 @@ export class SendGridError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link SendGridErrorCodes}). */
   public readonly code: SendGridErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link SENDGRID_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[SendGrid] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -61,5 +70,6 @@ export class SendGridError<
     }
     super(SendGridErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = SENDGRID_TRANSIENT_CODES.has(code);
   }
 }

@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type KalshiErrorCode, KalshiErrorCodes } from './KalshiErrorCodes.ts';
+import {
+  KALSHI_TRANSIENT_CODES,
+  type KalshiErrorCode,
+  KalshiErrorCodes,
+} from './KalshiErrorCodes.ts';
 
 /** Metadata supplied with a {@link KalshiError}. */
 export type KalshiErrorMetadata = {
@@ -25,6 +29,14 @@ export class KalshiError<
    * {@link KalshiErrorCodes}).
    */
   public readonly code: KalshiErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `RATE_LIMITED` or `SERVICE_UNAVAILABLE` (see
+   * {@link KALSHI_TRANSIENT_CODES}) — and `false` for a definite refusal or
+   * a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[kalshi] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -62,5 +74,6 @@ export class KalshiError<
 
     super(KalshiErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = KALSHI_TRANSIENT_CODES.has(code);
   }
 }

@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type S3ErrorCode, S3ErrorCodes } from './S3ErrorCodes.ts';
+import {
+  S3_TRANSIENT_CODES,
+  type S3ErrorCode,
+  S3ErrorCodes,
+} from './S3ErrorCodes.ts';
 
 /** Metadata supplied with an {@link S3Error}. */
 export type S3ErrorMetadata = {
@@ -25,6 +29,14 @@ export class S3Error<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link S3ErrorCodes}). */
   public readonly code: S3ErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `INTERNAL_ERROR`, `SERVICE_UNAVAILABLE` or `SLOW_DOWN` (see
+   * {@link S3_TRANSIENT_CODES}) — and `false` for a definite refusal or a
+   * misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[S3] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -61,5 +73,6 @@ export class S3Error<
     }
     super(S3ErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = S3_TRANSIENT_CODES.has(code);
   }
 }

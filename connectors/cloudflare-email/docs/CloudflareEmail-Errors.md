@@ -31,8 +31,17 @@ try {
 | `ACCOUNT_NOT_ENTITLED`      | The account is not entitled to Email Sending (Workers Paid beta).           |
 | `RATE_LIMITED`              | Cloudflare throttled the request.                                           |
 | `SERVICE_UNAVAILABLE`       | Cloudflare returned a 5xx, or its internal-error code.                      |
+| `TIMEOUT`                   | No complete answer within the `timeout` (context `timeoutSeconds`).         |
+| `NETWORK_ERROR`             | The request failed before any response (DNS, TLS, connection reset).        |
 | `RESPONSE_ERROR`            | A successful response's body did not match the expected schema.             |
 | `UNKNOWN_ERROR`             | Any unmapped failure, or an unrecognized code passed to the constructor.    |
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` are
+**transient**: Cloudflare gave no definite answer, so the same call may
+succeed later. `err.transient` is `true` for exactly these and `false` for
+every other code (a definite refusal or a misconfiguration retrying won't
+fix). The set is also exported as `CLOUDFLARE_EMAIL_TRANSIENT_CODES` from
+`@tundraconnect/cloudflare-email/errors`.
 
 ## Vendor code mapping
 
@@ -62,15 +71,16 @@ hand back an empty `result` as though the mail had been sent.
 
 Read metadata with the public `getContextValue(key)`.
 
-| Key            | Present on                      | Description                                                                      |
-| -------------- | ------------------------------- | -------------------------------------------------------------------------------- |
-| `vendor`       | all                             | Always `'CloudflareEmail'`.                                                      |
-| `status`       | vendor failures                 | HTTP status code.                                                                |
-| `detail`       | vendor failures                 | Vendor message plus its numeric code.                                            |
-| `vendorCode`   | vendor failures carrying a code | Cloudflare's raw numeric code.                                                   |
-| `body`         | vendor failures                 | The parsed response body.                                                        |
-| `reason`       | `REQUEST_VALIDATION_ERROR`      | Which local rule failed — each failing field as `field: message`, joined by `;`. |
-| `originalCode` | `UNKNOWN_ERROR` fallback        | The unrecognized code originally passed.                                         |
+| Key              | Present on                      | Description                                                                      |
+| ---------------- | ------------------------------- | -------------------------------------------------------------------------------- |
+| `vendor`         | all                             | Always `'CloudflareEmail'`.                                                      |
+| `status`         | vendor failures                 | HTTP status code.                                                                |
+| `detail`         | vendor failures                 | Vendor message plus its numeric code.                                            |
+| `vendorCode`     | vendor failures carrying a code | Cloudflare's raw numeric code.                                                   |
+| `body`           | vendor failures                 | The parsed response body.                                                        |
+| `reason`         | `REQUEST_VALIDATION_ERROR`      | Which local rule failed — each failing field as `field: message`, joined by `;`. |
+| `timeoutSeconds` | `TIMEOUT`                       | The deadline that was missed, in seconds.                                        |
+| `originalCode`   | `UNKNOWN_ERROR` fallback        | The unrecognized code originally passed.                                         |
 
 The API token never appears in an error's message or context.
 

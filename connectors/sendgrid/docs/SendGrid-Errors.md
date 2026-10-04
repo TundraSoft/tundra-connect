@@ -23,19 +23,21 @@ SendGrid does not publish discrete machine-readable error codes — every
 entries (see `ErrorSchemaObject`). These codes are therefore
 connect-specific, keyed off the HTTP status the vendor actually returned.
 
-| Code                     | Meaning                                                                             |
-| ------------------------ | ----------------------------------------------------------------------------------- |
-| `CONFIG_INVALID_API_KEY` | `auth` is missing, isn't `type: 'BEARER'`, or its `token` is blank or not a string. |
-| `AUTH_REQUIRED`          | SendGrid returned `401 Unauthorized`.                                               |
-| `VALIDATION_ERROR`       | SendGrid returned `400 Bad Request`.                                                |
-| `FORBIDDEN`              | SendGrid returned `403 Forbidden` (plan or key permissions).                        |
-| `NOT_FOUND`              | SendGrid returned `404 Not Found`.                                                  |
-| `METHOD_NOT_ALLOWED`     | SendGrid returned `405 Method Not Allowed`.                                         |
-| `PAYLOAD_TOO_LARGE`      | SendGrid returned `413 Payload Too Large`.                                          |
-| `RATE_LIMITED`           | SendGrid returned `429 Too Many Requests`.                                          |
-| `RESPONSE_ERROR`         | A `200`/`202` response body failed schema validation.                               |
-| `SERVICE_UNAVAILABLE`    | A `5xx` response, or any response whose body didn't parse.                          |
-| `UNKNOWN_ERROR`          | An unmapped status was returned, or an unknown code was supplied.                   |
+| Code                     | Meaning                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `CONFIG_INVALID_API_KEY` | `auth` is missing, isn't `type: 'BEARER'`, or its `token` is blank or not a string.                  |
+| `AUTH_REQUIRED`          | SendGrid returned `401 Unauthorized`.                                                                |
+| `VALIDATION_ERROR`       | SendGrid returned `400 Bad Request`.                                                                 |
+| `FORBIDDEN`              | SendGrid returned `403 Forbidden` (plan or key permissions).                                         |
+| `NOT_FOUND`              | SendGrid returned `404 Not Found`.                                                                   |
+| `METHOD_NOT_ALLOWED`     | SendGrid returned `405 Method Not Allowed`.                                                          |
+| `PAYLOAD_TOO_LARGE`      | SendGrid returned `413 Payload Too Large`.                                                           |
+| `RATE_LIMITED`           | SendGrid returned `429 Too Many Requests`.                                                           |
+| `RESPONSE_ERROR`         | A `200`/`202` response body failed schema validation.                                                |
+| `SERVICE_UNAVAILABLE`    | A `5xx` response, or any response whose body didn't parse.                                           |
+| `TIMEOUT`                | SendGrid did not answer within the client `timeout` (`timeoutSeconds` in context).                   |
+| `NETWORK_ERROR`          | `fetch` failed before any response (DNS, TLS, connection reset); the transport error is the `cause`. |
+| `UNKNOWN_ERROR`          | An unmapped status was returned, or an unknown code was supplied.                                    |
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:
@@ -60,6 +62,34 @@ try {
   }
 }
 ```
+
+## Transient failures
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` mean
+"no answer yet": retrying later can help. Every other code is a definite
+refusal or a misconfiguration that retrying will not fix. Branch on the
+readonly `err.transient`, which is `true` for exactly these four, rather
+than listing codes yourself. The set is also exported as
+`SENDGRID_TRANSIENT_CODES` from `@tundraconnect/sendgrid/errors`.
+
+```ts
+import { SendGridError } from '@tundraconnect/sendgrid/errors';
+
+declare function callTheClient(): Promise<unknown>;
+
+try {
+  await callTheClient();
+} catch (err) {
+  if (err instanceof SendGridError && err.transient) {
+    // queue it and try again later
+  }
+  throw err;
+}
+```
+
+| Context          | Present on | Meaning                                   |
+| ---------------- | ---------- | ----------------------------------------- |
+| `timeoutSeconds` | `TIMEOUT`  | The deadline that was missed, in seconds. |
 
 ## Backing off after a 429
 

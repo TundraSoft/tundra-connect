@@ -37,8 +37,21 @@ and credential-state failures that never come from the wire.
 | `AUTH_FAILED`                        | A `401` response — shared by Gamma, the CLOB, and the Relayer (e.g. bad/expired `relayerApiKey`).                                                                                                                                                                                                                                                                                                       |
 | `RATE_LIMITED`                       | A `429` response.                                                                                                                                                                                                                                                                                                                                                                                       |
 | `RESPONSE_ERROR`                     | A success response's body failed schema validation.                                                                                                                                                                                                                                                                                                                                                     |
+| `TIMEOUT`                            | No answer from Gamma, the CLOB or the Relayer within the `timeout` (seconds); `timeoutSeconds` says which deadline passed.                                                                                                                                                                                                                                                                              |
+| `NETWORK_ERROR`                      | The request failed before any response (DNS, TLS or connection failure); the original error is the `cause`.                                                                                                                                                                                                                                                                                             |
 | `SERVICE_UNAVAILABLE`                | A `5xx` response.                                                                                                                                                                                                                                                                                                                                                                                       |
 | `UNKNOWN_ERROR`                      | An unmapped status was returned, or an unknown code was supplied.                                                                                                                                                                                                                                                                                                                                       |
+
+`TIMEOUT`, `NETWORK_ERROR`, `RATE_LIMITED` and `SERVICE_UNAVAILABLE` are
+**transient**: they mean "no answer yet — try again later". `err.transient`
+is `true` for exactly these and `false` for every other code (a definite
+refusal, or a misconfiguration that retrying will not fix). The set is also
+exported as `POLYMARKET_TRANSIENT_CODES` from
+`@tundraconnect/polymarket/errors`.
+
+| Context          | Meaning                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeoutSeconds` | Set on `TIMEOUT`: the deadline, in seconds, that passed with no answer (the call's own `timeout`, else the client's `timeout` option). |
 
 `submitOrder()`'s error handling is intentionally NOT the generic
 status-code mapping above — a `400` there can mean "FAK/FOK found no

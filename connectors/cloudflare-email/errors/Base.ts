@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  CLOUDFLARE_EMAIL_TRANSIENT_CODES,
   type CloudflareEmailErrorCode,
   CloudflareEmailErrorCodes,
 } from './CloudflareEmailErrorCodes.ts';
@@ -28,6 +29,14 @@ export class CloudflareEmailError<
    * {@link CloudflareEmailErrorCodes}).
    */
   public readonly code: CloudflareEmailErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link CLOUDFLARE_EMAIL_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[cloudflare-email] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -67,5 +76,6 @@ export class CloudflareEmailError<
 
     super(CloudflareEmailErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = CLOUDFLARE_EMAIL_TRANSIENT_CODES.has(code);
   }
 }

@@ -16,6 +16,22 @@ for transport and Guardian for runtime request/response validation — the
 mail-send request body (personalizations, attachments, mail settings,
 tracking settings, …) is validated before it's ever sent.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `SendGrid` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/sendgrid/schemas` or throws a real `SendGridError`:
+
+```ts
+import { SendGridError } from '@tundraconnect/sendgrid/errors';
+
+const outage = new SendGridError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                         | Description                                |

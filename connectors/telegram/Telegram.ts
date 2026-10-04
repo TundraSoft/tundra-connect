@@ -1,11 +1,15 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
   RESTlerRateLimitError,
+  RESTlerRequestError,
+  type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
+  RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
 import { type BaseGuardian, GuardianError } from '@guardian';
@@ -31,6 +35,12 @@ export type TelegramOptions = RESTlerOptions & {
    */
   botToken: string;
 };
+
+/**
+ * The bot token as it appears in a request URL (`/bot<id>:<secret>`), for
+ * scrubbing it out of RESTler's errors (see `Telegram.__scrubToken`).
+ */
+const BOT_TOKEN_IN_PATH: RegExp = /\/bot\d+:[A-Za-z0-9_-]+/g;
 
 /**
  * Telegram client for the Telegram **Bot** HTTPS API.
@@ -262,6 +272,103 @@ export class Telegram extends RESTler<TelegramOptions> {
   }
 
   /**
+   * Every request funnels through here, so a transport failure surfaces as
+   * this connect's own error on every path: a timeout as `TIMEOUT`, a
+   * failure before any response as `NETWORK_ERROR`, and an exhausted
+   * RESTler rate-limit retry (`maxRetryWait`) as `RATE_LIMITED` — all
+   * `transient`. A {@link TelegramError} from the response handler passes
+   * through unchanged.
+   *
+   * The bot token lives in the URL path, which RESTler's own redaction
+   * (query string and userinfo only) does not cover: the failed request's
+   * `context.request.url`, and on some runtimes the `fetch` error's message,
+   * still carry `/bot<token>/`. Every error is therefore run through
+   * {@link Telegram.__scrubToken} before it is wrapped or re-thrown, so the
+   * token never reaches a serialised `cause`.
+   */
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__transportError(Telegram.__scrubToken(err), endpoint.timeout);
+    }
+  }
+
+  /**
+   * Replaces every `/bot<id>:<secret>` in `err`'s cause chain — each
+   * error's `message`, `stack` and `context.request.url` — with
+   * `/bot[REDACTED]`, in place, so each error keeps its type and identity.
+   * Cycle- and depth-guarded; a field that can't be rewritten is skipped,
+   * since redaction must never itself break error handling.
+   */
+  private static __scrubToken(err: unknown): unknown {
+    const scrub = (value: unknown): unknown =>
+      typeof value === 'string'
+        ? value.replace(BOT_TOKEN_IN_PATH, '/bot[REDACTED]')
+        : value;
+    const rewrite = (obj: Record<string, unknown>, key: string): void => {
+      try {
+        const value = obj[key];
+        const safe = scrub(value);
+        if (safe === value) return;
+        obj[key] = safe;
+        if (obj[key] !== safe) {
+          Object.defineProperty(obj, key, { value: safe, configurable: true });
+        }
+      } catch {
+        // Read-only and non-configurable: nothing more can be done.
+      }
+    };
+    const seen = new Set<unknown>();
+    let node: unknown = err;
+    for (let depth = 0; node && depth < 16; depth++) {
+      if (typeof node !== 'object' || seen.has(node)) break;
+      seen.add(node);
+      const obj = node as Record<string, unknown>;
+      rewrite(obj, 'message');
+      rewrite(obj, '_baseMessage');
+      rewrite(obj, 'stack');
+      const request = (obj.context as { request?: unknown } | undefined)
+        ?.request;
+      if (request !== null && typeof request === 'object') {
+        rewrite(request as Record<string, unknown>, 'url');
+      }
+      node = obj.cause;
+    }
+    return err;
+  }
+
+  /** `err` rewrapped as this connect's transient code, or returned unchanged. */
+  private __transportError(err: unknown, timeout: number | undefined): unknown {
+    if (err instanceof RESTlerRateLimitError) {
+      // RESTler retried once (maxRetryWait) and was throttled again, or the
+      // vendor's hint exceeded the cap.
+      return new TelegramError('RATE_LIMITED', {
+        status: 429,
+        retryAfterSeconds: err.getContextValue('retryAfter'),
+        retried: err.getContextValue('retried'),
+      }, err);
+    }
+    if (err instanceof RESTlerTimeoutError) {
+      return new TelegramError('TIMEOUT', {
+        timeoutSeconds: timeout ?? this._getOption('timeout'),
+      }, err);
+    }
+    // RESTlerResponseValidationError (and the two above) extend
+    // RESTlerRequestError: only a bare one is a failure before any response.
+    if (
+      err instanceof RESTlerRequestError &&
+      !(err instanceof RESTlerResponseValidationError)
+    ) {
+      return new TelegramError('NETWORK_ERROR', {}, err);
+    }
+    return err;
+  }
+
+  /**
    * Makes a request and validates its response body against `guard`,
    * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
    * into a {@link TelegramError} — so `TelegramError` stays the only thing
@@ -295,16 +402,6 @@ export class Telegram extends RESTler<TelegramOptions> {
       if (err instanceof RESTlerResponseValidationError) {
         throw new TelegramError('RESPONSE_ERROR', {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
-        }, err);
-      }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new TelegramError('RATE_LIMITED', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
         }, err);
       }
       throw err;

@@ -5,8 +5,10 @@ import {
   type RESTlerEvents,
   type RESTlerOptions,
   RESTlerRateLimitError,
+  RESTlerRequestError,
   type RESTlerRequestOptions,
   type RESTlerResponse,
+  type RESTlerResponseHandler,
   RESTlerResponseValidationError,
   type RESTlerStreamOptions,
   RESTlerTimeoutError,
@@ -953,7 +955,8 @@ export class GCS extends RESTler<GCSOptions> {
    *
    * @param endpoint - The per-request endpoint copy to mutate with auth headers.
    * @throws {GCSError} `JWT_SIGNING_FAILED` or `TOKEN_EXCHANGE_FAILED` when
-   * a service-account token can't be obtained.
+   * a service-account token can't be obtained; `TIMEOUT` / `NETWORK_ERROR`
+   * when the token endpoint could not be reached.
    * @protected
    */
   protected override async _authInjector(
@@ -1161,14 +1164,16 @@ export class GCS extends RESTler<GCSOptions> {
    * object-storage `{ error: { code, message, errors } }` envelope, but
    * the OAuth2 token endpoint sends its own, differently-shaped error body
    * (`{ error: 'invalid_grant', error_description }`) and this method's
-   * contract is to always throw `TOKEN_EXCHANGE_FAILED` regardless. A
+   * contract is to throw `TOKEN_EXCHANGE_FAILED` for any refusal. A
    * per-call `responseHandler` below overrides the default for this one
    * request and does that status check itself; `responseSchema` validates
    * the token shape on a successful response.
    *
-   * @throws {GCSError} `TOKEN_EXCHANGE_FAILED` when the request fails
-   * (including timing out), the endpoint responds with a non-2xx status,
-   * or the response body doesn't match the documented token shape.
+   * @throws {GCSError} `TOKEN_EXCHANGE_FAILED` when the endpoint responds
+   * with a non-2xx status or the response body doesn't match the
+   * documented token shape; `TIMEOUT` / `NETWORK_ERROR` (transient) when no
+   * response arrived, or `RATE_LIMIT_EXCEEDED` when RESTler's `maxRetryWait` retry was
+   * exhausted — all mapped by the `_makeRequest` override.
    * @private
    */
   private async __exchangeServiceAccountToken(
@@ -1217,15 +1222,12 @@ export class GCS extends RESTler<GCSOptions> {
       // `TokenResponseSchemaObject`'s shape whenever this line is reached.
       return response.body as { access_token: string; expires_in: number };
     } catch (cause) {
-      // Already shaped by `responseHandler` above — surface unchanged.
+      // Already shaped — surface unchanged: a refusal from `responseHandler`
+      // above (`TOKEN_EXCHANGE_FAILED`), or a transport failure the
+      // `_makeRequest` override mapped (`TIMEOUT`, `NETWORK_ERROR`, or the
+      // rate-limit code under `maxRetryWait`), which stays transient.
       if (cause instanceof GCSError) {
         throw cause;
-      }
-      if (cause instanceof RESTlerTimeoutError) {
-        throw new GCSError('TOKEN_EXCHANGE_FAILED', {
-          status,
-          reason: 'timeout',
-        }, cause);
       }
       if (cause instanceof RESTlerResponseValidationError) {
         throw new GCSError('TOKEN_EXCHANGE_FAILED', {
@@ -1238,6 +1240,7 @@ export class GCS extends RESTler<GCSOptions> {
       }
       throw new GCSError('TOKEN_EXCHANGE_FAILED', {
         status,
+        // Anything else (e.g. a request that could not be built at all).
         reason: 'request failed',
       }, cause instanceof Error ? cause : undefined);
     }
@@ -1342,17 +1345,12 @@ export class GCS extends RESTler<GCSOptions> {
   }
 
   /**
-   * Single choke point for turning RESTler's `RESTlerRateLimitError` (thrown
-   * when `maxRetryWait` is set and the retry was exhausted, or the vendor's
-   * hint exceeded the cap) into this connect's own `RATE_LIMIT_EXCEEDED`. Every request
-   * path goes through here — including methods whose result comes from
-   * response headers and so call `_makeRequest` directly instead of
+   * Single choke point for turning RESTler's transport errors into this
+   * connect's own {@link GCSError} (see {@link __transportError}). Every
+   * request path goes through here — including methods whose result comes
+   * from response headers and so call `_makeRequest` directly instead of
    * {@link __requestAndValidate}. Rewrapping only inside that helper
    * leaked the raw RESTler error from those methods.
-   *
-   * {@link _makeStreamRequest} carries the same rewrap: since
-   * `@tundralibs/restler@1.3.1` a streamed download is retried under
-   * `maxRetryWait` exactly like a buffered request.
    */
   protected override async _makeRequest<H = ResponseBody, B = H>(
     endpoint: RESTlerEndpoint,
@@ -1361,34 +1359,85 @@ export class GCS extends RESTler<GCSOptions> {
     try {
       return await super._makeRequest<H, B>(endpoint, options);
     } catch (err) {
-      throw this.__rateLimitError(err);
-    }
-  }
-
-  /** Same rate-limit rewrap as {@link _makeRequest}, for streamed downloads. */
-  protected override async _makeStreamRequest<H = ResponseBody>(
-    endpoint: RESTlerEndpoint,
-    options: RESTlerStreamOptions<H> = {},
-  ): Promise<RESTlerResponse<ReadableStream<Uint8Array>>> {
-    try {
-      return await super._makeStreamRequest<H>(endpoint, options);
-    } catch (err) {
-      throw this.__rateLimitError(err);
+      throw this.__transportError(err, endpoint.timeout);
     }
   }
 
   /**
-   * `err` rewrapped as `RATE_LIMIT_EXCEEDED` when it is a `RESTlerRateLimitError` — with
-   * the vendor's hint and whether RESTler already waited once — or returned
-   * unchanged otherwise.
+   * Same transport rewrap as {@link _makeRequest}, for streamed downloads.
+   *
+   * A `TIMEOUT` thrown here is the wait for response HEADERS (the
+   * vendor-wide `timeout`), not the per-chunk `idleTimeout`: once headers
+   * arrive the stream is returned, and an idle stall surfaces later as an
+   * error from the stream itself, which this does not wrap.
+   *
+   * RESTler's stream path throws a bare `RESTlerRequestError` ("Request
+   * failed with status N") when a non-2xx response reaches a handler that
+   * returns instead of throwing (here: a 1xx/3xx, since {@link __toError}
+   * throws for every status >= 400). That is an HTTP answer, not a network
+   * failure, so once a response has been seen it passes through unchanged
+   * rather than becoming `NETWORK_ERROR`.
    */
-  private __rateLimitError(err: unknown): unknown {
-    if (!(err instanceof RESTlerRateLimitError)) return err;
-    return new GCSError('RATE_LIMIT_EXCEEDED', {
-      status: 429,
-      retryAfterSeconds: err.getContextValue('retryAfter'),
-      retried: err.getContextValue('retried'),
-    }, err);
+  protected override async _makeStreamRequest<H = ResponseBody>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerStreamOptions<H> = {},
+  ): Promise<RESTlerResponse<ReadableStream<Uint8Array>>> {
+    let responded = false;
+    const handler = options.responseHandler ??
+      (this._responseHandler as RESTlerResponseHandler<H> | undefined);
+    try {
+      return await super._makeStreamRequest<H>(endpoint, {
+        ...options,
+        responseHandler: (response) => {
+          responded = true;
+          return handler ? handler(response) : response.body as H;
+        },
+      });
+    } catch (err) {
+      throw responded && this.__isBareRequestError(err)
+        ? err
+        : this.__transportError(err, endpoint.timeout);
+    }
+  }
+
+  /**
+   * `err` rewrapped as this connect's own code, or returned unchanged:
+   * `RESTlerRateLimitError` (RESTler retried once under `maxRetryWait` and
+   * was throttled again, or the vendor's hint exceeded the cap) becomes
+   * `RATE_LIMIT_EXCEEDED`; `RESTlerTimeoutError` becomes `TIMEOUT`; a bare
+   * `RESTlerRequestError` (the request failed before any response — DNS,
+   * TLS, connection reset) becomes `NETWORK_ERROR`.
+   */
+  private __transportError(err: unknown, timeout: number | undefined): unknown {
+    if (err instanceof RESTlerRateLimitError) {
+      return new GCSError('RATE_LIMIT_EXCEEDED', {
+        status: 429,
+        retryAfterSeconds: err.getContextValue('retryAfter'),
+        retried: err.getContextValue('retried'),
+      }, err);
+    }
+    if (err instanceof RESTlerTimeoutError) {
+      return new GCSError('TIMEOUT', {
+        timeoutSeconds: timeout ?? this._getOption('timeout'),
+      }, err);
+    }
+    if (this.__isBareRequestError(err)) {
+      return new GCSError('NETWORK_ERROR', {}, err);
+    }
+    return err;
+  }
+
+  /**
+   * `true` for a `RESTlerRequestError` that is none of its subclasses.
+   * `RESTlerTimeoutError`, `RESTlerRateLimitError` and
+   * `RESTlerResponseValidationError` all extend it, so only a bare one
+   * means "failed before any response".
+   */
+  private __isBareRequestError(err: unknown): err is RESTlerRequestError {
+    return err instanceof RESTlerRequestError &&
+      !(err instanceof RESTlerTimeoutError) &&
+      !(err instanceof RESTlerRateLimitError) &&
+      !(err instanceof RESTlerResponseValidationError);
   }
 
   /**

@@ -100,6 +100,22 @@ returned, or included in a thrown error. Review `KalshiSigner.ts`/
 - Historical candlesticks (`GET .../candlesticks`) and the separate
   historical-markets surface aren't covered.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Kalshi` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/kalshi/schemas` or throws a real `KalshiError`:
+
+```ts
+import { KalshiError } from '@tundraconnect/kalshi/errors';
+
+const outage = new KalshiError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                       | Description                                |

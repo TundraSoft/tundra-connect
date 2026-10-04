@@ -28,4 +28,8 @@
  */
 
 export { S3Error, type S3ErrorMetadata } from './Base.ts';
-export { type S3ErrorCode, S3ErrorCodes } from './S3ErrorCodes.ts';
+export {
+  S3_TRANSIENT_CODES,
+  type S3ErrorCode,
+  S3ErrorCodes,
+} from './S3ErrorCodes.ts';

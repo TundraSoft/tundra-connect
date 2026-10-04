@@ -25,6 +25,22 @@ const client = new Ntfy();
 await client.publish({ topic: 'mytopic', message: 'Hello from ntfy!' });
 ```
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Ntfy` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/ntfy/schemas` or throws a real `NtfyError`:
+
+```ts
+import { NtfyError } from '@tundraconnect/ntfy/errors';
+
+const outage = new NtfyError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                     | Description                                |

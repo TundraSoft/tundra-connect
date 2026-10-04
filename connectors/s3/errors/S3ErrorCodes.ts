@@ -53,9 +53,32 @@ export const S3ErrorCodes = {
     'Request rate for this bucket/prefix is too high — back off and retry.',
   SERVICE_UNAVAILABLE: 'S3 service is currently unavailable.',
 
+  // -- Transport (no response) -------------------------------------------
+  TIMEOUT: 'S3 did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to S3 failed before a response (DNS, TLS or connection failure).',
+
   // -- Fallback -----------------------------------------------------
   UNKNOWN_ERROR: 'An unknown error occurred in S3.',
 } as const;
 
 /** Valid S3 error code. */
 export type S3ErrorCode = keyof typeof S3ErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, S3 returned `InternalError` /
+ * `ServiceUnavailable` (both documented by AWS as retryable), or it
+ * throttled the call (`SlowDown`). {@link S3Error.transient} is `true` for
+ * exactly these.
+ */
+export const S3_TRANSIENT_CODES: ReadonlySet<S3ErrorCode> = new Set<
+  S3ErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'INTERNAL_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'SLOW_DOWN',
+]);

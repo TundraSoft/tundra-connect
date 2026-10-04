@@ -32,6 +32,7 @@ export {
   type OpenWeatherMapErrorMetadata,
 } from './Base.ts';
 export {
+  OPENWEATHERMAP_TRANSIENT_CODES,
   type OpenWeatherMapErrorCode,
   OpenWeatherMapErrorCodes,
 } from './OpenWeatherMapErrorCodes.ts';

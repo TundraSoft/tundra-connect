@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { CloudflareEmailError } from './Base.ts';
-import { CloudflareEmailErrorCodes } from './CloudflareEmailErrorCodes.ts';
+import {
+  CLOUDFLARE_EMAIL_TRANSIENT_CODES,
+  CloudflareEmailErrorCodes,
+} from './CloudflareEmailErrorCodes.ts';
 
 describe('CloudflareEmail.errors.Base', () => {
   it('formats a known error code', () => {
@@ -40,5 +43,20 @@ describe('CloudflareEmail.errors.Base', () => {
     const error = new CloudflareEmailError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<status unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(CloudflareEmailErrorCodes)) {
+      const error = new CloudflareEmailError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        CLOUDFLARE_EMAIL_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...CLOUDFLARE_EMAIL_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

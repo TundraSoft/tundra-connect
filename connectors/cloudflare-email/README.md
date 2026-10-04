@@ -44,6 +44,22 @@ const result = await client.send({
 console.log(result.delivered, result.queued);
 ```
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `CloudflareEmail` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/cloudflare-email/schemas` or throws a real `CloudflareEmailError`:
+
+```ts
+import { CloudflareEmailError } from '@tundraconnect/cloudflare-email/errors';
+
+const outage = new CloudflareEmailError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                                | Description                                |

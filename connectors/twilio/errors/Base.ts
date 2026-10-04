@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type TwilioErrorCode, TwilioErrorCodes } from './TwilioErrorCodes.ts';
+import {
+  TWILIO_TRANSIENT_CODES,
+  type TwilioErrorCode,
+  TwilioErrorCodes,
+} from './TwilioErrorCodes.ts';
 
 /** Metadata supplied with a {@link TwilioError}. */
 export type TwilioErrorMetadata = {
@@ -23,6 +27,14 @@ export class TwilioError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link TwilioErrorCodes}). */
   public readonly code: TwilioErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link TWILIO_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[Twilio] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -59,5 +71,6 @@ export class TwilioError<
     }
     super(TwilioErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = TWILIO_TRANSIENT_CODES.has(code);
   }
 }

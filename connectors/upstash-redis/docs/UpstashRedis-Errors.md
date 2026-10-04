@@ -27,6 +27,8 @@ console.log(error.message);
 | `METHOD_NOT_ALLOWED`       | UpstashRedis returned HTTP `405` (only `HEAD`/`GET`/`POST`/`PUT` are supported).                                                                                                                                                                                                                                                                            |
 | `RESPONSE_ERROR`           | A success response's body failed schema validation.                                                                                                                                                                                                                                                                                                         |
 | `SERVICE_UNAVAILABLE`      | UpstashRedis returned a `5xx` status.                                                                                                                                                                                                                                                                                                                       |
+| `TIMEOUT`                  | Upstash did not answer within the client `timeout` (`timeoutSeconds` in context).                                                                                                                                                                                                                                                                           |
+| `NETWORK_ERROR`            | `fetch` failed before any response (DNS, TLS, connection reset); the transport error is the `cause`.                                                                                                                                                                                                                                                        |
 
 ### Why `400` maps to one code, not two
 
@@ -58,6 +60,34 @@ try {
 Use `getContextValue()` to read diagnostic metadata — see
 [errors/Base.ts](../errors/Base.ts). The configured Bearer token is never
 included in any thrown error's message or context.
+
+## Transient failures
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` mean
+"no answer yet": retrying later can help. Every other code is a definite
+refusal or a misconfiguration that retrying will not fix. Branch on the
+readonly `err.transient`, which is `true` for exactly these four, rather
+than listing codes yourself. The set is also exported as
+`UPSTASH_REDIS_TRANSIENT_CODES` from `@tundraconnect/upstash-redis/errors`.
+
+```ts
+import { UpstashRedisError } from '@tundraconnect/upstash-redis/errors';
+
+declare function callTheClient(): Promise<unknown>;
+
+try {
+  await callTheClient();
+} catch (err) {
+  if (err instanceof UpstashRedisError && err.transient) {
+    // queue it and try again later
+  }
+  throw err;
+}
+```
+
+| Context          | Present on | Meaning                                   |
+| ---------------- | ---------- | ----------------------------------------- |
+| `timeoutSeconds` | `TIMEOUT`  | The deadline that was missed, in seconds. |
 
 ## Backing off after a 429
 

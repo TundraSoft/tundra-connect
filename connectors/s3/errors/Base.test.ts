@@ -1,6 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
-import { S3Error, S3ErrorCodes } from './mod.ts';
+import { S3_TRANSIENT_CODES, S3Error, S3ErrorCodes } from './mod.ts';
 
 describe('S3.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -35,5 +35,26 @@ describe('S3.errors.Base', () => {
     const error = new S3Error('NO_SUCH_KEY');
     asserts.assertStringIncludes(error.message, '<key unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(S3ErrorCodes)) {
+      const error = new S3Error(code as never);
+      asserts.assertEquals(
+        error.transient,
+        S3_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...S3_TRANSIENT_CODES].sort(),
+      [
+        'INTERNAL_ERROR',
+        'NETWORK_ERROR',
+        'SERVICE_UNAVAILABLE',
+        'SLOW_DOWN',
+        'TIMEOUT',
+      ],
+    );
   });
 });

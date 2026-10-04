@@ -514,6 +514,61 @@ describe('Resend — error mapping', () => {
   });
 });
 
+describe('Resend — transport failures', () => {
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = client({ timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.getEmail('e1'),
+      ResendError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = client();
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.send(validSend),
+      ResendError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(AUTH.token),
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = client();
+    c.setResponse('<html>503</html>', 503, { 'content-type': 'text/html' });
+    const outage = await asserts.assertRejects(
+      () => c.send(validSend),
+      ResendError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse(
+      { statusCode: 401, name: 'missing_api_key', message: 'no key' },
+      401,
+    );
+    const refusal = await asserts.assertRejects(
+      () => c.send(validSend),
+      ResendError,
+    );
+    asserts.assertEquals(refusal.code, 'AUTH_FAILED');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('Resend — maxRetryWait (RESTler rate-limit retry)', () => {
   const throttled = (maxRetryWait: number, retryAfter: string) => {
     const c = new MockResend({ auth: AUTH, maxRetryWait });
@@ -545,6 +600,7 @@ describe('Resend — maxRetryWait (RESTler rate-limit retry)', () => {
       ResendError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -558,6 +614,7 @@ describe('Resend — maxRetryWait (RESTler rate-limit retry)', () => {
       ResendError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);

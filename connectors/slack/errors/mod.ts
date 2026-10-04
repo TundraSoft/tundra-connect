@@ -28,4 +28,8 @@
  */
 
 export { SlackError, type SlackErrorMetadata } from './Base.ts';
-export { type SlackErrorCode, SlackErrorCodes } from './SlackErrorCodes.ts';
+export {
+  SLACK_TRANSIENT_CODES,
+  type SlackErrorCode,
+  SlackErrorCodes,
+} from './SlackErrorCodes.ts';

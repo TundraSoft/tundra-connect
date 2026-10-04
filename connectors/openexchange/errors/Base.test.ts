@@ -1,6 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
-import { OpenExchangeError, OpenExchangeErrorCodes } from './mod.ts';
+import {
+  OPENEXCHANGE_TRANSIENT_CODES,
+  OpenExchangeError,
+  OpenExchangeErrorCodes,
+} from './mod.ts';
 
 describe('OpenExchange.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -34,5 +38,20 @@ describe('OpenExchange.errors.Base', () => {
     const error = new OpenExchangeError('CONFIG_INVALID_BASE_CURRENCY');
     asserts.assertStringIncludes(error.message, '<baseCurrency unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(OpenExchangeErrorCodes)) {
+      const error = new OpenExchangeError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        OPENEXCHANGE_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...OPENEXCHANGE_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

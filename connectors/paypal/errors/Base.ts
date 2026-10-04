@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type PayPalErrorCode, PayPalErrorCodes } from './PayPalErrorCodes.ts';
+import {
+  PAYPAL_TRANSIENT_CODES,
+  type PayPalErrorCode,
+  PayPalErrorCodes,
+} from './PayPalErrorCodes.ts';
 
 /** Metadata supplied with a {@link PayPalError}. */
 export type PayPalErrorMetadata = {
@@ -26,6 +30,14 @@ export class PayPalError<
    * {@link PayPalErrorCodes}).
    */
   public readonly code: PayPalErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `RATE_LIMITED` or `SERVICE_UNAVAILABLE` (see
+   * {@link PAYPAL_TRANSIENT_CODES}) — and `false` for a definite refusal or
+   * a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[PayPal] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -65,5 +77,6 @@ export class PayPalError<
 
     super(PayPalErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = PAYPAL_TRANSIENT_CODES.has(code);
   }
 }

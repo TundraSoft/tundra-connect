@@ -1,6 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
-import { AzureBlobError, AzureBlobErrorCodes } from './mod.ts';
+import {
+  AZURE_BLOB_TRANSIENT_CODES,
+  AzureBlobError,
+  AzureBlobErrorCodes,
+} from './mod.ts';
 
 describe('AzureBlob.errors.Base', () => {
   it('formats a known vendor error code', () => {
@@ -45,5 +49,20 @@ describe('AzureBlob.errors.Base', () => {
     const error = new AzureBlobError('CONTAINER_NOT_FOUND');
     asserts.assertStringIncludes(error.message, '<bucket unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(AzureBlobErrorCodes)) {
+      const error = new AzureBlobError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        AZURE_BLOB_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...AZURE_BLOB_TRANSIENT_CODES].sort(),
+      ['INTERNAL_ERROR', 'NETWORK_ERROR', 'SERVER_BUSY', 'TIMEOUT'],
+    );
   });
 });

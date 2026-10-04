@@ -24,6 +24,8 @@ is dispatched purely on HTTP status (see `Algolia.ts`'s `__toError`).
 | `INVALID_REQUEST`               | HTTP 400/422, **or** a local Guardian validation failure before the request was sent. |
 | `RESPONSE_ERROR`                | A success response's body failed schema validation.                                   |
 | `SERVICE_UNAVAILABLE`           | HTTP 5xx.                                                                             |
+| `TIMEOUT`                       | No complete answer within the `timeout` (context `timeoutSeconds`).                   |
+| `NETWORK_ERROR`                 | The request failed before any response (DNS, TLS, connection reset).                  |
 | `AUTH_FAILED`                   | HTTP 401/403 — invalid `applicationId`/`apiKey`, or a key missing the required ACL.   |
 | `NOT_FOUND`                     | HTTP 404 — the index, object, or task does not exist.                                 |
 | `RATE_LIMITED`                  | HTTP 429 — too many requests for the configured plan/quota.                           |
@@ -31,6 +33,13 @@ is dispatched purely on HTTP status (see `Algolia.ts`'s `__toError`).
 | `CONFIG_INVALID_APPLICATION_ID` | `auth.applicationId` is missing or empty.                                             |
 | `CONFIG_INVALID_API_KEY`        | `auth.apiKey` is missing or empty. Never echoes the (invalid) value.                  |
 | `TASK_TIMEOUT`                  | `waitTask` exceeded its polling budget without observing `status: 'published'`.       |
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` are
+**transient**: Algolia gave no definite answer, so the same call may
+succeed later. `err.transient` is `true` for exactly these and `false` for
+every other code (a definite refusal or a misconfiguration retrying won't
+fix). The set is also exported as `ALGOLIA_TRANSIENT_CODES` from
+`@tundraconnect/algolia/errors`.
 
 `INVALID_REQUEST` is intentionally reused for both a local (pre-request)
 validation failure and a vendor 400/422 response — both mean "the request

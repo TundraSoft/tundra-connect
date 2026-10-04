@@ -29,6 +29,7 @@
 
 export { RazorpayError, type RazorpayErrorMetadata } from './Base.ts';
 export {
+  RAZORPAY_TRANSIENT_CODES,
   type RazorpayErrorCode,
   RazorpayErrorCodes,
 } from './RazorpayErrorCodes.ts';

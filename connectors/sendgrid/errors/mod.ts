@@ -29,6 +29,7 @@
 
 export { SendGridError, type SendGridErrorMetadata } from './Base.ts';
 export {
+  SENDGRID_TRANSIENT_CODES,
   type SendGridErrorCode,
   SendGridErrorCodes,
 } from './SendGridErrorCodes.ts';

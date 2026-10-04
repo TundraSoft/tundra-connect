@@ -29,6 +29,7 @@
 
 export { TelegramError, type TelegramErrorMetadata } from './Base.ts';
 export {
+  TELEGRAM_TRANSIENT_CODES,
   type TelegramErrorCode,
   TelegramErrorCodes,
 } from './TelegramErrorCodes.ts';

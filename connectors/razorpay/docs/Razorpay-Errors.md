@@ -41,8 +41,22 @@ couldn't be parsed at all.
 | `BAD_REQUEST_ERROR`   | `error.code = BAD_REQUEST_ERROR` (invalid request data — the majority of business/validation failures), or an unmapped 4xx status. |
 | `GATEWAY_ERROR`       | `error.code = GATEWAY_ERROR` — the request failed at the payment gateway or downstream bank, or an unmapped 502.                   |
 | `SERVER_ERROR`        | `error.code = SERVER_ERROR` — an internal Razorpay failure, or an unmapped 5xx status.                                             |
+| `TIMEOUT`             | No answer from Razorpay within the `timeout` (seconds); `timeoutSeconds` says which deadline passed.                               |
+| `NETWORK_ERROR`       | The request failed before any response (DNS, TLS or connection failure); the original error is the `cause`.                        |
 | `SERVICE_UNAVAILABLE` | `error.code = SERVICE_UNAVAILABLE`, an unmapped 503, or an error body that failed to parse at all on a 5xx response.               |
 | `UNKNOWN_ERROR`       | An unknown constructor code was supplied.                                                                                          |
+
+`TIMEOUT`, `NETWORK_ERROR`, `RATE_LIMITED`, `SERVER_ERROR` and
+`SERVICE_UNAVAILABLE` are **transient**: they mean "no answer yet — try
+again later". `err.transient` is `true` for exactly these and `false` for
+every other code (a definite refusal, or a misconfiguration that retrying
+will not fix). The set is also exported as `RAZORPAY_TRANSIENT_CODES` from
+`@tundraconnect/razorpay/errors`. `GATEWAY_ERROR` is deliberately not transient:
+it usually carries a decline from the payment gateway or bank.
+
+| Context          | Meaning                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeoutSeconds` | Set on `TIMEOUT`: the deadline, in seconds, that passed with no answer (the call's own `timeout`, else the client's `timeout` option). |
 
 The resolved code is also available as a public, readonly `error.code`
 property — branch on failure mode without matching against `.message`:

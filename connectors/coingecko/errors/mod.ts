@@ -29,6 +29,7 @@
 
 export { CoinGeckoError, type CoinGeckoErrorMetadata } from './Base.ts';
 export {
+  COINGECKO_TRANSIENT_CODES,
   type CoinGeckoErrorCode,
   CoinGeckoErrorCodes,
 } from './CoinGeckoErrorCodes.ts';

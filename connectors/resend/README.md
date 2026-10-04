@@ -42,6 +42,22 @@ const { id } = await client.send({
 console.log('sent', id);
 ```
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Resend` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/resend/schemas` or throws a real `ResendError`:
+
+```ts
+import { ResendError } from '@tundraconnect/resend/errors';
+
+const outage = new ResendError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                       | Description                                |

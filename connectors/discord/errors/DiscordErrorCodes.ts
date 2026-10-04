@@ -89,7 +89,26 @@ export const DiscordErrorCodes = {
     'The application Public Key is not a 64-character hex Ed25519 key.',
   WEBHOOK_SIGNATURE_INVALID:
     'The interaction signature does not match — treat this request as forged.',
+  TIMEOUT: 'Discord did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to Discord failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Discord error code. */
 export type DiscordErrorCode = keyof typeof DiscordErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Discord returned a 5xx, or it
+ * rate-limited the call. {@link DiscordError.transient} is `true` for
+ * exactly these.
+ */
+export const DISCORD_TRANSIENT_CODES: ReadonlySet<DiscordErrorCode> = new Set<
+  DiscordErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

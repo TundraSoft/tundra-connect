@@ -62,7 +62,27 @@ export const TwilioErrorCodes = {
     'Webhook verification needs the ACCOUNT auth token — pass `authToken` explicitly when this client authenticates with an API key.',
   WEBHOOK_SIGNATURE_INVALID:
     'The webhook signature does not match — treat this request as forged.',
+  TIMEOUT:
+    'The Twilio API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to the Twilio API failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Twilio error code. */
 export type TwilioErrorCode = keyof typeof TwilioErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Twilio returned a 5xx, or it
+ * rate-limited the call. {@link TwilioError.transient} is `true` for
+ * exactly these.
+ */
+export const TWILIO_TRANSIENT_CODES: ReadonlySet<TwilioErrorCode> = new Set<
+  TwilioErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

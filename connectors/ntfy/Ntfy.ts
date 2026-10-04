@@ -1,11 +1,15 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
   RESTlerRateLimitError,
+  RESTlerRequestError,
+  type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
+  RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
 import { type BaseGuardian, GuardianError } from '@guardian';
@@ -93,6 +97,8 @@ export class Ntfy extends RESTler<NtfyOptions> {
    * schema validation, or `BAD_REQUEST`, `AUTH_REQUIRED`, `FORBIDDEN`,
    * `NOT_FOUND`, `PAYLOAD_TOO_LARGE`, `RATE_LIMITED`, `RESPONSE_ERROR`,
    * `SERVICE_UNAVAILABLE`, or `UNKNOWN_ERROR`.
+   * @throws {NtfyError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -131,6 +137,52 @@ export class Ntfy extends RESTler<NtfyOptions> {
   }
 
   /**
+   * Every request funnels through here, so a transport failure surfaces as
+   * this connect's own error on every path: a timeout as `TIMEOUT`, a
+   * failure before any response as `NETWORK_ERROR`, and an exhausted
+   * RESTler rate-limit retry (`maxRetryWait`) as `RATE_LIMITED` — all
+   * `transient`. A {@link NtfyError} from the response handler passes
+   * through unchanged.
+   */
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__transportError(err, endpoint.timeout);
+    }
+  }
+
+  /** `err` rewrapped as this connect's transient code, or returned unchanged. */
+  private __transportError(err: unknown, timeout: number | undefined): unknown {
+    if (err instanceof RESTlerRateLimitError) {
+      // RESTler retried once (maxRetryWait) and was throttled again, or the
+      // vendor's hint exceeded the cap.
+      return new NtfyError('RATE_LIMITED', {
+        status: 429,
+        retryAfterSeconds: err.getContextValue('retryAfter'),
+        retried: err.getContextValue('retried'),
+      }, err);
+    }
+    if (err instanceof RESTlerTimeoutError) {
+      return new NtfyError('TIMEOUT', {
+        timeoutSeconds: timeout ?? this._getOption('timeout'),
+      }, err);
+    }
+    // RESTlerResponseValidationError (and the two above) extend
+    // RESTlerRequestError: only a bare one is a failure before any response.
+    if (
+      err instanceof RESTlerRequestError &&
+      !(err instanceof RESTlerResponseValidationError)
+    ) {
+      return new NtfyError('NETWORK_ERROR', {}, err);
+    }
+    return err;
+  }
+
+  /**
    * Makes a request and validates its response body against `guard`,
    * unwrapping RESTler's generic {@link RESTlerResponseValidationError}
    * into a {@link NtfyError} — so `NtfyError` stays the only thing a public
@@ -163,16 +215,6 @@ export class Ntfy extends RESTler<NtfyOptions> {
       if (err instanceof RESTlerResponseValidationError) {
         throw new NtfyError('RESPONSE_ERROR', {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
-        }, err);
-      }
-      if (err instanceof RESTlerRateLimitError) {
-        // RESTler retried once (maxRetryWait) and was throttled again, or the
-        // vendor's hint exceeded the cap — surface it as this connect's own
-        // error, with the hint and whether a wait already happened.
-        throw new NtfyError('RATE_LIMITED', {
-          status: 429,
-          retryAfterSeconds: err.getContextValue('retryAfter'),
-          retried: err.getContextValue('retried'),
         }, err);
       }
       throw err;

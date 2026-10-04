@@ -1,5 +1,9 @@
 import { RESTlerError } from '@restler';
-import { type GCSErrorCode, GCSErrorCodes } from './GCSErrorCodes.ts';
+import {
+  GCS_TRANSIENT_CODES,
+  type GCSErrorCode,
+  GCSErrorCodes,
+} from './GCSErrorCodes.ts';
 
 /** Metadata supplied with a {@link GCSError}. */
 export type GCSErrorMetadata = {
@@ -22,6 +26,13 @@ export class GCSError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link GCSErrorCodes}). */
   public readonly code: GCSErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `RATE_LIMIT_EXCEEDED` or `BACKEND_ERROR` (see {@link GCS_TRANSIENT_CODES})
+   * — and `false` for a definite refusal or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[GCS] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -58,5 +69,6 @@ export class GCSError<
     }
     super(GCSErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = GCS_TRANSIENT_CODES.has(code);
   }
 }

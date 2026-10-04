@@ -35,6 +35,8 @@ console.log(TwilioErrorCodes.INVALID_TO_NUMBER);
 | `ACCOUNT_SUSPENDED`               | Twilio error 10001 — the account is not active.                                                                                                    |
 | `RESPONSE_ERROR`                  | A 4xx response parsed, but its vendor code is undocumented here.                                                                                   |
 | `SERVICE_UNAVAILABLE`             | A 5xx response, or a response body that failed to parse at all.                                                                                    |
+| `TIMEOUT`                         | Twilio did not answer within the client `timeout` (`timeoutSeconds` in context).                                                                   |
+| `NETWORK_ERROR`                   | `fetch` failed before any response (DNS, TLS, connection reset); the transport error is the `cause`.                                               |
 | `UNKNOWN_ERROR`                   | An unknown constructor code was supplied.                                                                                                          |
 
 `INVALID_TO_NUMBER` (21211) and `AUTH_FAILED`/`RATE_LIMITED` (20003/20429)
@@ -59,6 +61,34 @@ Use `getContextValue()` to read diagnostic metadata such as `vendor`,
 `status`, `vendorCode`, `vendorMessage`, or `moreInfo` (Twilio's
 [error reference](https://www.twilio.com/docs/api/errors) URL, when the
 vendor supplies one).
+
+## Transient failures
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` mean
+"no answer yet": retrying later can help. Every other code is a definite
+refusal or a misconfiguration that retrying will not fix. Branch on the
+readonly `err.transient`, which is `true` for exactly these four, rather
+than listing codes yourself. The set is also exported as
+`TWILIO_TRANSIENT_CODES` from `@tundraconnect/twilio/errors`.
+
+```ts
+import { TwilioError } from '@tundraconnect/twilio/errors';
+
+declare function callTheClient(): Promise<unknown>;
+
+try {
+  await callTheClient();
+} catch (err) {
+  if (err instanceof TwilioError && err.transient) {
+    // queue it and try again later
+  }
+  throw err;
+}
+```
+
+| Context          | Present on | Meaning                                   |
+| ---------------- | ---------- | ----------------------------------------- |
+| `timeoutSeconds` | `TIMEOUT`  | The deadline that was missed, in seconds. |
 
 ## Backing off after a 429
 

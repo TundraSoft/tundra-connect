@@ -28,4 +28,8 @@
  */
 
 export { PayPalError, type PayPalErrorMetadata } from './Base.ts';
-export { type PayPalErrorCode, PayPalErrorCodes } from './PayPalErrorCodes.ts';
+export {
+  PAYPAL_TRANSIENT_CODES,
+  type PayPalErrorCode,
+  PayPalErrorCodes,
+} from './PayPalErrorCodes.ts';

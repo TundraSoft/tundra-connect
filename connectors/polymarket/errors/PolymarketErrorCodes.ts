@@ -34,7 +34,28 @@ export const PolymarketErrorCodes = {
 
   CONFIG_MISSING_RELAYER_CREDENTIALS:
     "Polymarket Relayer methods (split/merge/redeem) require `auth.relayerApiKey` and `auth.relayerApiKeyAddress` — a separate credential from the CLOB's L2 API key, obtained independently from Polymarket.",
+  TIMEOUT:
+    'The Polymarket API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to Polymarket failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Polymarket error code. */
 export type PolymarketErrorCode = keyof typeof PolymarketErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Polymarket returned a 5xx, or it
+ * rate-limited the call. {@link PolymarketError.transient} is `true` for
+ * exactly these.
+ */
+export const POLYMARKET_TRANSIENT_CODES: ReadonlySet<PolymarketErrorCode> =
+  new Set<
+    PolymarketErrorCode
+  >([
+    'TIMEOUT',
+    'NETWORK_ERROR',
+    'RATE_LIMITED',
+    'SERVICE_UNAVAILABLE',
+  ]);

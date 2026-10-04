@@ -6,9 +6,11 @@ import {
   type RESTlerEvents,
   type RESTlerOptions,
   RESTlerRateLimitError,
+  RESTlerRequestError,
   type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
+  RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
 import { type BaseGuardian, type GuardianError } from '@guardian';
@@ -975,13 +977,14 @@ export class Kalshi extends RESTler<KalshiOptions> {
   }
 
   /**
-   * Single choke point for turning RESTler's `RESTlerRateLimitError` (thrown
-   * when `maxRetryWait` is set and the retry was exhausted, or the vendor's
-   * hint exceeded the cap) into this connect's own `RATE_LIMITED`. Every request
-   * path goes through here — including methods whose result comes from
-   * response headers and so call `_makeRequest` directly instead of
-   * {@link __requestAndValidate}. Rewrapping only inside that helper
-   * leaked the raw RESTler error from those methods.
+   * Every request funnels through here, so a transport failure surfaces as
+   * this connect's own error on every path — including methods whose result
+   * comes from response headers and so call `_makeRequest` directly instead
+   * of {@link __requestAndValidate}: a timeout as `TIMEOUT`, a failure
+   * before any response as `NETWORK_ERROR`, and an exhausted RESTler
+   * rate-limit retry (`maxRetryWait`) as `RATE_LIMITED` — all `transient`.
+   * A {@link KalshiError} from the response handler passes through
+   * unchanged.
    */
   protected override async _makeRequest<H = ResponseBody, B = H>(
     endpoint: RESTlerEndpoint,
@@ -990,22 +993,35 @@ export class Kalshi extends RESTler<KalshiOptions> {
     try {
       return await super._makeRequest<H, B>(endpoint, options);
     } catch (err) {
-      throw this.__rateLimitError(err);
+      throw this.__transportError(err, endpoint.timeout);
     }
   }
 
-  /**
-   * `err` rewrapped as `RATE_LIMITED` when it is a `RESTlerRateLimitError` — with
-   * the vendor's hint and whether RESTler already waited once — or returned
-   * unchanged otherwise.
-   */
-  private __rateLimitError(err: unknown): unknown {
-    if (!(err instanceof RESTlerRateLimitError)) return err;
-    return new KalshiError('RATE_LIMITED', {
-      status: 429,
-      retryAfterSeconds: err.getContextValue('retryAfter'),
-      retried: err.getContextValue('retried'),
-    }, err);
+  /** `err` rewrapped as this connect's transient code, or returned unchanged. */
+  private __transportError(err: unknown, timeout: number | undefined): unknown {
+    if (err instanceof RESTlerRateLimitError) {
+      // RESTler retried once (maxRetryWait) and was throttled again, or the
+      // vendor's hint exceeded the cap.
+      return new KalshiError('RATE_LIMITED', {
+        status: 429,
+        retryAfterSeconds: err.getContextValue('retryAfter'),
+        retried: err.getContextValue('retried'),
+      }, err);
+    }
+    if (err instanceof RESTlerTimeoutError) {
+      return new KalshiError('TIMEOUT', {
+        timeoutSeconds: timeout ?? this._getOption('timeout'),
+      }, err);
+    }
+    // RESTlerResponseValidationError (and the two above) extend
+    // RESTlerRequestError: only a bare one is a failure before any response.
+    if (
+      err instanceof RESTlerRequestError &&
+      !(err instanceof RESTlerResponseValidationError)
+    ) {
+      return new KalshiError('NETWORK_ERROR', {}, err);
+    }
+    return err;
   }
 
   /**

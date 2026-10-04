@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  DISCORD_TRANSIENT_CODES,
   type DiscordErrorCode,
   DiscordErrorCodes,
 } from './DiscordErrorCodes.ts';
@@ -27,6 +28,14 @@ export class DiscordError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link DiscordErrorCodes}). */
   public readonly code: DiscordErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link DISCORD_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[Discord] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -63,5 +72,6 @@ export class DiscordError<
     }
     super(DiscordErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = DISCORD_TRANSIENT_CODES.has(code);
   }
 }

@@ -20,6 +20,22 @@ token), computed purely with Web Crypto (`crypto.subtle`) so the connect
 runs unmodified on Deno, Bun, Node, Cloudflare Workers, and in the browser.
 It uses RESTler for transport and Guardian for runtime response validation.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take an `AzureBlob` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/azure-blob/schemas` or throws a real `AzureBlobError`:
+
+```ts
+import { AzureBlobError } from '@tundraconnect/azure-blob/errors';
+
+const outage = new AzureBlobError('SERVER_BUSY', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                          | Description                                |

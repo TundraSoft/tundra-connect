@@ -5,10 +5,13 @@ import {
   type RESTlerEvents,
   type RESTlerOptions,
   RESTlerRateLimitError,
+  RESTlerRequestError,
   type RESTlerRequestOptions,
   type RESTlerResponse,
+  type RESTlerResponseHandler,
   RESTlerResponseValidationError,
   type RESTlerStreamOptions,
+  RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
 import { encodeBase64 } from '@encoding';
@@ -992,17 +995,12 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
   }
 
   /**
-   * Single choke point for turning RESTler's `RESTlerRateLimitError` (thrown
-   * when `maxRetryWait` is set and the retry was exhausted, or the vendor's
-   * hint exceeded the cap) into this connect's own `SERVER_BUSY`. Every request
-   * path goes through here — including methods whose result comes from
-   * response headers and so call `_makeRequest` directly instead of
+   * Single choke point for turning RESTler's transport errors into this
+   * connect's own {@link AzureBlobError} (see {@link __transportError}). Every
+   * request path goes through here — including methods whose result comes
+   * from response headers and so call `_makeRequest` directly instead of
    * {@link __requestAndValidate}. Rewrapping only inside that helper
    * leaked the raw RESTler error from those methods.
-   *
-   * {@link _makeStreamRequest} carries the same rewrap: since
-   * `@tundralibs/restler@1.3.1` a streamed download is retried under
-   * `maxRetryWait` exactly like a buffered request.
    */
   protected override async _makeRequest<H = ResponseBody, B = H>(
     endpoint: RESTlerEndpoint,
@@ -1011,34 +1009,85 @@ export class AzureBlob extends RESTler<AzureBlobOptions> {
     try {
       return await super._makeRequest<H, B>(endpoint, options);
     } catch (err) {
-      throw this.__rateLimitError(err);
-    }
-  }
-
-  /** Same rate-limit rewrap as {@link _makeRequest}, for streamed downloads. */
-  protected override async _makeStreamRequest<H = ResponseBody>(
-    endpoint: RESTlerEndpoint,
-    options: RESTlerStreamOptions<H> = {},
-  ): Promise<RESTlerResponse<ReadableStream<Uint8Array>>> {
-    try {
-      return await super._makeStreamRequest<H>(endpoint, options);
-    } catch (err) {
-      throw this.__rateLimitError(err);
+      throw this.__transportError(err, endpoint.timeout);
     }
   }
 
   /**
-   * `err` rewrapped as `SERVER_BUSY` when it is a `RESTlerRateLimitError` — with
-   * the vendor's hint and whether RESTler already waited once — or returned
-   * unchanged otherwise.
+   * Same transport rewrap as {@link _makeRequest}, for streamed downloads.
+   *
+   * A `TIMEOUT` thrown here is the wait for response HEADERS (the
+   * vendor-wide `timeout`), not the per-chunk `idleTimeout`: once headers
+   * arrive the stream is returned, and an idle stall surfaces later as an
+   * error from the stream itself, which this does not wrap.
+   *
+   * RESTler's stream path throws a bare `RESTlerRequestError` ("Request
+   * failed with status N") when a non-2xx response reaches a handler that
+   * returns instead of throwing (here: a 1xx/3xx, since {@link __toError}
+   * throws for every status >= 400). That is an HTTP answer, not a network
+   * failure, so once a response has been seen it passes through unchanged
+   * rather than becoming `NETWORK_ERROR`.
    */
-  private __rateLimitError(err: unknown): unknown {
-    if (!(err instanceof RESTlerRateLimitError)) return err;
-    return new AzureBlobError('SERVER_BUSY', {
-      status: 429,
-      retryAfterSeconds: err.getContextValue('retryAfter'),
-      retried: err.getContextValue('retried'),
-    }, err);
+  protected override async _makeStreamRequest<H = ResponseBody>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerStreamOptions<H> = {},
+  ): Promise<RESTlerResponse<ReadableStream<Uint8Array>>> {
+    let responded = false;
+    const handler = options.responseHandler ??
+      (this._responseHandler as RESTlerResponseHandler<H> | undefined);
+    try {
+      return await super._makeStreamRequest<H>(endpoint, {
+        ...options,
+        responseHandler: (response) => {
+          responded = true;
+          return handler ? handler(response) : response.body as H;
+        },
+      });
+    } catch (err) {
+      throw responded && this.__isBareRequestError(err)
+        ? err
+        : this.__transportError(err, endpoint.timeout);
+    }
+  }
+
+  /**
+   * `err` rewrapped as this connect's own code, or returned unchanged:
+   * `RESTlerRateLimitError` (RESTler retried once under `maxRetryWait` and
+   * was throttled again, or the vendor's hint exceeded the cap) becomes
+   * `SERVER_BUSY`; `RESTlerTimeoutError` becomes `TIMEOUT`; a bare
+   * `RESTlerRequestError` (the request failed before any response — DNS,
+   * TLS, connection reset) becomes `NETWORK_ERROR`.
+   */
+  private __transportError(err: unknown, timeout: number | undefined): unknown {
+    if (err instanceof RESTlerRateLimitError) {
+      return new AzureBlobError('SERVER_BUSY', {
+        status: 429,
+        retryAfterSeconds: err.getContextValue('retryAfter'),
+        retried: err.getContextValue('retried'),
+      }, err);
+    }
+    if (err instanceof RESTlerTimeoutError) {
+      return new AzureBlobError('TIMEOUT', {
+        timeoutSeconds: timeout ?? this._getOption('timeout'),
+      }, err);
+    }
+    if (this.__isBareRequestError(err)) {
+      return new AzureBlobError('NETWORK_ERROR', {}, err);
+    }
+    return err;
+  }
+
+  /**
+   * `true` for a `RESTlerRequestError` that is none of its subclasses.
+   * `RESTlerTimeoutError`, `RESTlerRateLimitError` and
+   * `RESTlerResponseValidationError` all extend it, so only a bare one
+   * means "failed before any response".
+   */
+  private __isBareRequestError(err: unknown): err is RESTlerRequestError {
+    return err instanceof RESTlerRequestError &&
+      !(err instanceof RESTlerTimeoutError) &&
+      !(err instanceof RESTlerRateLimitError) &&
+      !(err instanceof RESTlerResponseValidationError);
   }
 
   /**

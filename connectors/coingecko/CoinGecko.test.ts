@@ -461,6 +461,64 @@ const credentials = {
 };
 const liveTestsEnabled = !!credentials.apiKey;
 
+const PRO_AUTH = {
+  type: 'CUSTOM' as const,
+  environment: 'pro' as const,
+  apiKey: 'cg-pro-SECRETKEY',
+};
+
+describe('CoinGecko — transport failures', () => {
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockCoinGecko({ auth: PRO_AUTH, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.getPrice({ ids: 'bitcoin' }),
+      CoinGeckoError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockCoinGecko({ auth: PRO_AUTH });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.getPrice({ ids: 'bitcoin' }),
+      CoinGeckoError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(PRO_AUTH.apiKey),
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockCoinGecko({ auth: PRO_AUTH });
+    c.setResponse('Internal Server Error', 500);
+    const outage = await asserts.assertRejects(
+      () => c.getPrice({ ids: 'bitcoin' }),
+      CoinGeckoError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse({ error: 'invalid vs_currency' }, 400);
+    const refusal = await asserts.assertRejects(
+      () => c.getPrice({ ids: 'bitcoin' }),
+      CoinGeckoError,
+    );
+    asserts.assertEquals(refusal.code, 'INVALID_REQUEST');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('CoinGecko — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -499,6 +557,7 @@ describe('CoinGecko — maxRetryWait (RESTler rate-limit retry)', () => {
       CoinGeckoError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -512,6 +571,7 @@ describe('CoinGecko — maxRetryWait (RESTler rate-limit retry)', () => {
       CoinGeckoError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);

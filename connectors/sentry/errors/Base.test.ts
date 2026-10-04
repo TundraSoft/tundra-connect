@@ -1,7 +1,10 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { SentryError } from './Base.ts';
-import { SentryErrorCodes } from './SentryErrorCodes.ts';
+import {
+  SENTRY_TRANSIENT_CODES,
+  SentryErrorCodes,
+} from './SentryErrorCodes.ts';
 
 describe('Sentry.errors.Base', () => {
   it('formats a known error code', () => {
@@ -38,5 +41,20 @@ describe('Sentry.errors.Base', () => {
     const error = new SentryError('INVALID_REQUEST');
     asserts.assertEquals(error.message.includes('${'), false);
     asserts.assertStringIncludes(error.message, '<status unavailable>');
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(SentryErrorCodes)) {
+      const error = new SentryError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        SENTRY_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...SENTRY_TRANSIENT_CODES].sort(),
+      ['NETWORK_ERROR', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+    );
   });
 });

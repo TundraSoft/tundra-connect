@@ -24,7 +24,26 @@ export const NtfyErrorCodes = {
   RESPONSE_ERROR: 'ntfy API response did not match the expected schema.',
   SERVICE_UNAVAILABLE:
     'ntfy service is currently unavailable (HTTP ${status}).',
+  TIMEOUT: 'ntfy did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to ntfy failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid ntfy error code. */
 export type NtfyErrorCode = keyof typeof NtfyErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, ntfy returned a 5xx, or it
+ * rate-limited the call. {@link NtfyError.transient} is `true` for
+ * exactly these.
+ */
+export const NTFY_TRANSIENT_CODES: ReadonlySet<NtfyErrorCode> = new Set<
+  NtfyErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

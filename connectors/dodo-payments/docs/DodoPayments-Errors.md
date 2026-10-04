@@ -27,10 +27,19 @@ try {
 
 ## Request / response codes
 
-| Code                       | Raised when                                                    |
-| -------------------------- | -------------------------------------------------------------- |
-| `REQUEST_VALIDATION_ERROR` | Arguments failed local validation — nothing was sent.          |
-| `RESPONSE_ERROR`           | A successful response's body didn't match the expected schema. |
+| Code                       | Raised when                                                          |
+| -------------------------- | -------------------------------------------------------------------- |
+| `REQUEST_VALIDATION_ERROR` | Arguments failed local validation — nothing was sent.                |
+| `RESPONSE_ERROR`           | A successful response's body didn't match the expected schema.       |
+| `TIMEOUT`                  | No complete answer within the `timeout` (context `timeoutSeconds`).  |
+| `NETWORK_ERROR`            | The request failed before any response (DNS, TLS, connection reset). |
+
+`TIMEOUT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE` and `RATE_LIMITED` are
+**transient**: Dodo Payments gave no definite answer, so the same call may
+succeed later. `err.transient` is `true` for exactly these and `false` for
+every other code (a definite refusal or a misconfiguration retrying won't
+fix). The set is also exported as `DODO_PAYMENTS_TRANSIENT_CODES` from
+`@tundraconnect/dodo-payments/errors`.
 
 ## Vendor codes
 
@@ -82,15 +91,16 @@ and returns `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
 
 Read metadata with the public `getContextValue(key)`.
 
-| Key            | Present on                   | Description                      |
-| -------------- | ---------------------------- | -------------------------------- |
-| `vendor`       | all                          | Always `'DodoPayments'`.         |
-| `status`       | vendor failures              | HTTP status code.                |
-| `detail`       | vendor failures              | Vendor message plus its code.    |
-| `vendorCode`   | documented-envelope failures | Dodo's own error code.           |
-| `body`         | vendor failures              | The parsed response body.        |
-| `reason`       | validation / webhook codes   | Which rule failed.               |
-| `originalCode` | `UNKNOWN_ERROR` fallback     | The unrecognized code passed in. |
+| Key              | Present on                   | Description                               |
+| ---------------- | ---------------------------- | ----------------------------------------- |
+| `vendor`         | all                          | Always `'DodoPayments'`.                  |
+| `status`         | vendor failures              | HTTP status code.                         |
+| `detail`         | vendor failures              | Vendor message plus its code.             |
+| `vendorCode`     | documented-envelope failures | Dodo's own error code.                    |
+| `body`           | vendor failures              | The parsed response body.                 |
+| `reason`         | validation / webhook codes   | Which rule failed.                        |
+| `timeoutSeconds` | `TIMEOUT`                    | The deadline that was missed, in seconds. |
+| `originalCode`   | `UNKNOWN_ERROR` fallback     | The unrecognized code passed in.          |
 
 Neither the API key nor the webhook signing secret ever appears in an
 error's message or context.

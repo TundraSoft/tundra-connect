@@ -28,4 +28,8 @@
  */
 
 export { TwilioError, type TwilioErrorMetadata } from './Base.ts';
-export { type TwilioErrorCode, TwilioErrorCodes } from './TwilioErrorCodes.ts';
+export {
+  TWILIO_TRANSIENT_CODES,
+  type TwilioErrorCode,
+  TwilioErrorCodes,
+} from './TwilioErrorCodes.ts';

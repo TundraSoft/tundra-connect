@@ -303,6 +303,69 @@ const visibleEffectsAllowed = !!env.get('LIVE_TEST_ALLOW_VISIBLE_EFFECTS');
 
 // Sends a real, visible message — gated behind LIVE_TEST_ALLOW_VISIBLE_EFFECTS
 // so it never fires on the unattended monthly schedule.
+const BASIC_AUTH = {
+  type: 'BASIC' as const,
+  username: 'phil',
+  password: 'pw-SECRETMARKER',
+};
+
+describe('ntfy — transport failures', () => {
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockNtfy({ auth: BASIC_AUTH, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.publish({ topic: 'mytopic', message: 'hi' }),
+      NtfyError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockNtfy({ auth: BASIC_AUTH });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.publish({ topic: 'mytopic', message: 'hi' }),
+      NtfyError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes(BASIC_AUTH.password),
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockNtfy({ auth: BASIC_AUTH });
+    c.setResponse('<html>Bad Gateway</html>', 502, {
+      'content-type': 'text/html',
+    });
+    const outage = await asserts.assertRejects(
+      () => c.publish({ topic: 'mytopic', message: 'hi' }),
+      NtfyError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse(
+      JSON.stringify({ code: 40301, http: 403, error: 'forbidden' }),
+      403,
+    );
+    const refusal = await asserts.assertRejects(
+      () => c.publish({ topic: 'mytopic', message: 'hi' }),
+      NtfyError,
+    );
+    asserts.assertEquals(refusal.code, 'FORBIDDEN');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('ntfy — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -341,6 +404,7 @@ describe('ntfy — maxRetryWait (RESTler rate-limit retry)', () => {
       NtfyError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -354,6 +418,7 @@ describe('ntfy — maxRetryWait (RESTler rate-limit retry)', () => {
       NtfyError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);

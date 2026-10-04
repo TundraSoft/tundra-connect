@@ -29,6 +29,7 @@
 
 export { AlgoliaError, type AlgoliaErrorMetadata } from './Base.ts';
 export {
+  ALGOLIA_TRANSIENT_CODES,
   type AlgoliaErrorCode,
   AlgoliaErrorCodes,
 } from './AlgoliaErrorCodes.ts';

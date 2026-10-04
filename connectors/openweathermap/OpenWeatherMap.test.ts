@@ -371,6 +371,61 @@ const credentials = {
 };
 const liveTestsEnabled = !!credentials.apiKey;
 
+describe('OpenWeatherMap — transport failures', () => {
+  const AUTH = { type: 'CUSTOM' as const, apiKey: 'SECRET-API-KEY-MARKER' };
+  const LONDON = { lat: 51.51, lon: -0.13 };
+
+  it('throws a transient TIMEOUT when no answer arrives within the timeout', async () => {
+    const c = new MockOpenWeatherMap({ auth: AUTH, timeout: 1 });
+    c['_fetch'] = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal!.reason));
+      });
+    const err = await asserts.assertRejects(
+      () => c.getCurrentWeather(LONDON),
+      OpenWeatherMapError,
+    );
+    asserts.assertEquals(err.code, 'TIMEOUT');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(err.getContextValue('timeoutSeconds'), 1);
+  });
+
+  it('throws a transient NETWORK_ERROR when fetch itself fails', async () => {
+    const c = new MockOpenWeatherMap({ auth: AUTH });
+    c['_fetch'] = () => Promise.reject(new TypeError('error sending request'));
+    const err = await asserts.assertRejects(
+      () => c.getCurrentWeather(LONDON),
+      OpenWeatherMapError,
+    );
+    asserts.assertEquals(err.code, 'NETWORK_ERROR');
+    asserts.assertEquals(err.transient, true);
+    asserts.assertEquals(
+      JSON.stringify(err.toJSON()).includes('SECRET-API-KEY-MARKER'),
+      false,
+    );
+  });
+
+  it('flags a 5xx as transient and a refusal as not', async () => {
+    const c = new MockOpenWeatherMap({ auth: AUTH });
+    c.setResponse({ cod: '503', message: 'vendor error message' }, 503);
+    const outage = await asserts.assertRejects(
+      () => c.getCurrentWeather(LONDON),
+      OpenWeatherMapError,
+    );
+    asserts.assertEquals(outage.code, 'SERVICE_UNAVAILABLE');
+    asserts.assertEquals(outage.transient, true);
+
+    c.setResponse({ cod: '401', message: 'vendor error message' }, 401);
+    const refusal = await asserts.assertRejects(
+      () => c.getCurrentWeather(LONDON),
+      OpenWeatherMapError,
+    );
+    asserts.assertEquals(refusal.code, 'INVALID_API_KEY');
+    asserts.assertEquals(refusal.transient, false);
+  });
+});
+
 describe('OpenWeatherMap — maxRetryWait (RESTler rate-limit retry)', () => {
   /**
    * A client whose every request is answered 429 with a `retry-after` hint,
@@ -412,6 +467,7 @@ describe('OpenWeatherMap — maxRetryWait (RESTler rate-limit retry)', () => {
       OpenWeatherMapError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), true);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 1);
     asserts.assertEquals(slept, [1000]);
@@ -425,6 +481,7 @@ describe('OpenWeatherMap — maxRetryWait (RESTler rate-limit retry)', () => {
       OpenWeatherMapError,
     );
     asserts.assertEquals(err.code, 'RATE_LIMITED');
+    asserts.assertEquals(err.transient, true);
     asserts.assertEquals(err.getContextValue('retried'), false);
     asserts.assertEquals(err.getContextValue('retryAfterSeconds'), 120);
     asserts.assertEquals(slept, []);

@@ -37,7 +37,26 @@ export const AlgoliaErrorCodes = {
   /** {@link Algolia.waitTask} exceeded its bounded polling budget without observing `status: 'published'`. */
   TASK_TIMEOUT:
     'Timed out after ${timeoutMs}ms waiting for Algolia task ${taskID} on index "${indexName}" to publish (last observed status: ${lastStatus}).',
+  TIMEOUT: 'Algolia did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to Algolia failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Algolia error code. */
 export type AlgoliaErrorCode = keyof typeof AlgoliaErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Algolia returned a 5xx, or it
+ * rate-limited the call. {@link AlgoliaError.transient} is `true` for
+ * exactly these.
+ */
+export const ALGOLIA_TRANSIENT_CODES: ReadonlySet<AlgoliaErrorCode> = new Set<
+  AlgoliaErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

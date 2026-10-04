@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  DODO_PAYMENTS_TRANSIENT_CODES,
   type DodoPaymentsErrorCode,
   DodoPaymentsErrorCodes,
 } from './DodoPaymentsErrorCodes.ts';
@@ -28,6 +29,14 @@ export class DodoPaymentsError<
    * {@link DodoPaymentsErrorCodes}).
    */
   public readonly code: DodoPaymentsErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVICE_UNAVAILABLE` or `RATE_LIMITED` (see
+   * {@link DODO_PAYMENTS_TRANSIENT_CODES}) — and `false` for a definite refusal
+   * or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[dodo-payments] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -65,5 +74,6 @@ export class DodoPaymentsError<
 
     super(DodoPaymentsErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = DODO_PAYMENTS_TRANSIENT_CODES.has(code);
   }
 }

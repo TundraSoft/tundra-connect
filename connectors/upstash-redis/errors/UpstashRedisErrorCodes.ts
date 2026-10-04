@@ -36,7 +36,28 @@ export const UpstashRedisErrorCodes = {
     'UpstashRedis service is currently unavailable (HTTP ${status}).',
   RATE_LIMITED:
     'Upstash rate limit exceeded (HTTP ${status}) — retry after the hinted delay.',
+  TIMEOUT:
+    'The Upstash Redis REST API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to the Upstash Redis REST API failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid UpstashRedis error code. */
 export type UpstashRedisErrorCode = keyof typeof UpstashRedisErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Upstash returned a 5xx, or it
+ * rate-limited the call. {@link UpstashRedisError.transient} is `true` for
+ * exactly these.
+ */
+export const UPSTASH_REDIS_TRANSIENT_CODES: ReadonlySet<UpstashRedisErrorCode> =
+  new Set<
+    UpstashRedisErrorCode
+  >([
+    'TIMEOUT',
+    'NETWORK_ERROR',
+    'SERVICE_UNAVAILABLE',
+    'RATE_LIMITED',
+  ]);

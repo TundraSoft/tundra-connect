@@ -1,5 +1,6 @@
 import { RESTlerError } from '@restler';
 import {
+  AZURE_BLOB_TRANSIENT_CODES,
   type AzureBlobErrorCode,
   AzureBlobErrorCodes,
 } from './AzureBlobErrorCodes.ts';
@@ -26,6 +27,13 @@ export class AzureBlobError<
 > extends RESTlerError<M> {
   /** The specific error code this instance was thrown with (see {@link AzureBlobErrorCodes}). */
   public readonly code: AzureBlobErrorCode;
+
+  /**
+   * `true` when retrying later can help — `TIMEOUT`, `NETWORK_ERROR`,
+   * `SERVER_BUSY` or `INTERNAL_ERROR` (see {@link AZURE_BLOB_TRANSIENT_CODES})
+   * — and `false` for a definite refusal or a misconfiguration.
+   */
+  public readonly transient: boolean;
 
   /** Formats every message as `[AzureBlob] <timestamp>: <message>`. */
   protected override get _messageTemplate(): string {
@@ -62,5 +70,6 @@ export class AzureBlobError<
     }
     super(AzureBlobErrorCodes[code], context, cause);
     this.code = code;
+    this.transient = AZURE_BLOB_TRANSIENT_CODES.has(code);
   }
 }

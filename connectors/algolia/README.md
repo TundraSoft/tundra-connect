@@ -39,6 +39,22 @@ const results = await client.search('products', { query: 'red shoes' });
 console.log(results.nbHits, results.hits.map((h) => h.objectID));
 ```
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Algolia` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/algolia/schemas` or throws a real `AlgoliaError`:
+
+```ts
+import { AlgoliaError } from '@tundraconnect/algolia/errors';
+
+const outage = new AlgoliaError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                        | Description                                |

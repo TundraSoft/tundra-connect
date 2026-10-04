@@ -19,6 +19,22 @@ response validation. Every request is signed with SigV4 entirely via Web
 Crypto (`crypto.subtle`) — no `node:crypto` — so signing works unmodified
 on Deno, Bun, Node, Cloudflare Workers, and in the browser.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take an `S3` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/s3/schemas` or throws a real `S3Error`:
+
+```ts
+import { S3Error } from '@tundraconnect/s3/errors';
+
+const outage = new S3Error('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                   | Description                                |

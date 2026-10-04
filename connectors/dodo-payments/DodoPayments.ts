@@ -1,11 +1,15 @@
 import {
+  type ResponseBody,
   RESTler,
   type RESTlerEndpoint,
   type RESTlerEvents,
   type RESTlerOptions,
   RESTlerRateLimitError,
+  RESTlerRequestError,
+  type RESTlerRequestOptions,
   type RESTlerResponse,
   RESTlerResponseValidationError,
+  RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
 import { decodeBase64, encodeBase64 } from '@encoding';
@@ -296,6 +300,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * fails local validation; `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`,
    * `RATE_LIMITED`, `SERVICE_UNAVAILABLE`, `UNKNOWN_ERROR` from the
    * vendor; `RESPONSE_ERROR` when the body fails validation.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -336,6 +342,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} `NOT_FOUND` when no such payment exists,
    * plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -365,6 +373,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} `NOT_FOUND` when no such payment exists,
    * plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -396,6 +406,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * ```
    *
    * @throws {DodoPaymentsError} `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE` or `UNKNOWN_ERROR` from the vendor; `RESPONSE_ERROR` when the page fails validation.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    */
   public async listPayments(
     options: ListPaymentsOptions = {},
@@ -437,6 +449,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} The same codes as {@link listPayments},
    * raised from whichever page fails.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -484,6 +498,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} `NOT_FOUND` when no such customer exists,
    * plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -513,6 +529,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
    * `customerId`; `NOT_FOUND`, `INVALID_REQUEST` and the usual vendor codes;
    * `RESPONSE_ERROR` when the body fails validation.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -562,6 +580,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` when `request`
    * fails local validation; `INVALID_REQUEST` and the usual vendor codes;
    * `RESPONSE_ERROR` when the body fails validation.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -607,6 +627,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} `NOT_FOUND` when no such product exists,
    * plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -635,6 +657,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * item's `price_detail`.
    *
    * @throws {DodoPaymentsError} `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE` or `UNKNOWN_ERROR` from the vendor; `RESPONSE_ERROR` when the page fails validation.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -672,6 +696,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} The same codes as {@link listProducts},
    * raised from whichever page fails.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -712,6 +738,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for an empty
    * `match`, which would match every product; otherwise the same codes as
    * {@link listProducts}.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -766,6 +794,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * `productId` or an update that fails local validation (including one
    * that changes nothing); `NOT_FOUND`, `INVALID_REQUEST` and the usual
    * vendor codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -802,6 +832,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
    * `productId`; `NOT_FOUND` for an unknown or deleted product, plus the
    * usual vendor codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -823,6 +855,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
    * `productId`; `NOT_FOUND` for an unknown product; `CONFLICT` when the
    * product is not archived; plus the usual vendor codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -849,6 +883,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` when `request`
    * fails local validation, plus the usual vendor codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -885,6 +921,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} `NOT_FOUND` when no such subscription
    * exists, plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -918,6 +956,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * ```
    *
    * @throws {DodoPaymentsError} `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE` or `UNKNOWN_ERROR` from the vendor; `RESPONSE_ERROR` when the page fails validation.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    */
   public async listSubscriptions(
     options: ListSubscriptionsOptions = {},
@@ -950,6 +990,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} The same codes as
    * {@link listSubscriptions}, raised from whichever page fails.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -993,6 +1035,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} `NOT_FOUND` when no such subscription
    * exists, plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -1032,6 +1076,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *
    * @throws {DodoPaymentsError} `NOT_FOUND` when no such subscription
    * exists, plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -1056,6 +1102,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * @throws {DodoPaymentsError} `NOT_FOUND` when no such subscription
    * exists; `INVALID_REQUEST` when it cannot be paused from its current
    * state; plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -1082,6 +1130,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * @throws {DodoPaymentsError} `NOT_FOUND` when no such subscription
    * exists; `INVALID_REQUEST` when it cannot be resumed from its current
    * state; plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -1113,6 +1163,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * fails local validation; `CONFLICT` while another plan change is still
    * pending; `INVALID_REQUEST` for an inactive or on-demand subscription;
    * plus the usual vendor codes and `RESPONSE_ERROR`.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -1153,6 +1205,8 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * @throws {DodoPaymentsError} `NOT_FOUND` when there is no scheduled
    * change; `INVALID_REQUEST` when the subscription does not exist (Dodo
    * answers that with a 422); plus the usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
    *
    * @example
    * ```typescript
@@ -1419,7 +1473,7 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
           responseError: (err.cause as GuardianError | undefined)?.toJSON(),
         }, err);
       }
-      throw DodoPayments.__rewrapRateLimit(err);
+      throw err;
     }
   }
 
@@ -1429,26 +1483,51 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * {@link __toError}.
    */
   private async __requestNoContent(endpoint: RESTlerEndpoint): Promise<void> {
-    try {
-      await this._makeRequest(endpoint);
-    } catch (err) {
-      throw DodoPayments.__rewrapRateLimit(err);
-    }
+    await this._makeRequest(endpoint);
   }
 
   /**
-   * RESTler retried once (maxRetryWait) and was throttled again, or the
-   * vendor's hint exceeded the cap: surface it as this connect's own error,
-   * with the hint and whether a wait already happened. Anything else is
-   * returned unchanged for the caller to rethrow.
+   * Every request funnels through here, so a transport failure surfaces as
+   * this connect's own error on every path: a timeout as `TIMEOUT`, a
+   * failure before any response as `NETWORK_ERROR`, and an exhausted
+   * RESTler rate-limit retry (`maxRetryWait`) as `RATE_LIMITED` — all
+   * `transient`. A {@link DodoPaymentsError} from the response handler passes
+   * through unchanged.
    */
-  private static __rewrapRateLimit(err: unknown): unknown {
+  protected override async _makeRequest<H = ResponseBody, B = H>(
+    endpoint: RESTlerEndpoint,
+    options: RESTlerRequestOptions<H, B> = {},
+  ): Promise<RESTlerResponse<B>> {
+    try {
+      return await super._makeRequest<H, B>(endpoint, options);
+    } catch (err) {
+      throw this.__transportError(err, endpoint.timeout);
+    }
+  }
+
+  /** `err` rewrapped as this connect's transient code, or returned unchanged. */
+  private __transportError(err: unknown, timeout: number | undefined): unknown {
     if (err instanceof RESTlerRateLimitError) {
+      // RESTler retried once (maxRetryWait) and was throttled again, or the
+      // vendor's hint exceeded the cap.
       return new DodoPaymentsError('RATE_LIMITED', {
         status: 429,
         retryAfterSeconds: err.getContextValue('retryAfter'),
         retried: err.getContextValue('retried'),
       }, err);
+    }
+    if (err instanceof RESTlerTimeoutError) {
+      return new DodoPaymentsError('TIMEOUT', {
+        timeoutSeconds: timeout ?? this._getOption('timeout'),
+      }, err);
+    }
+    // RESTlerResponseValidationError (and the two above) extend
+    // RESTlerRequestError: only a bare one is a failure before any response.
+    if (
+      err instanceof RESTlerRequestError &&
+      !(err instanceof RESTlerResponseValidationError)
+    ) {
+      return new DodoPaymentsError('NETWORK_ERROR', {}, err);
     }
     return err;
   }

@@ -16,6 +16,22 @@ Guardian for runtime response validation.
 The client works keyless against the public `demo` tier, or with an API key
 against either the `demo` or paid `pro` tier — `pro` requires an `apiKey`.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `CoinGecko` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/coingecko/schemas` or throws a real `CoinGeckoError`:
+
+```ts
+import { CoinGeckoError } from '@tundraconnect/coingecko/errors';
+
+const outage = new CoinGeckoError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                          | Description                                |

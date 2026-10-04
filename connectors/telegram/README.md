@@ -19,6 +19,22 @@ envelope automatically, throwing a typed `TelegramError` on failure. It
 uses RESTler for transport and Guardian for runtime request/response
 validation.
 
+## Testing your code
+
+Your tests don't need to fake HTTP. Have your code take a `Telegram` instance
+and pass in a stand-in that returns the shapes from
+`@tundraconnect/telegram/schemas` or throws a real `TelegramError`:
+
+```ts
+import { TelegramError } from '@tundraconnect/telegram/errors';
+
+const outage = new TelegramError('SERVICE_UNAVAILABLE', { status: 503 });
+console.log(outage.code);
+```
+
+To exercise the client itself against a fake transport, subclass it and
+reassign the protected `_fetch`.
+
 ## Documentation
 
 | Topic                                                                         | Description                                |

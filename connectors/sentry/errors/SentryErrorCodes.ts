@@ -40,7 +40,27 @@ export const SentryErrorCodes = {
   // Fallback for a success-status response whose body fails schema
   // validation.
   RESPONSE_ERROR: 'Sentry API response did not match the expected schema.',
+  TIMEOUT:
+    'The Sentry API did not answer within the ${timeoutSeconds}s timeout.',
+  NETWORK_ERROR:
+    'The request to the Sentry API failed before a response (DNS, TLS or connection failure).',
 } as const;
 
 /** Valid Sentry error code. */
 export type SentryErrorCode = keyof typeof SentryErrorCodes;
+
+/**
+ * The codes that mean "no answer yet — try again later", as opposed to a
+ * definite refusal or a misconfiguration retrying will not fix: the
+ * timeout passed, the network failed, Sentry returned a 5xx, or it
+ * rate-limited the call. {@link SentryError.transient} is `true` for
+ * exactly these.
+ */
+export const SENTRY_TRANSIENT_CODES: ReadonlySet<SentryErrorCode> = new Set<
+  SentryErrorCode
+>([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'SERVICE_UNAVAILABLE',
+  'RATE_LIMITED',
+]);

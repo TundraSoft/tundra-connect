@@ -1,6 +1,6 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
-import { GCSError, GCSErrorCodes } from './mod.ts';
+import { GCS_TRANSIENT_CODES, GCSError, GCSErrorCodes } from './mod.ts';
 
 describe('GCS.errors.Base', () => {
   it('formats a known error code', () => {
@@ -37,5 +37,20 @@ describe('GCS.errors.Base', () => {
     const error = new GCSError('INVALID_REQUEST');
     asserts.assertStringIncludes(error.message, '<vendorMessage unavailable>');
     asserts.assertEquals(error.message.includes('${'), false);
+  });
+
+  it('flags exactly the transient codes', () => {
+    for (const code of Object.keys(GCSErrorCodes)) {
+      const error = new GCSError(code as never);
+      asserts.assertEquals(
+        error.transient,
+        GCS_TRANSIENT_CODES.has(error.code),
+        code,
+      );
+    }
+    asserts.assertEquals(
+      [...GCS_TRANSIENT_CODES].sort(),
+      ['BACKEND_ERROR', 'NETWORK_ERROR', 'RATE_LIMIT_EXCEEDED', 'TIMEOUT'],
+    );
   });
 });
