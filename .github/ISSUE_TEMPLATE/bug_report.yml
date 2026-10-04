@@ -12,11 +12,15 @@ body:
       options:
         - Algolia
         - AzureBlob
+        - CloudflareDNS
         - CloudflareEmail
+        - CloudflareSaaS
+        - CloudflareTurnstile
         - CoinGecko
         - Discord
         - DodoPayments
         - GCS
+        - GoogleAnalytics
         - GoogleWebRisk
         - Kalshi
         - ntfy

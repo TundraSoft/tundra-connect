@@ -29,6 +29,9 @@ failures surface as one typed error class per vendor.
 - **Search, data and operations:** Algolia, Upstash Redis, Sentry,
   OpenWeatherMap
 - **URL safety:** Google Web Risk, URLhaus (abuse.ch)
+- **Analytics:** Google Analytics 4 server-side events (Measurement Protocol)
+- **Cloudflare platform:** DNS records and zones, Cloudflare for SaaS custom
+  hostnames, Turnstile token verification
 
 See [CONVENTIONS.md](CONVENTIONS.md) for the shared structure and
 [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
@@ -43,11 +46,15 @@ CI-verified).
 
 - **[Algolia](./connectors/algolia/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/algolia)](https://jsr.io/@tundraconnect/algolia) — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](./connectors/azure-blob/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/azure-blob)](https://jsr.io/@tundraconnect/azure-blob) — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
+- **[CloudflareDNS](./connectors/cloudflare-dns/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/cloudflare-dns)](https://jsr.io/@tundraconnect/cloudflare-dns) — Typed Cloudflare DNS client: list, create, update, replace, delete and batch-edit DNS records in a zone, export the zone as BIND, and look up zones by name.
 - **[CloudflareEmail](./connectors/cloudflare-email/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/cloudflare-email)](https://jsr.io/@tundraconnect/cloudflare-email) — Typed Cloudflare Email Sending client: send transactional email with attachments, validated locally before the request is made.
+- **[CloudflareSaaS](./connectors/cloudflare-saas/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/cloudflare-saas)](https://jsr.io/@tundraconnect/cloudflare-saas) — Typed Cloudflare for SaaS client: create, list, inspect, update and delete custom hostnames with their TLS and ownership validation state, manage the fallback origin, and read the hostname quota.
+- **[CloudflareTurnstile](./connectors/cloudflare-turnstile/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/cloudflare-turnstile)](https://jsr.io/@tundraconnect/cloudflare-turnstile) — Typed Cloudflare Turnstile client: verify a widget token server-side with siteverify, with hostname and action checks, a hard per-call deadline, and failed challenges as answers instead of errors.
 - **[CoinGecko](./connectors/coingecko/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/coingecko)](https://jsr.io/@tundraconnect/coingecko) — Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.
 - **[Discord](./connectors/discord/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/discord)](https://jsr.io/@tundraconnect/discord) — Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.
 - **[DodoPayments](./connectors/dodo-payments/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/dodo-payments)](https://jsr.io/@tundraconnect/dodo-payments) — Typed Dodo Payments client: create and verify payments, manage subscriptions and plan changes, sync products, open the customer portal, and verify Standard Webhooks signatures.
 - **[GCS](./connectors/gcs/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/gcs)](https://jsr.io/@tundraconnect/gcs) — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.
+- **[GoogleAnalytics](./connectors/google-analytics/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/google-analytics)](https://jsr.io/@tundraconnect/google-analytics) — Typed Google Analytics 4 Measurement Protocol client: send server-side events and validate them against the debug endpoint, with GA4's event, parameter and user-property limits checked before the request is made.
 - **[GoogleWebRisk](./connectors/google-web-risk/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/google-web-risk)](https://jsr.io/@tundraconnect/google-web-risk) — Typed Google Web Risk client: check a URL against Google's malware, phishing and unwanted-software lists with the Lookup API's uris:search, under a hard per-call deadline.
 - **[Kalshi](./connectors/kalshi/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/kalshi)](https://jsr.io/@tundraconnect/kalshi) — Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders.
 - **[ntfy](./connectors/ntfy/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/ntfy)](https://jsr.io/@tundraconnect/ntfy) — Typed ntfy.sh client for publishing push notifications to a topic.
@@ -78,21 +85,24 @@ guides for every connect live in the
 Each connect covers a focused subset of its vendor's API with no Node-only
 dependencies. Check the connect's README for exactly which endpoints.
 
-| If you use…                                       | Reach for                        |
-| ------------------------------------------------- | -------------------------------- |
-| `stripe`                                          | `@tundraconnect/stripe`          |
-| `@aws-sdk/client-s3` (also for R2, MinIO, Spaces) | `@tundraconnect/s3`              |
-| `@google-cloud/storage`                           | `@tundraconnect/gcs`             |
-| `@google-cloud/web-risk`, for URL lookups         | `@tundraconnect/google-web-risk` |
-| `@azure/storage-blob`                             | `@tundraconnect/azure-blob`      |
-| `@slack/web-api`                                  | `@tundraconnect/slack`           |
-| `discord.js`, for webhook and bot messages        | `@tundraconnect/discord`         |
-| `twilio`                                          | `@tundraconnect/twilio`          |
-| `@sendgrid/mail`                                  | `@tundraconnect/sendgrid`        |
-| `razorpay`                                        | `@tundraconnect/razorpay`        |
-| `algoliasearch`                                   | `@tundraconnect/algolia`         |
-| `@upstash/redis`                                  | `@tundraconnect/upstash-redis`   |
-| `@polymarket/clob-client`                         | `@tundraconnect/polymarket`      |
+| If you use…                                       | Reach for                             |
+| ------------------------------------------------- | ------------------------------------- |
+| `stripe`                                          | `@tundraconnect/stripe`               |
+| `@aws-sdk/client-s3` (also for R2, MinIO, Spaces) | `@tundraconnect/s3`                   |
+| `@google-cloud/storage`                           | `@tundraconnect/gcs`                  |
+| `@google-cloud/web-risk`, for URL lookups         | `@tundraconnect/google-web-risk`      |
+| `@azure/storage-blob`                             | `@tundraconnect/azure-blob`           |
+| `@slack/web-api`                                  | `@tundraconnect/slack`                |
+| `discord.js`, for webhook and bot messages        | `@tundraconnect/discord`              |
+| `twilio`                                          | `@tundraconnect/twilio`               |
+| `@sendgrid/mail`                                  | `@tundraconnect/sendgrid`             |
+| `razorpay`                                        | `@tundraconnect/razorpay`             |
+| `algoliasearch`                                   | `@tundraconnect/algolia`              |
+| `@upstash/redis`                                  | `@tundraconnect/upstash-redis`        |
+| `@polymarket/clob-client`                         | `@tundraconnect/polymarket`           |
+| `cloudflare`, for DNS records                     | `@tundraconnect/cloudflare-dns`       |
+| `cloudflare`, for custom hostnames                | `@tundraconnect/cloudflare-saas`      |
+| `cloudflare`, for Turnstile siteverify            | `@tundraconnect/cloudflare-turnstile` |
 
 ## 🚀 Quick start
 

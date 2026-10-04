@@ -21,10 +21,22 @@ component_management:
         name: azure-blob
         paths:
           - connectors/azure-blob/**
+      - component_id: cloudflare-dns
+        name: cloudflare-dns
+        paths:
+          - connectors/cloudflare-dns/**
       - component_id: cloudflare-email
         name: cloudflare-email
         paths:
           - connectors/cloudflare-email/**
+      - component_id: cloudflare-saas
+        name: cloudflare-saas
+        paths:
+          - connectors/cloudflare-saas/**
+      - component_id: cloudflare-turnstile
+        name: cloudflare-turnstile
+        paths:
+          - connectors/cloudflare-turnstile/**
       - component_id: coingecko
         name: coingecko
         paths:
@@ -41,6 +53,10 @@ component_management:
         name: gcs
         paths:
           - connectors/gcs/**
+      - component_id: google-analytics
+        name: google-analytics
+        paths:
+          - connectors/google-analytics/**
       - component_id: google-web-risk
         name: google-web-risk
         paths:
