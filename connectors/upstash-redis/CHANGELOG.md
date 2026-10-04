@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/TundraSoft/tundra-connect/compare/upstash-redis-v0.1.1...upstash-redis-v0.2.0) (2026-10-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* a timeout or network failure used to surface as a raw RESTlerTimeoutError / RESTlerRequestError and now throws the connect's own error with code TIMEOUT or NETWORK_ERROR (still an instanceof RESTlerError, no longer an instanceof RESTlerTimeoutError / RESTlerRequestError). In gcs and paypal, a timeout or network failure during token exchange is now TIMEOUT / NETWORK_ERROR instead of TOKEN_EXCHANGE_FAILED, and a PayPal token-endpoint 429 under maxRetryWait is now RATE_LIMITED. Branch on `err.code` or `err.transient` instead of RESTler error classes.
+
+### Features
+
+* Cloudflare DNS, SaaS and Turnstile connects, GA4 Measurement Protocol, and transient errors everywhere ([28ded82](https://github.com/TundraSoft/tundra-connect/commit/28ded82331929060100dbb6a0d6c6a3e956ec6a3))
+* flag transient failures and wrap transport errors in every connect ([1022f6f](https://github.com/TundraSoft/tundra-connect/commit/1022f6fbc8d21fed752426a63502d1aab8dbbc6e))
+
 ## [0.1.1](https://github.com/TundraSoft/tundra-connect/compare/upstash-redis-v0.1.0...upstash-redis-v0.1.1) (2026-09-30)
 
 

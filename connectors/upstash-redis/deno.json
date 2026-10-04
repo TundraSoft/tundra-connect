@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/upstash-redis",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Typed Upstash Redis REST client: string, hash and list commands, TTLs, counters and pipelining over plain HTTPS — no TCP connection needed.",
   "exports": {
     ".": "./mod.ts",
