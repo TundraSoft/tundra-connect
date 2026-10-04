@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/sentry",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Typed Sentry API client: list projects; list, fetch and update issues; read issue events; and create releases.",
   "exports": {
     ".": "./mod.ts",

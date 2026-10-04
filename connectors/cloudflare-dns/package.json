@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/cloudflare-dns",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Typed Cloudflare DNS client: list, create, update, replace, delete and batch-edit DNS records in a zone, export the zone as BIND, and look up zones by name.",
   "keywords": [
