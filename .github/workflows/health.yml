@@ -64,10 +64,32 @@ jobs:
           deno-version: v2.x
       - run: deno run --allow-read --allow-net --allow-run --allow-write .github/scripts/consumer-doc-check.ts
 
+  # Only a run on main touches the tracking issue, so dispatching this
+  # workflow on a branch to verify a fix never opens or closes it.
+  close-on-success:
+    name: Close health issue on a green run
+    needs: [test, audit, consumer-docs]
+    if: success() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close any open health issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing=$(gh issue list --label ci-health --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "Resolved — this run passed: ${RUN_URL}"
+            echo "Closed issue #$existing"
+          else
+            echo "No open health issue to close"
+          fi
+
   report:
     name: Report failures
     needs: [test, audit, consumer-docs]
-    if: always() && contains(needs.*.result, 'failure')
+    if: always() && contains(needs.*.result, 'failure') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
