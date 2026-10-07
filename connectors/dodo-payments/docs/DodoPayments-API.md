@@ -126,9 +126,9 @@ that), plus `maxPages`.
 | `pageSize` | `100`   | Requested per page; the vendor may clamp it. |
 | `maxPages` | `1000`  | Safety ceiling — see below.                  |
 
-Paging matches Dodo's own SDK exactly: the first request **omits**
-`page_number` (the vendor reads that as page one), and later requests send
-`2`, `3`, …
+Dodo numbers pages from 0. The first request **omits** `page_number`
+(which Dodo reads as page 0), and later requests send `1`, `2`, … Dodo's
+own SDK sends `2` after the first page and so skips page 1.
 
 Iteration stops on the first **empty** page, not a short one. The vendor
 may clamp `page_size` below what was asked for, and treating a clamped

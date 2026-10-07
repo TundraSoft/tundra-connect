@@ -143,6 +143,20 @@ class PagingMockDodo extends DodoPayments {
     };
   }
 
+  /** Serves each body by its `page_number`; an omitted one is page `0`. */
+  setPagesByNumber(byPage: Record<string, unknown>): void {
+    this._fetch = (input) => {
+      this.urls.push(String(input));
+      const page = new URL(String(input)).searchParams.get('page_number');
+      return Promise.resolve(
+        new Response(JSON.stringify(byPage[page ?? '0'] ?? { items: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    };
+  }
+
   setPages(pages: unknown[]): void {
     this.pages = [...pages];
     this._fetch = (input) => {
@@ -658,7 +672,7 @@ describe('DodoPayments — auto-paging', () => {
     asserts.assertEquals(seen, ['pay_1', 'pay_2', 'pay_3']);
   });
 
-  it('omits page_number on the first request, then sends 2, 3 — matching the vendor SDK', async () => {
+  it('omits page_number on the first request, then sends 1, 2 — Dodo pages from 0', async () => {
     const c = pager();
     c.setPages([
       { items: [item('pay_1')] },
@@ -668,8 +682,26 @@ describe('DodoPayments — auto-paging', () => {
     await Array.fromAsync(c.listAllPayments({ pageSize: 1 }));
     asserts.assertEquals(c.urls.length, 3);
     asserts.assert(!c.urls[0]!.includes('page_number'), c.urls[0]);
-    asserts.assert(c.urls[1]!.includes('page_number=2'), c.urls[1]);
-    asserts.assert(c.urls[2]!.includes('page_number=3'), c.urls[2]);
+    asserts.assert(c.urls[1]!.includes('page_number=1'), c.urls[1]);
+    asserts.assert(c.urls[2]!.includes('page_number=2'), c.urls[2]);
+  });
+
+  it('reads page 1 — Dodo serves an omitted page_number as page 0', async () => {
+    // Served by page number, as the test-mode API does: stepping from the
+    // first page straight to page_number=2 would drop pay_2.
+    const byPage: Record<string, unknown> = {
+      '0': { items: [item('pay_1')] },
+      '1': { items: [item('pay_2')] },
+      '2': { items: [item('pay_3')] },
+    };
+    const c = pager();
+    c.setPagesByNumber(byPage);
+    const seen = await Array.fromAsync(c.listAllPayments({ pageSize: 1 }));
+    asserts.assertEquals(seen.map((p) => p.payment_id), [
+      'pay_1',
+      'pay_2',
+      'pay_3',
+    ]);
   });
 
   it('carries the filters through to every page', async () => {

@@ -437,12 +437,12 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * Walk EVERY payment matching `options`, transparently fetching each
    * page — the auto-paging counterpart to {@link listPayments}.
    *
-   * Pages are requested exactly the way Dodo's own SDK does: the first
-   * request omits `page_number` entirely (the vendor treats that as page
-   * one) and subsequent requests send `2`, `3`, … Iteration stops on the
-   * first EMPTY page rather than on a short one, because the vendor may
-   * clamp `page_size` below what was asked for — treating a clamped page
-   * as the last one would silently truncate the history.
+   * Dodo numbers pages from 0: the first request omits `page_number`
+   * (which Dodo reads as page 0) and later requests send `1`, `2`, …
+   * Iteration stops on the first EMPTY page rather than on a short one,
+   * because the vendor may clamp `page_size` below what was asked for —
+   * treating a clamped page as the last one would silently truncate the
+   * history.
    *
    * Prefer {@link listPayments} when you only need one page: this issues
    * one request per page and the API is rate limited.
@@ -467,18 +467,12 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
       {},
   ): AsyncGenerator<PaymentListItemSchema, void, unknown> {
     const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
-    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-    let pageNumber: number | undefined;
-    for (let fetched = 0; fetched < maxPages; fetched++) {
-      const page = await this.listPayments({
-        ...filters,
-        pageSize,
-        pageNumber,
-      });
-      if (page.length === 0) return;
-      for (const item of page) yield item;
-      pageNumber = (pageNumber ?? 1) + 1;
-    }
+    yield* this.__paginate(
+      (pageNumber, pageSize) =>
+        this.listPayments({ ...filters, pageNumber, pageSize }),
+      filters.pageSize,
+      maxPages,
+    );
   }
 
   // ── Customers ───────────────────────────────────────────────────────────
@@ -711,18 +705,12 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
       {},
   ): AsyncGenerator<ProductListItemSchema, void, unknown> {
     const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
-    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-    let pageNumber: number | undefined;
-    for (let fetched = 0; fetched < maxPages; fetched++) {
-      const page = await this.listProducts({
-        ...filters,
-        pageSize,
-        pageNumber,
-      });
-      if (page.length === 0) return;
-      for (const item of page) yield item;
-      pageNumber = (pageNumber ?? 1) + 1;
-    }
+    yield* this.__paginate(
+      (pageNumber, pageSize) =>
+        this.listProducts({ ...filters, pageNumber, pageSize }),
+      filters.pageSize,
+      maxPages,
+    );
   }
 
   /**
@@ -1006,18 +994,12 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
       & { maxPages?: number } = {},
   ): AsyncGenerator<SubscriptionSchema, void, unknown> {
     const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
-    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-    let pageNumber: number | undefined;
-    for (let fetched = 0; fetched < maxPages; fetched++) {
-      const page = await this.listSubscriptions({
-        ...filters,
-        pageSize,
-        pageNumber,
-      });
-      if (page.length === 0) return;
-      for (const item of page) yield item;
-      pageNumber = (pageNumber ?? 1) + 1;
-    }
+    yield* this.__paginate(
+      (pageNumber, pageSize) =>
+        this.listSubscriptions({ ...filters, pageNumber, pageSize }),
+      filters.pageSize,
+      maxPages,
+    );
   }
 
   /**
@@ -1226,6 +1208,31 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
   }
 
   // ── internals ───────────────────────────────────────────────────────────
+
+  /**
+   * Yields every item of a paged list, one request per page, until an
+   * empty page or `maxPages`.
+   *
+   * Dodo numbers pages from 0, and an omitted `page_number` is page 0
+   * (checked against the test-mode API on 2026-10-08: with one product,
+   * omitted and `0` both returned it and `1` was empty). Dodo's own SDK
+   * steps omitted → 2, which skips page 1; this steps omitted → 1 → 2.
+   */
+  private async *__paginate<T>(
+    fetchPage: (
+      pageNumber: number | undefined,
+      pageSize: number,
+    ) => Promise<T[]>,
+    pageSize: number | undefined,
+    maxPages: number,
+  ): AsyncGenerator<T, void, unknown> {
+    const size = pageSize ?? DEFAULT_PAGE_SIZE;
+    for (let page = 0; page < maxPages; page++) {
+      const items = await fetchPage(page === 0 ? undefined : page, size);
+      if (items.length === 0) return;
+      yield* items;
+    }
+  }
 
   /** `PATCH /subscriptions/{id}` with `payload`, validating the returned record. */
   private async __patchSubscription(
