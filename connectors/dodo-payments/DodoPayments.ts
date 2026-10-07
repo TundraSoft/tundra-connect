@@ -21,6 +21,8 @@ import {
   ChangePlanRequestSchemaObject,
   type ChangePlanResponseSchema,
   ChangePlanResponseSchemaObject,
+  type CreateDiscountRequestSchema,
+  CreateDiscountRequestSchemaObject,
   type CreatePaymentRequestSchema,
   CreatePaymentRequestSchemaObject,
   type CreatePaymentResponseSchema,
@@ -35,6 +37,12 @@ import {
   CustomerPortalSessionSchemaObject,
   type CustomerSchema,
   CustomerSchemaObject,
+  DiscountCustomerListSchemaObject,
+  type DiscountCustomerSchema,
+  DiscountListSchemaObject,
+  type DiscountSchema,
+  DiscountSchemaObject,
+  type DiscountTypeSchema,
   ErrorResponseSchemaObject,
   type PaymentListItemSchema,
   PaymentListSchemaObject,
@@ -48,6 +56,8 @@ import {
   SubscriptionListSchemaObject,
   type SubscriptionSchema,
   SubscriptionSchemaObject,
+  type UpdateDiscountRequestSchema,
+  UpdateDiscountRequestSchemaObject,
   type UpdateProductRequestSchema,
   UpdateProductRequestSchemaObject,
 } from './schema/mod.ts';
@@ -176,6 +186,29 @@ export type FindProductsByMetadataOptions =
     maxPages?: number;
   };
 
+/** Filters for {@link DodoPayments.listDiscounts}. */
+export type ListDiscountsOptions = {
+  /** Case-insensitive PARTIAL match on the code: `SAVE` also finds `SAVE20`. */
+  code?: string;
+  discountType?: DiscountTypeSchema;
+  /** `true` for codes that can be redeemed now, `false` for the rest. */
+  active?: boolean;
+  /** Only codes restricted to this product. */
+  productId?: string;
+  /** Page number, as Dodo counts them. */
+  pageNumber?: number;
+  /** At most 100. */
+  pageSize?: number;
+};
+
+/** Paging for {@link DodoPayments.listDiscountCustomers}. */
+export type ListDiscountCustomersOptions = {
+  /** Page number, as Dodo counts them. */
+  pageNumber?: number;
+  /** At most 100. */
+  pageSize?: number;
+};
+
 /** Options for {@link DodoPayments.createCustomerPortalSession}. */
 export type CustomerPortalSessionOptions = {
   /** `true` also emails the link to the customer. */
@@ -224,7 +257,8 @@ export type VerifyWebhookOptions = {
  * Dodo Payments client — the surface a checkout flow and its catalogue
  * need: initialize a payment, read its status, verify it, list a
  * customer's history; create, change, pause or cancel a subscription; open
- * the customer portal; and create, find, update and archive products.
+ * the customer portal; create, find, update and archive products; and
+ * manage discount codes.
  *
  * Dodo is a **merchant of record**: it takes on tax and compliance, which
  * is why `billing.country` is required on every create call.
@@ -437,12 +471,12 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * Walk EVERY payment matching `options`, transparently fetching each
    * page — the auto-paging counterpart to {@link listPayments}.
    *
-   * Pages are requested exactly the way Dodo's own SDK does: the first
-   * request omits `page_number` entirely (the vendor treats that as page
-   * one) and subsequent requests send `2`, `3`, … Iteration stops on the
-   * first EMPTY page rather than on a short one, because the vendor may
-   * clamp `page_size` below what was asked for — treating a clamped page
-   * as the last one would silently truncate the history.
+   * Dodo numbers pages from 0: the first request omits `page_number`
+   * (which Dodo reads as page 0) and later requests send `1`, `2`, …
+   * Iteration stops on the first EMPTY page rather than on a short one,
+   * because the vendor may clamp `page_size` below what was asked for —
+   * treating a clamped page as the last one would silently truncate the
+   * history.
    *
    * Prefer {@link listPayments} when you only need one page: this issues
    * one request per page and the API is rate limited.
@@ -467,18 +501,12 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
       {},
   ): AsyncGenerator<PaymentListItemSchema, void, unknown> {
     const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
-    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-    let pageNumber: number | undefined;
-    for (let fetched = 0; fetched < maxPages; fetched++) {
-      const page = await this.listPayments({
-        ...filters,
-        pageSize,
-        pageNumber,
-      });
-      if (page.length === 0) return;
-      for (const item of page) yield item;
-      pageNumber = (pageNumber ?? 1) + 1;
-    }
+    yield* this.__paginate(
+      (pageNumber, pageSize) =>
+        this.listPayments({ ...filters, pageNumber, pageSize }),
+      filters.pageSize,
+      maxPages,
+    );
   }
 
   // ── Customers ───────────────────────────────────────────────────────────
@@ -711,18 +739,12 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
       {},
   ): AsyncGenerator<ProductListItemSchema, void, unknown> {
     const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
-    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-    let pageNumber: number | undefined;
-    for (let fetched = 0; fetched < maxPages; fetched++) {
-      const page = await this.listProducts({
-        ...filters,
-        pageSize,
-        pageNumber,
-      });
-      if (page.length === 0) return;
-      for (const item of page) yield item;
-      pageNumber = (pageNumber ?? 1) + 1;
-    }
+    yield* this.__paginate(
+      (pageNumber, pageSize) =>
+        this.listProducts({ ...filters, pageNumber, pageSize }),
+      filters.pageSize,
+      maxPages,
+    );
   }
 
   /**
@@ -871,6 +893,421 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     });
   }
 
+  // ── Discounts ───────────────────────────────────────────────────────────
+
+  /**
+   * Create a discount code — `POST /discounts`.
+   *
+   * A `percentage` code takes `amount` in basis points (`1500` is 15%),
+   * optionally capped per currency. A `flat` code deducts a money amount
+   * set per currency in `currency_options[].max_amount_possible`; Dodo
+   * still requires `amount`, so set it to the default currency's
+   * deduction. `subscription_cycles: 1` limits a subscription's discount
+   * to its first payment; omitting it applies the discount for good.
+   *
+   * Store the returned `discount_id`; a sync can also find the code again
+   * with {@link getDiscountByCode} or {@link listDiscounts}.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` when `request`
+   * fails local validation, including an unknown field; `INVALID_REQUEST`
+   * when Dodo rejects it (a taken code is vendor code
+   * `DISCOUNT_CODE_ALREADY_EXISTS`); plus the usual vendor codes and
+   * `RESPONSE_ERROR`.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * // 20% off the first payment, new customers only, once each.
+   * const discount = await client.createDiscount({
+   *   type: 'percentage',
+   *   amount: 2000,
+   *   code: 'WELCOME20',
+   *   subscription_cycles: 1,
+   *   per_customer_usage_limit: 1,
+   *   customer_eligibility: 'first_time',
+   *   metadata: { partner_id: 'acme' },
+   * });
+   *
+   * // $5 off, on orders of $20 or more, until the end of the year.
+   * await client.createDiscount({
+   *   type: 'flat',
+   *   amount: 500,
+   *   currency_options: [
+   *     { currency: 'USD', is_default: true, max_amount_possible: 500, minimum_subtotal: 2000 },
+   *   ],
+   *   expires_at: '2026-12-31T23:59:59Z',
+   * });
+   * ```
+   */
+  public async createDiscount(
+    request: CreateDiscountRequestSchema,
+  ): Promise<DiscountSchema> {
+    const payload = DodoPayments.__validate(
+      CreateDiscountRequestSchemaObject,
+      request,
+    );
+    return await this.__requestAndValidate(
+      {
+        path: '/discounts',
+        method: 'POST',
+        contentType: 'JSON',
+        payload: payload as unknown as Record<string, unknown>,
+      },
+      DiscountSchemaObject,
+    );
+  }
+
+  /**
+   * Fetch one discount by id — `GET /discounts/{discount_id}`.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `discountId`; `NOT_FOUND` for an unknown or deleted discount; plus the
+   * usual vendor and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const discount = await client.getDiscount('dsc_1');
+   * console.log(discount.code, discount.times_used);
+   * ```
+   */
+  public async getDiscount(discountId: string): Promise<DiscountSchema> {
+    DodoPayments.__requireId(discountId, 'discountId');
+    return await this.__requestAndValidate(
+      {
+        path: `/discounts/${encodeURIComponent(discountId)}`,
+        method: 'GET',
+      },
+      DiscountSchemaObject,
+    );
+  }
+
+  /**
+   * Fetch a discount by its code — `GET /discounts/code/{code}`. Dodo
+   * matches the code without regard to case.
+   *
+   * This is also a redemption check: Dodo answers an expired or used-up
+   * code with a 422, so it fails with `INVALID_REQUEST` rather than
+   * returning the record. To read such a code, use
+   * `listDiscounts({ code })` and compare `code` exactly.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `code`; `NOT_FOUND` for an unknown or deleted code; `INVALID_REQUEST`
+   * for an expired or used-up one; plus the usual vendor and validation
+   * codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const discount = await client.getDiscountByCode('WELCOME20');
+   * ```
+   */
+  public async getDiscountByCode(code: string): Promise<DiscountSchema> {
+    DodoPayments.__requireId(code, 'code');
+    return await this.__requestAndValidate(
+      {
+        path: `/discounts/code/${encodeURIComponent(code)}`,
+        method: 'GET',
+      },
+      DiscountSchemaObject,
+    );
+  }
+
+  /**
+   * List discounts, deleted ones excluded — `GET /discounts`.
+   *
+   * @returns One page of discount records, each as complete as
+   * {@link getDiscount}'s.
+   *
+   * @throws {DodoPaymentsError} `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE` or `UNKNOWN_ERROR` from the vendor; `RESPONSE_ERROR` when the page fails validation.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const live = await client.listDiscounts({ active: true, pageSize: 50 });
+   * ```
+   */
+  public async listDiscounts(
+    options: ListDiscountsOptions = {},
+  ): Promise<DiscountSchema[]> {
+    const query: Record<string, string> = {};
+    if (options.code) query.code = options.code;
+    if (options.discountType) query.discount_type = options.discountType;
+    if (options.active !== undefined) query.active = String(options.active);
+    if (options.productId) query.product_id = options.productId;
+    if (options.pageNumber !== undefined) {
+      query.page_number = String(options.pageNumber);
+    }
+    if (options.pageSize !== undefined) {
+      query.page_size = String(options.pageSize);
+    }
+    const page = await this.__requestAndValidate(
+      { path: '/discounts', method: 'GET', query },
+      DiscountListSchemaObject,
+    );
+    return page.items;
+  }
+
+  /**
+   * Walk every discount matching `options`, fetching each page in turn —
+   * the auto-paging counterpart to {@link listDiscounts}, with the same
+   * paging and termination rules as {@link listAllPayments}.
+   *
+   * @throws {DodoPaymentsError} The same codes as {@link listDiscounts},
+   * raised from whichever page fails.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * for await (const discount of client.listAllDiscounts()) {
+   *   console.log(discount.code, discount.metadata.partner_id);
+   * }
+   * ```
+   */
+  public async *listAllDiscounts(
+    options: Omit<ListDiscountsOptions, 'pageNumber'> & { maxPages?: number } =
+      {},
+  ): AsyncGenerator<DiscountSchema, void, unknown> {
+    const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
+    yield* this.__paginate(
+      (pageNumber, pageSize) =>
+        this.listDiscounts({ ...filters, pageNumber, pageSize }),
+      filters.pageSize,
+      maxPages,
+    );
+  }
+
+  /**
+   * Update a discount — `PATCH /discounts/{discount_id}`. A partial
+   * update: omitted fields are left as they are. `restricted_to` and
+   * `currency_options` are REPLACED by what you send; `[]` clears them.
+   *
+   * Existing subscriptions keep the discount they redeemed; this changes
+   * what later redemptions get.
+   *
+   * @returns The updated discount.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `discountId` or an update that fails local validation (including one
+   * that changes nothing); `NOT_FOUND` for an unknown or deleted discount;
+   * `INVALID_REQUEST` when Dodo rejects it, such as a `usage_limit` below
+   * `times_used`; plus the usual vendor codes and `RESPONSE_ERROR`.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const discount = await client.updateDiscount('dsc_1', {
+   *   expires_at: '2026-12-31T23:59:59Z',
+   *   per_customer_usage_limit: null, // back to unlimited
+   * });
+   * ```
+   */
+  public async updateDiscount(
+    discountId: string,
+    update: UpdateDiscountRequestSchema,
+  ): Promise<DiscountSchema> {
+    DodoPayments.__requireId(discountId, 'discountId');
+    const payload = DodoPayments.__validate(
+      UpdateDiscountRequestSchemaObject,
+      update,
+    );
+    return await this.__requestAndValidate(
+      {
+        path: `/discounts/${encodeURIComponent(discountId)}`,
+        method: 'PATCH',
+        contentType: 'JSON',
+        payload: payload as unknown as Record<string, unknown>,
+      },
+      DiscountSchemaObject,
+    );
+  }
+
+  /**
+   * Delete a discount — `DELETE /discounts/{discount_id}`.
+   *
+   * Dodo soft-deletes it: the code stops working and leaves every list
+   * and lookup, and there is no route to restore it.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `discountId`; `NOT_FOUND` for an unknown or already deleted discount;
+   * plus the usual vendor codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * await client.deleteDiscount('dsc_1');
+   * ```
+   */
+  public async deleteDiscount(discountId: string): Promise<void> {
+    DodoPayments.__requireId(discountId, 'discountId');
+    await this.__requestNoContent({
+      path: `/discounts/${encodeURIComponent(discountId)}`,
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Add customers to a discount's allow list — `POST
+   * /discounts/{discount_id}/customers`.
+   *
+   * The list is what a `customer_eligibility: 'specific'` code checks; a
+   * new `specific` code has an empty list and rejects everyone. Adding a
+   * customer already on the list is harmless.
+   *
+   * @param customerIds - 1 to 1000 customer ids. Dodo rejects the whole
+   * call when any of them does not exist.
+   * @returns The customers added by this call, not the whole list.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `discountId`, or `customerIds` that is empty, longer than 1000 or holds
+   * a blank id; `NOT_FOUND` for an unknown discount; `INVALID_REQUEST` when
+   * a customer does not exist; plus the usual vendor codes and
+   * `RESPONSE_ERROR`.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * await client.addDiscountCustomers('dsc_1', ['cus_1', 'cus_2']);
+   * ```
+   */
+  public async addDiscountCustomers(
+    discountId: string,
+    customerIds: string[],
+  ): Promise<DiscountCustomerSchema[]> {
+    DodoPayments.__requireId(discountId, 'discountId');
+    if (
+      !Array.isArray(customerIds) || customerIds.length === 0 ||
+      customerIds.length > 1000
+    ) {
+      throw new DodoPaymentsError('REQUEST_VALIDATION_ERROR', {
+        reason: '`customerIds` must hold 1 to 1000 customer ids',
+      });
+    }
+    for (const id of customerIds) DodoPayments.__requireId(id, 'customerIds[]');
+    const page = await this.__requestAndValidate(
+      {
+        path: `/discounts/${encodeURIComponent(discountId)}/customers`,
+        method: 'POST',
+        contentType: 'JSON',
+        payload: { customer_ids: customerIds },
+      },
+      DiscountCustomerListSchemaObject,
+    );
+    return page.items;
+  }
+
+  /**
+   * List the customers on a discount's allow list — `GET
+   * /discounts/{discount_id}/customers`.
+   *
+   * @returns One page of `{ customer_id }` entries.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `discountId`; `NOT_FOUND` for an unknown discount; plus the usual
+   * vendor codes and `RESPONSE_ERROR`.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const allowed = await client.listDiscountCustomers('dsc_1', { pageSize: 100 });
+   * ```
+   */
+  public async listDiscountCustomers(
+    discountId: string,
+    options: ListDiscountCustomersOptions = {},
+  ): Promise<DiscountCustomerSchema[]> {
+    DodoPayments.__requireId(discountId, 'discountId');
+    const query: Record<string, string> = {};
+    if (options.pageNumber !== undefined) {
+      query.page_number = String(options.pageNumber);
+    }
+    if (options.pageSize !== undefined) {
+      query.page_size = String(options.pageSize);
+    }
+    const page = await this.__requestAndValidate(
+      {
+        path: `/discounts/${encodeURIComponent(discountId)}/customers`,
+        method: 'GET',
+        query,
+      },
+      DiscountCustomerListSchemaObject,
+    );
+    return page.items;
+  }
+
+  /**
+   * Walk a discount's whole allow list, fetching each page in turn — the
+   * auto-paging counterpart to {@link listDiscountCustomers}, with the
+   * same paging and termination rules as {@link listAllPayments}.
+   *
+   * @throws {DodoPaymentsError} The same codes as
+   * {@link listDiscountCustomers}, raised from whichever page fails.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const ids = (await Array.fromAsync(client.listAllDiscountCustomers('dsc_1')))
+   *   .map((entry) => entry.customer_id);
+   * ```
+   */
+  public async *listAllDiscountCustomers(
+    discountId: string,
+    options:
+      & Omit<ListDiscountCustomersOptions, 'pageNumber'>
+      & { maxPages?: number } = {},
+  ): AsyncGenerator<DiscountCustomerSchema, void, unknown> {
+    const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
+    yield* this.__paginate(
+      (pageNumber, pageSize) =>
+        this.listDiscountCustomers(discountId, {
+          ...filters,
+          pageNumber,
+          pageSize,
+        }),
+      filters.pageSize,
+      maxPages,
+    );
+  }
+
+  /**
+   * Take a customer off a discount's allow list — `DELETE
+   * /discounts/{discount_id}/customers/{customer_id}`.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank id;
+   * `NOT_FOUND` for an unknown discount or a customer not on its list;
+   * plus the usual vendor codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * await client.removeDiscountCustomer('dsc_1', 'cus_1');
+   * ```
+   */
+  public async removeDiscountCustomer(
+    discountId: string,
+    customerId: string,
+  ): Promise<void> {
+    DodoPayments.__requireId(discountId, 'discountId');
+    DodoPayments.__requireId(customerId, 'customerId');
+    await this.__requestNoContent({
+      path: `/discounts/${encodeURIComponent(discountId)}/customers/${
+        encodeURIComponent(customerId)
+      }`,
+      method: 'DELETE',
+    });
+  }
+
   // ── Subscriptions ───────────────────────────────────────────────────────
 
   /**
@@ -1006,18 +1443,12 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
       & { maxPages?: number } = {},
   ): AsyncGenerator<SubscriptionSchema, void, unknown> {
     const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
-    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-    let pageNumber: number | undefined;
-    for (let fetched = 0; fetched < maxPages; fetched++) {
-      const page = await this.listSubscriptions({
-        ...filters,
-        pageSize,
-        pageNumber,
-      });
-      if (page.length === 0) return;
-      for (const item of page) yield item;
-      pageNumber = (pageNumber ?? 1) + 1;
-    }
+    yield* this.__paginate(
+      (pageNumber, pageSize) =>
+        this.listSubscriptions({ ...filters, pageNumber, pageSize }),
+      filters.pageSize,
+      maxPages,
+    );
   }
 
   /**
@@ -1226,6 +1657,31 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
   }
 
   // ── internals ───────────────────────────────────────────────────────────
+
+  /**
+   * Yields every item of a paged list, one request per page, until an
+   * empty page or `maxPages`.
+   *
+   * Dodo numbers pages from 0, and an omitted `page_number` is page 0
+   * (checked against the test-mode API on 2026-10-08: with one product,
+   * omitted and `0` both returned it and `1` was empty). Dodo's own SDK
+   * steps omitted → 2, which skips page 1; this steps omitted → 1 → 2.
+   */
+  private async *__paginate<T>(
+    fetchPage: (
+      pageNumber: number | undefined,
+      pageSize: number,
+    ) => Promise<T[]>,
+    pageSize: number | undefined,
+    maxPages: number,
+  ): AsyncGenerator<T, void, unknown> {
+    const size = pageSize ?? DEFAULT_PAGE_SIZE;
+    for (let page = 0; page < maxPages; page++) {
+      const items = await fetchPage(page === 0 ? undefined : page, size);
+      if (items.length === 0) return;
+      yield* items;
+    }
+  }
 
   /** `PATCH /subscriptions/{id}` with `payload`, validating the returned record. */
   private async __patchSubscription(

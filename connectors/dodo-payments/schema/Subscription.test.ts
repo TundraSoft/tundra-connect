@@ -48,6 +48,54 @@ describe('DodoPayments.schema.Subscription', () => {
     asserts.assertEquals(sub?.status, 'active');
   });
 
+  it('reads the stacked discounts of a single-subscription read', () => {
+    const [error, sub] = SubscriptionSchemaObject.safeParse({
+      ...SUB,
+      discount_id: 'dsc_1',
+      discount_cycles_remaining: 2,
+      discounts: [{
+        discount_id: 'dsc_1',
+        position: 0,
+        code: 'WELCOME20',
+        type: 'percentage',
+        amount: 2000,
+        cycles_remaining: 2,
+        subscription_cycles: 3,
+        business_id: 'biz_1',
+        times_used: 7,
+        restricted_to: [],
+        created_at: '2026-01-01T00:00:00Z',
+        preserve_on_plan_change: false,
+        metadata: {},
+      }],
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(sub?.discounts?.[0]?.cycles_remaining, 2);
+    asserts.assertEquals(sub?.discounts?.[0]?.code, 'WELCOME20');
+  });
+
+  it('reads the short discount entries of a list item', () => {
+    const [error, sub] = SubscriptionSchemaObject.safeParse({
+      ...SUB,
+      discounts: [{ discount_id: 'dsc_1', discount_cycles_remaining: null }],
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(sub?.discounts?.[0]?.discount_id, 'dsc_1');
+  });
+
+  it('accepts null or absent discounts, and rejects an entry with no id', () => {
+    asserts.assertEquals(
+      SubscriptionSchemaObject.safeParse({ ...SUB, discounts: null })[0],
+      null,
+    );
+    asserts.assertExists(
+      SubscriptionSchemaObject.safeParse({
+        ...SUB,
+        discounts: [{ cycles_remaining: 1 }],
+      })[0],
+    );
+  });
+
   it('accepts a period-end cancellation, which stays active', () => {
     const [error, sub] = SubscriptionSchemaObject.safeParse({
       ...SUB,

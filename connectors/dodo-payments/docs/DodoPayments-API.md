@@ -126,9 +126,9 @@ that), plus `maxPages`.
 | `pageSize` | `100`   | Requested per page; the vendor may clamp it. |
 | `maxPages` | `1000`  | Safety ceiling — see below.                  |
 
-Paging matches Dodo's own SDK exactly: the first request **omits**
-`page_number` (the vendor reads that as page one), and later requests send
-`2`, `3`, …
+Dodo numbers pages from 0. The first request **omits** `page_number`
+(which Dodo reads as page 0), and later requests send `1`, `2`, … Dodo's
+own SDK sends `2` after the first page and so skips page 1.
 
 Iteration stops on the first **empty** page, not a short one. The vendor
 may clamp `page_size` below what was asked for, and treating a clamped
@@ -315,14 +315,15 @@ await client.changePlan('sub_1', {
 });
 ```
 
-| Field                      | Meaning                                                                                                          |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `product_id`, `quantity`   | The new plan. Required.                                                                                          |
-| `proration_billing_mode`   | Required. See below.                                                                                             |
-| `effective_at`             | `'immediately'` (default) or `'next_billing_date'`.                                                              |
-| `on_payment_failure`       | `'prevent_change'` keeps the old plan until payment succeeds; `'apply_change'` (Dodo's default) switches anyway. |
-| `collect_via_payment_link` | Charge through a hosted checkout instead of the saved card. Needs an immediate change and `prevent_change`.      |
-| `addons`                   | Addons for the new plan. An empty list removes existing ones.                                                    |
+| Field                      | Meaning                                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `product_id`, `quantity`   | The new plan. Required.                                                                                                  |
+| `proration_billing_mode`   | Required. See below.                                                                                                     |
+| `effective_at`             | `'immediately'` (default) or `'next_billing_date'`.                                                                      |
+| `on_payment_failure`       | `'prevent_change'` keeps the old plan until payment succeeds; `'apply_change'` (Dodo's default) switches anyway.         |
+| `collect_via_payment_link` | Charge through a hosted checkout instead of the saved card. Needs an immediate change and `prevent_change`.              |
+| `addons`                   | Addons for the new plan. An empty list removes existing ones.                                                            |
+| `discount_codes`           | Replaces the subscription's discounts; `[]` removes them. See [Discounts](#applying-a-code-to-an-existing-subscription). |
 
 | `proration_billing_mode` | Billing                                                                                   |
 | ------------------------ | ----------------------------------------------------------------------------------------- |
@@ -424,6 +425,218 @@ product and archive the old one instead of updating `price`.
 `DELETE /products/{id}` takes a product off sale; Dodo calls this archiving.
 `POST /products/{id}/unarchive` puts it back, and fails with `CONFLICT` for
 a product that is not archived.
+
+## Discounts
+
+A discount code takes money off a payment or subscription. Codes are
+redeemed through `discount_codes` on `createPayment`, `createSubscription`
+and `changePlan` (up to 20, applied in order).
+
+### `createDiscount(request)`
+
+`POST /discounts`. Required: `type`, `amount`.
+
+```ts
+// 20% off the first payment, new customers only, once each.
+const discount = await client.createDiscount({
+  type: 'percentage',
+  amount: 2000, // basis points: 2000 = 20%
+  code: 'WELCOME20',
+  subscription_cycles: 1,
+  per_customer_usage_limit: 1,
+  customer_eligibility: 'first_time',
+  metadata: { partner_id: 'acme' },
+});
+
+// $5 off orders of $20 or more, until the end of the year.
+await client.createDiscount({
+  type: 'flat',
+  amount: 500,
+  currency_options: [
+    {
+      currency: 'USD',
+      is_default: true,
+      max_amount_possible: 500,
+      minimum_subtotal: 2000,
+    },
+  ],
+  expires_at: '2026-12-31T23:59:59Z',
+});
+```
+
+| Field                      | Meaning                                                                                                                    |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `type`                     | `'percentage'` or `'flat'`. Dodo blocks `flat_per_unit` for new codes.                                                     |
+| `amount`                   | Integer, at least 1. Basis points for `percentage` (`1500` = 15%, at most `10000`). For `flat`, see below.                 |
+| `currency_options`         | Per currency: `max_amount_possible` (the `flat` deduction, or the `percentage` cap), `minimum_subtotal`, and `is_default`. |
+| `code`                     | 3–16 characters. Dodo upper-cases it, and generates a random 16-character code when omitted.                               |
+| `name`                     | Display name.                                                                                                              |
+| `usage_limit`              | Total redemptions, at least 1. Unlimited when omitted.                                                                     |
+| `per_customer_usage_limit` | Redemptions per customer; at most `usage_limit` when both are set.                                                         |
+| `subscription_cycles`      | Billing cycles a subscription keeps the discount: `1` is the first payment only. Omitted or `null` is indefinite.          |
+| `restricted_to`            | Product ids the code is limited to.                                                                                        |
+| `starts_at`, `expires_at`  | RFC 3339 date-times with an offset. `expires_at` must be after `starts_at`.                                                |
+| `customer_eligibility`     | `'any'` (default), `'first_time'`, `'existing'` or `'specific'` (only customers on the allow list).                        |
+| `preserve_on_plan_change`  | `true` keeps the discount through `changePlan`. Defaults to `false`.                                                       |
+| `metadata`                 | String, number or boolean values, the same shape as product metadata.                                                      |
+
+> **Flat codes:** the deduction is each currency's
+> `currency_options[].max_amount_possible`, in minor units. A `flat` code
+> needs at least one currency option, and every option needs
+> `max_amount_possible` (Dodo answers a missing one with 422
+> `DISCOUNT_CURRENCY_OPTION_INVALID`). Dodo also requires `amount` and
+> stores it, but it does not set the deduction: in test mode, `amount: 1`
+> with `max_amount_possible: 250` took 250 off. Set `amount` to the
+> default currency's deduction so the record reads sensibly. A lone
+> currency option becomes the default.
+
+The request is checked locally before it is sent. Unknown fields are
+**rejected**, not dropped, because a misspelt `usageLimit` dropped silently
+would create a code with no limit. Numbers and booleans must be real
+numbers and booleans, not strings. The rules above (percentage range, flat
+needs a currency option, each currency once with at most one default,
+per-customer limit within the total, window order) fail with
+`REQUEST_VALIDATION_ERROR`.
+
+A taken code fails with `INVALID_REQUEST` (vendor code
+`DISCOUNT_CODE_ALREADY_EXISTS`).
+
+### `getDiscount(discountId)`
+
+`GET /discounts/{discount_id}`. `NOT_FOUND` for an unknown or deleted
+discount.
+
+### `getDiscountByCode(code)`
+
+`GET /discounts/code/{code}`. Dodo gives lookup by code its own path, so it
+never has to guess whether a value is an id or a code. Matching ignores
+case.
+
+This is also a redemption check: an expired or used-up code fails with
+`INVALID_REQUEST` (Dodo answers 422), not with the record. To read such a
+code, list with `listDiscounts({ code })` and compare `code` exactly; the
+`code` filter is a partial, case-insensitive match.
+
+### `listDiscounts(options?)` / `listAllDiscounts(options?)`
+
+`GET /discounts`. Deleted discounts are never listed. Each item is the full
+record, the same as `getDiscount`'s.
+
+| Option                    | Query param                 |
+| ------------------------- | --------------------------- |
+| `code`                    | `code` (partial match)      |
+| `discountType`            | `discount_type`             |
+| `active`                  | `active`                    |
+| `productId`               | `product_id`                |
+| `pageNumber` / `pageSize` | `page_number` / `page_size` |
+
+`listAllDiscounts` pages the same way as `listAllPayments`.
+
+### `updateDiscount(discountId, update)`
+
+`PATCH /discounts/{discount_id}`: a partial update. Omitted fields are left
+as they are, and the updated record is returned. An update that changes
+nothing is rejected locally.
+
+| To                                    | Send                                                      |
+| ------------------------------------- | --------------------------------------------------------- |
+| Make the per-customer limit unlimited | `per_customer_usage_limit: null`                          |
+| Make the code valid immediately       | `starts_at: null`                                         |
+| Remove the product restriction        | `restricted_to: []` (the list is replaced, not merged)    |
+| Remove every currency option          | `currency_options: []` (the list is replaced, not merged) |
+
+`type`, `amount`, `code`, `customer_eligibility`,
+`preserve_on_plan_change`, `restricted_to`, `currency_options` and
+`metadata` cannot be `null`: Dodo would ignore it. Dodo does not document
+whether `null` clears `name`, `usage_limit`, `subscription_cycles` or
+`expires_at`, so check the returned record. A `usage_limit` below
+`times_used` is rejected by Dodo.
+
+Changing a code does not change the discount on subscriptions that
+already redeemed it.
+
+### `deleteDiscount(discountId)`
+
+`DELETE /discounts/{discount_id}`. Dodo soft-deletes the code: it stops
+working and leaves every list and lookup, and it cannot be restored.
+`NOT_FOUND` when it is already deleted.
+
+### Allow list
+
+A `customer_eligibility: 'specific'` code is redeemable only by the
+customers on its allow list, and a new one starts with an empty list.
+
+| Method                                           | Route                                                     |
+| ------------------------------------------------ | --------------------------------------------------------- |
+| `addDiscountCustomers(discountId, customerIds)`  | `POST /discounts/{discount_id}/customers`                 |
+| `listDiscountCustomers(discountId, options?)`    | `GET /discounts/{discount_id}/customers`                  |
+| `listAllDiscountCustomers(discountId, options?)` | Auto-paging counterpart.                                  |
+| `removeDiscountCustomer(discountId, customerId)` | `DELETE /discounts/{discount_id}/customers/{customer_id}` |
+
+```ts
+await client.addDiscountCustomers('dsc_1', ['cus_1', 'cus_2']);
+```
+
+`addDiscountCustomers` takes 1 to 1000 ids, returns only the customers
+added by that call, and is safe to repeat. Dodo rejects the whole call
+(`INVALID_REQUEST`) when any id is not a customer of yours.
+`removeDiscountCustomer` fails with `NOT_FOUND` for a customer not on the
+list.
+
+### Discounts on a subscription
+
+A subscription record lists the discounts applied to it in `discounts`,
+in stack order. `discount_id` and `discount_cycles_remaining` are Dodo's
+deprecated single-discount fields.
+
+| Read                                                       | Each `discounts` entry carries                                                                                                        |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `getSubscription`, and the cancel / pause / resume results | The discount record plus `position` and `cycles_remaining` (billing cycles still to go; `null` for a discount without a cycle limit). |
+| `listSubscriptions`                                        | Only `discount_id` and `discount_cycles_remaining`.                                                                                   |
+
+No field gives the date a subscription's discount ends. The entry's
+`expires_at` is when the CODE stops being redeemable. Work the end out from
+`cycles_remaining` and the billing period.
+
+### Applying a code to an existing subscription
+
+Dodo has no field or route for this on the subscription itself;
+`PATCH /subscriptions/{id}` takes no discount. The documented route is a
+plan change to the **same** product and quantity, with `discount_codes`
+and `do_not_bill`:
+
+```ts
+const sub = await client.getSubscription('sub_1');
+await client.changePlan(sub.subscription_id, {
+  product_id: sub.product_id,
+  quantity: sub.quantity,
+  proration_billing_mode: 'do_not_bill', // no charge, cycle unchanged
+  discount_codes: [
+    // discount_codes REPLACES the stack: keep the current codes.
+    ...(sub.discounts ?? []).flatMap((d) => (d.code ? [d.code] : [])),
+    'LOYAL10',
+  ],
+});
+```
+
+- `discount_codes` replaces every discount on the subscription; `[]`
+  removes them all. Omitted, only discounts created with
+  `preserve_on_plan_change: true` survive a plan change.
+- Checked in test mode on 2026-10-08: Dodo accepts the same-product
+  change, takes no charge (it records a $0 payment), adds the new code
+  with its full cycle count, and leaves the codes already applied with
+  the cycles they had left. Sending only the new code removed the old
+  one.
+- Dodo's documented failures here include `DISCOUNT_ALREADY_USED_ON_SUBSCRIPTION`,
+  `DISCOUNT_NOT_APPLICABLE_TO_NEW_PRODUCT` and
+  `DISCOUNT_NOT_AVAILABLE_FOR_ON_DEMAND` (as `vendorCode`).
+
+### Redeeming at checkout
+
+`createPayment`, `createSubscription` and `changePlan` take
+`discount_codes: string[]` (up to 20, applied in order). The single
+`discount_code` field is deprecated by Dodo and cannot be combined with
+`discount_codes`; a request with both is rejected locally.
 
 ## Webhooks
 

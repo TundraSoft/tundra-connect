@@ -289,6 +289,57 @@ on the product they bought until you `changePlan` them.
 cannot filter by metadata. For a large catalogue, store the returned
 `product_id` against your plan and look it up with `getProduct` instead.
 
+## Syncing discount codes
+
+Keep codes in your own database and push them to Dodo, keyed by the code
+itself. Dodo upper-cases codes, so store them upper-cased too.
+
+```ts
+import type { DiscountSchema } from '@tundraconnect/dodo-payments';
+
+type Promo = {
+  code: string; // upper-case, 3–16 characters
+  percentOff: number;
+  firstPaymentOnly: boolean;
+  partnerId: string;
+  endsAt: string; // RFC 3339, e.g. '2026-12-31T23:59:59Z'
+};
+
+async function syncPromo(promo: Promo): Promise<string> {
+  // getDiscountByCode fails for an expired or used-up code, so look the
+  // code up in the list. Its filter is a partial match: compare exactly.
+  let existing: DiscountSchema | undefined;
+  for await (const d of dodo.listAllDiscounts({ code: promo.code })) {
+    if (d.code === promo.code) {
+      existing = d;
+      break;
+    }
+  }
+  const fields = {
+    type: 'percentage' as const,
+    amount: promo.percentOff * 100, // basis points
+    // Dodo does not document whether null clears the count on an update;
+    // check the returned record when turning a limited code indefinite.
+    subscription_cycles: promo.firstPaymentOnly ? 1 : null,
+    expires_at: promo.endsAt,
+    metadata: { partner_id: promo.partnerId },
+  };
+  if (existing) {
+    await dodo.updateDiscount(existing.discount_id, fields);
+    return existing.discount_id;
+  }
+  const created = await dodo.createDiscount({ ...fields, code: promo.code });
+  return created.discount_id;
+}
+```
+
+A deleted code is gone for good and never listed, so a sync that finds
+nothing creates a new one under the same code.
+
+To give a current subscriber a code, change plan to the same product with
+`do_not_bill`; see
+[Applying a code to an existing subscription](DodoPayments-API.md#applying-a-code-to-an-existing-subscription).
+
 ## Flow comparison
 
 |                        | One-time                         | Subscription                           |
@@ -323,6 +374,11 @@ cannot filter by metadata. For a large catalogue, store the returned
 8. **Archived products are listed separately.** A sync that searches only
    live products creates a duplicate of an archived one; pass
    `includeArchived: true`.
+9. **A percentage discount is in basis points.** `amount: 15` is 0.15%,
+   not 15%; 15% is `1500`.
+10. **`discount_codes` on a plan change replaces the stack.** List the
+    codes to keep, or every discount without `preserve_on_plan_change`
+    is lost.
 
 ---
 

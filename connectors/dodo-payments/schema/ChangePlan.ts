@@ -85,7 +85,18 @@ export type ChangePlanRequestSchema = {
   cancel_scheduled_change_plan?: boolean;
   /** Addons for the new plan. An empty list removes existing addons. */
   addons?: { addon_id: string; quantity: number }[] | null;
-  /** Up to 20 discount codes; replaces any existing ones. */
+  /**
+   * Up to 20 discount codes, applied in order, that REPLACE the
+   * subscription's current discounts; `[]` removes them all. Omitted, the
+   * discounts created with `preserve_on_plan_change: true` carry over and
+   * the rest are dropped.
+   *
+   * This is Dodo's only route for applying a code to an existing
+   * subscription: change plan to the SAME product and quantity with
+   * `proration_billing_mode: 'do_not_bill'` (checked in test mode: no
+   * charge, and codes already applied keep their remaining cycles). List
+   * any codes to keep along with the new one.
+   */
   discount_codes?: string[] | null;
   /** Metadata for the change's payment; the subscription's when omitted. */
   metadata?: Record<string, string> | null;

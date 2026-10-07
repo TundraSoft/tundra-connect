@@ -27,6 +27,77 @@ export const TimeIntervalSchemaObject: BaseGuardian<TimeIntervalSchema> =
     description: 'Recurrence unit for a subscription billing period.',
   });
 
+/**
+ * Type definition for {@link SubscriptionDiscountSchemaObject}: one
+ * discount applied to a subscription.
+ *
+ * The two subscription routes carry different shapes. `getSubscription`
+ * (and the cancel, pause and resume results) returns the full discount
+ * plus `position` and `cycles_remaining`. `listSubscriptions` returns only
+ * `discount_id` and `discount_cycles_remaining`, in stack order.
+ */
+export type SubscriptionDiscountSchema = {
+  discount_id: string;
+  /**
+   * Billing cycles the discount still applies for, counting the current
+   * one; `null` for a discount without a cycle limit (seen in test mode).
+   * Set on a single-subscription read.
+   */
+  cycles_remaining?: number | null;
+  /** The same count, under the name the list route uses. */
+  discount_cycles_remaining?: number | null;
+  /** Place in the stack, 0-based. Single-subscription read only. */
+  position?: number;
+  code?: string;
+  /** `percentage` or `flat`. */
+  type?: string;
+  /** Basis points for `percentage`. */
+  amount?: number;
+  /** The cycle count the code was created with. */
+  subscription_cycles?: number | null;
+  /** When the CODE stops being redeemable, not when this subscription's discount ends. */
+  expires_at?: string | null;
+  name?: string | null;
+  preserve_on_plan_change?: boolean;
+};
+
+/**
+ * Schema for one discount applied to a subscription. Every field but
+ * `discount_id` is optional, so the same schema reads both the full shape
+ * from `getSubscription` and the short one from `listSubscriptions`.
+ * Unknown fields pass through.
+ *
+ * @example
+ * ```typescript
+ * import { SubscriptionDiscountSchemaObject } from '@tundraconnect/dodo-payments/schemas';
+ *
+ * const [error, applied] = SubscriptionDiscountSchemaObject.safeParse({
+ *   discount_id: 'dsc_1',
+ *   position: 0,
+ *   code: 'WELCOME20',
+ *   cycles_remaining: 2,
+ * });
+ * ```
+ */
+export const SubscriptionDiscountSchemaObject: BaseGuardian<
+  SubscriptionDiscountSchema
+> = Guardian.object({
+  discount_id: Guardian.string(),
+  cycles_remaining: Guardian.number().nullable().optional(),
+  discount_cycles_remaining: Guardian.number().nullable().optional(),
+  position: Guardian.number().optional(),
+  code: Guardian.string().optional(),
+  type: Guardian.string().optional(),
+  amount: Guardian.number().optional(),
+  subscription_cycles: Guardian.number().nullable().optional(),
+  expires_at: Guardian.string().nullable().optional(),
+  name: Guardian.string().nullable().optional(),
+  preserve_on_plan_change: Guardian.boolean().optional(),
+}).passthrough().describe({
+  title: 'Subscription discount',
+  description: 'A discount applied to a subscription.',
+});
+
 /** Type definition for {@link SubscriptionSchemaObject}. */
 export type SubscriptionSchema = {
   subscription_id: string;
@@ -60,7 +131,12 @@ export type SubscriptionSchema = {
   expires_at?: string | null;
   paused_at?: string | null;
   payment_method_id?: string | null;
+  /** @deprecated Dodo's own deprecation: the first entry of `discounts`. */
   discount_id?: string | null;
+  /** @deprecated Dodo's own deprecation: the first discount's cycles remaining. */
+  discount_cycles_remaining?: number | null;
+  /** Every discount applied, in stack order. See {@link SubscriptionDiscountSchema}. */
+  discounts?: SubscriptionDiscountSchema[] | null;
   tax_id?: string | null;
   trial_amount?: number | null;
 };
@@ -132,6 +208,9 @@ export const SubscriptionSchemaObject: BaseGuardian<SubscriptionSchema> =
     paused_at: Guardian.string().nullable().optional(),
     payment_method_id: Guardian.string().nullable().optional(),
     discount_id: Guardian.string().nullable().optional(),
+    discount_cycles_remaining: Guardian.number().nullable().optional(),
+    discounts: Guardian.array(SubscriptionDiscountSchemaObject).nullable()
+      .optional(),
     tax_id: Guardian.string().nullable().optional(),
     trial_amount: Guardian.number().nullable().optional(),
   }).passthrough().describe({

@@ -143,6 +143,20 @@ class PagingMockDodo extends DodoPayments {
     };
   }
 
+  /** Serves each body by its `page_number`; an omitted one is page `0`. */
+  setPagesByNumber(byPage: Record<string, unknown>): void {
+    this._fetch = (input) => {
+      this.urls.push(String(input));
+      const page = new URL(String(input)).searchParams.get('page_number');
+      return Promise.resolve(
+        new Response(JSON.stringify(byPage[page ?? '0'] ?? { items: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    };
+  }
+
   setPages(pages: unknown[]): void {
     this.pages = [...pages];
     this._fetch = (input) => {
@@ -658,7 +672,7 @@ describe('DodoPayments — auto-paging', () => {
     asserts.assertEquals(seen, ['pay_1', 'pay_2', 'pay_3']);
   });
 
-  it('omits page_number on the first request, then sends 2, 3 — matching the vendor SDK', async () => {
+  it('omits page_number on the first request, then sends 1, 2 — Dodo pages from 0', async () => {
     const c = pager();
     c.setPages([
       { items: [item('pay_1')] },
@@ -668,8 +682,26 @@ describe('DodoPayments — auto-paging', () => {
     await Array.fromAsync(c.listAllPayments({ pageSize: 1 }));
     asserts.assertEquals(c.urls.length, 3);
     asserts.assert(!c.urls[0]!.includes('page_number'), c.urls[0]);
-    asserts.assert(c.urls[1]!.includes('page_number=2'), c.urls[1]);
-    asserts.assert(c.urls[2]!.includes('page_number=3'), c.urls[2]);
+    asserts.assert(c.urls[1]!.includes('page_number=1'), c.urls[1]);
+    asserts.assert(c.urls[2]!.includes('page_number=2'), c.urls[2]);
+  });
+
+  it('reads page 1 — Dodo serves an omitted page_number as page 0', async () => {
+    // Served by page number, as the test-mode API does: stepping from the
+    // first page straight to page_number=2 would drop pay_2.
+    const byPage: Record<string, unknown> = {
+      '0': { items: [item('pay_1')] },
+      '1': { items: [item('pay_2')] },
+      '2': { items: [item('pay_3')] },
+    };
+    const c = pager();
+    c.setPagesByNumber(byPage);
+    const seen = await Array.fromAsync(c.listAllPayments({ pageSize: 1 }));
+    asserts.assertEquals(seen.map((p) => p.payment_id), [
+      'pay_1',
+      'pay_2',
+      'pay_3',
+    ]);
   });
 
   it('carries the filters through to every page', async () => {
@@ -1393,6 +1425,333 @@ describe('DodoPayments — findProductsByMetadata', () => {
     );
     asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
     asserts.assertEquals(c.urls, []);
+  });
+});
+
+const DISCOUNT = {
+  discount_id: 'dsc_1',
+  business_id: 'biz_1',
+  type: 'percentage',
+  code: 'WELCOME20',
+  amount: 2000,
+  times_used: 0,
+  restricted_to: [],
+  created_at: '2026-01-01T00:00:00Z',
+  customer_eligibility: 'first_time',
+  preserve_on_plan_change: false,
+  metadata: { partner_id: 'acme' },
+  subscription_cycles: 1,
+};
+
+describe('DodoPayments — discounts', () => {
+  it('POSTs a new discount to /discounts and returns the record', async () => {
+    const c = client(DISCOUNT);
+    const discount = await c.createDiscount({
+      type: 'percentage',
+      amount: 2000,
+      code: 'WELCOME20',
+      subscription_cycles: 1,
+      per_customer_usage_limit: 1,
+      customer_eligibility: 'first_time',
+      metadata: { partner_id: 'acme' },
+    });
+    asserts.assertEquals(c.request!.method, 'POST');
+    asserts.assertEquals(new URL(c.request!.url).pathname, '/discounts');
+    asserts.assertEquals(JSON.parse(c.request!.body!), {
+      type: 'percentage',
+      amount: 2000,
+      code: 'WELCOME20',
+      subscription_cycles: 1,
+      per_customer_usage_limit: 1,
+      customer_eligibility: 'first_time',
+      metadata: { partner_id: 'acme' },
+    });
+    asserts.assertEquals(discount.discount_id, 'dsc_1');
+    asserts.assertEquals(discount.metadata.partner_id, 'acme');
+  });
+
+  it('sends a flat discount with its currency options', async () => {
+    const c = client({ ...DISCOUNT, type: 'flat', amount: 500 });
+    await c.createDiscount({
+      type: 'flat',
+      amount: 500,
+      currency_options: [{
+        currency: 'USD',
+        is_default: true,
+        max_amount_possible: 500,
+        minimum_subtotal: 2000,
+      }],
+    });
+    asserts.assertEquals(
+      JSON.parse(c.request!.body!).currency_options[0].max_amount_possible,
+      500,
+    );
+  });
+
+  it('rejects an invalid discount before sending', async () => {
+    const c = client(DISCOUNT);
+    const bad = [
+      { type: 'percentage', amount: 15_000 },
+      { type: 'flat', amount: 500 },
+      {
+        type: 'percentage',
+        amount: 10,
+        usage_limit: 1,
+        per_customer_usage_limit: 2,
+      },
+      { type: 'percentage', amount: 10, usageLimit: 5 },
+    ];
+    for (const request of bad) {
+      const err = await asserts.assertRejects(
+        () => c.createDiscount(request as never),
+        DodoPaymentsError,
+      );
+      asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    }
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('maps a taken code to INVALID_REQUEST, keeping the vendor code', async () => {
+    const c = client(
+      { code: 'DISCOUNT_CODE_ALREADY_EXISTS', message: 'exists' },
+      422,
+    );
+    const err = await asserts.assertRejects(
+      () => c.createDiscount({ type: 'percentage', amount: 10, code: 'TAKEN' }),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'INVALID_REQUEST');
+    asserts.assertEquals(
+      err.getContextValue('vendorCode'),
+      'DISCOUNT_CODE_ALREADY_EXISTS',
+    );
+  });
+
+  it('GETs a discount by id, url-encoded', async () => {
+    const c = client(DISCOUNT);
+    const discount = await c.getDiscount('dsc/1');
+    asserts.assertEquals(c.request!.method, 'GET');
+    asserts.assert(c.request!.url.endsWith('/discounts/dsc%2F1'));
+    asserts.assertEquals(discount.code, 'WELCOME20');
+  });
+
+  it('GETs a discount by code on its own path, url-encoded', async () => {
+    const c = client(DISCOUNT);
+    await c.getDiscountByCode('SAVE 20%');
+    asserts.assertEquals(c.request!.method, 'GET');
+    asserts.assert(c.request!.url.endsWith('/discounts/code/SAVE%2020%25'));
+  });
+
+  it('maps an unknown code to NOT_FOUND and an expired one to INVALID_REQUEST', async () => {
+    const missing = client({ code: 'NOT_FOUND', message: 'no' }, 404);
+    asserts.assertEquals(
+      (await asserts.assertRejects(
+        () => missing.getDiscountByCode('NOPE'),
+        DodoPaymentsError,
+      )).code,
+      'NOT_FOUND',
+    );
+    const expired = client(
+      { code: 'DISCOUNT_CODE_EXPIRED', message: 'x' },
+      422,
+    );
+    asserts.assertEquals(
+      (await asserts.assertRejects(
+        () => expired.getDiscountByCode('OLD'),
+        DodoPaymentsError,
+      )).code,
+      'INVALID_REQUEST',
+    );
+  });
+
+  it('lists discounts with its filters', async () => {
+    const c = client({ items: [DISCOUNT] });
+    const items = await c.listDiscounts({
+      code: 'SAVE',
+      discountType: 'percentage',
+      active: false,
+      productId: 'pdt_1',
+      pageNumber: 2,
+      pageSize: 50,
+    });
+    const url = new URL(c.request!.url);
+    asserts.assertEquals(url.pathname, '/discounts');
+    asserts.assertEquals(url.searchParams.get('code'), 'SAVE');
+    asserts.assertEquals(url.searchParams.get('discount_type'), 'percentage');
+    asserts.assertEquals(url.searchParams.get('active'), 'false');
+    asserts.assertEquals(url.searchParams.get('product_id'), 'pdt_1');
+    asserts.assertEquals(url.searchParams.get('page_number'), '2');
+    asserts.assertEquals(url.searchParams.get('page_size'), '50');
+    asserts.assertEquals(items[0]?.discount_id, 'dsc_1');
+  });
+
+  it('sends no filters when none are given', async () => {
+    const c = client({ items: [] });
+    asserts.assertEquals(await c.listDiscounts(), []);
+    asserts.assertEquals(new URL(c.request!.url).search, '');
+  });
+
+  it('walks every discount page', async () => {
+    const c = new PagingMockDodo({ auth: AUTH });
+    c.setPages([
+      { items: [DISCOUNT, { ...DISCOUNT, discount_id: 'dsc_2' }] },
+      { items: [{ ...DISCOUNT, discount_id: 'dsc_3' }] },
+      { items: [] },
+    ]);
+    const all = await Array.fromAsync(c.listAllDiscounts({ active: true }));
+    asserts.assertEquals(all.map((d) => d.discount_id), [
+      'dsc_1',
+      'dsc_2',
+      'dsc_3',
+    ]);
+    const pages = c.urls.map((u) => new URL(u).searchParams);
+    asserts.assertEquals(pages.map((q) => q.get('page_number')), [
+      null,
+      '1',
+      '2',
+    ]);
+    asserts.assert(pages.every((q) => q.get('active') === 'true'));
+  });
+
+  it('PATCHes a partial update and returns the record', async () => {
+    const c = client({ ...DISCOUNT, per_customer_usage_limit: null });
+    const discount = await c.updateDiscount('dsc_1', {
+      expires_at: '2026-12-31T23:59:59Z',
+      per_customer_usage_limit: null,
+    });
+    asserts.assertEquals(c.request!.method, 'PATCH');
+    asserts.assert(c.request!.url.endsWith('/discounts/dsc_1'));
+    asserts.assertEquals(JSON.parse(c.request!.body!), {
+      expires_at: '2026-12-31T23:59:59Z',
+      per_customer_usage_limit: null,
+    });
+    asserts.assertEquals(discount.discount_id, 'dsc_1');
+  });
+
+  it('rejects an update that changes nothing, without sending', async () => {
+    const c = client(DISCOUNT);
+    const err = await asserts.assertRejects(
+      () => c.updateDiscount('dsc_1', {}),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('deletes with DELETE /discounts/{id}, resolving on a 204', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(204);
+    asserts.assertEquals(await c.deleteDiscount('dsc_1'), undefined);
+    asserts.assertEquals(c.request!.method, 'DELETE');
+    asserts.assert(c.request!.url.endsWith('/discounts/dsc_1'));
+  });
+
+  it('maps deleting an already deleted discount to NOT_FOUND', async () => {
+    const c = client({ code: 'NOT_FOUND', message: 'gone' }, 404);
+    const err = await asserts.assertRejects(
+      () => c.deleteDiscount('dsc_1'),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'NOT_FOUND');
+  });
+
+  it('rejects a blank discount id or code on every route, without sending', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(200);
+    const calls = [
+      () => c.getDiscount(' '),
+      () => c.getDiscountByCode(''),
+      () => c.updateDiscount('', { name: 'x' }),
+      () => c.deleteDiscount(''),
+      () => c.addDiscountCustomers('', ['cus_1']),
+      () => c.listDiscountCustomers(''),
+      () => c.removeDiscountCustomer('', 'cus_1'),
+      () => c.removeDiscountCustomer('dsc_1', ' '),
+    ];
+    for (const call of calls) {
+      const err = await asserts.assertRejects(call, DodoPaymentsError);
+      asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    }
+    asserts.assertEquals(c.request, undefined);
+  });
+});
+
+describe('DodoPayments — discount allow list', () => {
+  it('POSTs customer_ids and returns the customers added', async () => {
+    const c = client({
+      items: [{ customer_id: 'cus_1' }, { customer_id: 'cus_2' }],
+    });
+    const added = await c.addDiscountCustomers('dsc_1', ['cus_1', 'cus_2']);
+    asserts.assertEquals(c.request!.method, 'POST');
+    asserts.assert(c.request!.url.endsWith('/discounts/dsc_1/customers'));
+    asserts.assertEquals(JSON.parse(c.request!.body!), {
+      customer_ids: ['cus_1', 'cus_2'],
+    });
+    asserts.assertEquals(added.map((a) => a.customer_id), ['cus_1', 'cus_2']);
+  });
+
+  it('rejects an empty, oversized or blank-holding id list, without sending', async () => {
+    const c = client({ items: [] });
+    for (
+      const ids of [
+        [],
+        Array.from({ length: 1001 }, (_, i) => `cus_${i}`),
+        ['cus_1', ''],
+      ]
+    ) {
+      const err = await asserts.assertRejects(
+        () => c.addDiscountCustomers('dsc_1', ids),
+        DodoPaymentsError,
+      );
+      asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    }
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('maps an unknown customer (422) to INVALID_REQUEST', async () => {
+    const c = client({ code: 'CUSTOMER_NOT_FOUND', message: 'no' }, 422);
+    const err = await asserts.assertRejects(
+      () => c.addDiscountCustomers('dsc_1', ['cus_x']),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'INVALID_REQUEST');
+  });
+
+  it('lists the allow list with paging', async () => {
+    const c = client({ items: [{ customer_id: 'cus_1' }] });
+    const page = await c.listDiscountCustomers('dsc_1', {
+      pageNumber: 2,
+      pageSize: 10,
+    });
+    const url = new URL(c.request!.url);
+    asserts.assertEquals(url.pathname, '/discounts/dsc_1/customers');
+    asserts.assertEquals(url.searchParams.get('page_number'), '2');
+    asserts.assertEquals(url.searchParams.get('page_size'), '10');
+    asserts.assertEquals(page, [{ customer_id: 'cus_1' }]);
+  });
+
+  it('walks every allow-list page', async () => {
+    const c = new PagingMockDodo({ auth: AUTH });
+    c.setPages([
+      { items: [{ customer_id: 'cus_1' }] },
+      { items: [{ customer_id: 'cus_2' }] },
+    ]);
+    const all = await Array.fromAsync(c.listAllDiscountCustomers('dsc_1'));
+    asserts.assertEquals(all.map((a) => a.customer_id), ['cus_1', 'cus_2']);
+    asserts.assertEquals(c.urls.length, 3);
+    asserts.assert(
+      c.urls.every((u) => new URL(u).pathname === '/discounts/dsc_1/customers'),
+    );
+  });
+
+  it('removes a customer with DELETE, resolving on a 204', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(204);
+    await c.removeDiscountCustomer('dsc_1', 'cus/1');
+    asserts.assertEquals(c.request!.method, 'DELETE');
+    asserts.assert(
+      c.request!.url.endsWith('/discounts/dsc_1/customers/cus%2F1'),
+    );
   });
 });
 

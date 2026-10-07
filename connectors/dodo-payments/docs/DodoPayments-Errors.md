@@ -63,6 +63,16 @@ context value.
 for a product that is not archived. `410` is Dodo's answer for a deleted
 product.
 
+Discount failures arrive as `INVALID_REQUEST` and are told apart by
+`vendorCode`: `DISCOUNT_CODE_ALREADY_EXISTS` on `createDiscount`,
+`DISCOUNT_CODE_EXPIRED` or `DISCOUNT_CODE_USAGE_LIMIT_EXCEEDED` from
+`getDiscountByCode`, and the redemption codes (`DISCOUNT_NOT_YET_ACTIVE`,
+`DISCOUNT_CUSTOMER_NOT_ELIGIBLE`, `DISCOUNT_MINIMUM_SUBTOTAL_NOT_MET`, …)
+from a create or plan-change call that carries `discount_codes`. Dodo
+answers two redemptions racing for a code's last use with a 503
+(`DISCOUNT_CONCURRENT_REDEMPTION`), which arrives as a transient
+`SERVICE_UNAVAILABLE`: retry it.
+
 A failure body that isn't the documented `{ code, message }` envelope — a
 gateway 502 serving HTML, say — still classifies by status; `vendorCode` is
 simply absent.
