@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.3.0...dodo-payments-v0.4.0) (2026-10-07)
+
+
+### Features
+
+* **dodo-payments:** discount codes ([8d96c34](https://github.com/TundraSoft/tundra-connect/commit/8d96c34937ed65854083796093096904ec24d66a))
+* **dodo-payments:** discount codes, and stop the auto-pagers skipping page 1 ([46769d5](https://github.com/TundraSoft/tundra-connect/commit/46769d508e0278898df2efc44be070fa5ca1febd))
+
+
+### Bug Fixes
+
+* **dodo-payments:** stop the auto-pagers skipping page 1 ([c0bb4ce](https://github.com/TundraSoft/tundra-connect/commit/c0bb4ceac9fb36f49e7356fb1cde794b076bc4e7))
+
 ## [0.3.0](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.2.0...dodo-payments-v0.3.0) (2026-10-04)
 
 
