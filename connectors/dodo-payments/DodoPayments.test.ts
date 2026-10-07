@@ -1567,7 +1567,7 @@ describe('DodoPayments — discounts', () => {
   it('lists discounts with its filters', async () => {
     const c = client({ items: [DISCOUNT] });
     const items = await c.listDiscounts({
-      code: 'WEL',
+      code: 'SAVE',
       discountType: 'percentage',
       active: false,
       productId: 'pdt_1',
@@ -1576,7 +1576,7 @@ describe('DodoPayments — discounts', () => {
     });
     const url = new URL(c.request!.url);
     asserts.assertEquals(url.pathname, '/discounts');
-    asserts.assertEquals(url.searchParams.get('code'), 'WEL');
+    asserts.assertEquals(url.searchParams.get('code'), 'SAVE');
     asserts.assertEquals(url.searchParams.get('discount_type'), 'percentage');
     asserts.assertEquals(url.searchParams.get('active'), 'false');
     asserts.assertEquals(url.searchParams.get('product_id'), 'pdt_1');
