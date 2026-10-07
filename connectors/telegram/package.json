@@ -2,7 +2,7 @@
   "name": "@tundraconnect/telegram",
   "version": "0.2.0",
   "type": "module",
-  "description": "Typed Telegram Bot API client: send messages and fetch the bot's own identity.",
+  "description": "Typed Telegram Bot API client for webhook bots: send, edit and delete messages with inline keyboards, answer callback queries, manage the webhook and command menu, and verify and parse webhook updates and commands.",
   "keywords": [
     "telegram",
     "telegram-bot",
@@ -25,6 +25,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@tundralibs/crypt": "npm:@jsr/tundralibs__crypt@^1.4.1",
     "@tundralibs/utils": "npm:@jsr/tundralibs__utils@^1.3.1"
   }
 }

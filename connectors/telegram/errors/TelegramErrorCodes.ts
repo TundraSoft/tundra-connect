@@ -5,8 +5,8 @@
  * returned (documented as "subject to change in the future", so it is not
  * treated as a stable machine-readable code space) — these codes are
  * therefore connect-specific, keyed off the HTTP status/`error_code`
- * actually returned, plus a couple of client-side configuration/local
- * validation codes that never come from the wire.
+ * actually returned, plus client-side configuration, local-validation and
+ * webhook-verification codes that never come from the Bot API itself.
  */
 export const TelegramErrorCodes = {
   UNKNOWN_ERROR:
@@ -32,6 +32,15 @@ export const TelegramErrorCodes = {
     'The Telegram Bot API did not answer within the ${timeoutSeconds}s timeout.',
   NETWORK_ERROR:
     'The request to the Telegram Bot API failed before a response (DNS, TLS or connection failure).',
+  CONFIG_INVALID_WEBHOOK_SECRET:
+    'The configured webhook secret token must be 1-256 characters of A-Z, a-z, 0-9, _ and -.',
+  WEBHOOK_SECRET_MISSING:
+    'The webhook request carried no X-Telegram-Bot-Api-Secret-Token header.',
+  WEBHOOK_SECRET_INVALID:
+    'The webhook request X-Telegram-Bot-Api-Secret-Token header did not match the configured secret.',
+  WEBHOOK_MALFORMED_BODY: 'The webhook request body is not valid JSON.',
+  WEBHOOK_INVALID_UPDATE:
+    'The webhook request body is not a Telegram Update: ${reason}',
 } as const;
 
 /** Valid Telegram error code. */

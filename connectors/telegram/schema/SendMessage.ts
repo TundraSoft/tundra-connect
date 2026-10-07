@@ -1,5 +1,12 @@
 import { type BaseGuardian, Guardian } from '@guardian';
 import { chatIdGuard, type ChatIdSchema } from './Common.ts';
+import { type ReplyMarkupSchema, ReplyMarkupSchemaObject } from './Keyboard.ts';
+import {
+  type LinkPreviewOptionsSchema,
+  LinkPreviewOptionsSchemaObject,
+  type ReplyParametersSchema,
+  ReplyParametersSchemaObject,
+} from './MessageOptions.ts';
 
 /**
  * Documented `parse_mode` values for formatting `text`.
@@ -11,18 +18,36 @@ import { chatIdGuard, type ChatIdSchema } from './Common.ts';
 export const PARSE_MODES = ['MarkdownV2', 'HTML', 'Markdown'] as const;
 
 /**
+ * Maximum message text length: 4096 characters, which Telegram counts in
+ * UTF-16 code units AFTER entity parsing (so `<b>hi</b>` with
+ * `parse_mode: 'HTML'` counts as 2).
+ *
+ * The local check runs before parsing and counts the raw string's UTF-16
+ * code units (`text.length`). Without `parse_mode` the two counts agree.
+ * With `parse_mode`, the markup itself counts locally, so the local check
+ * is stricter than Telegram's: text whose markup pushes it past 4096 is
+ * refused here even if the visible text would fit. Split long formatted
+ * messages well below the limit.
+ */
+export const MESSAGE_TEXT_MAX_LENGTH = 4096;
+
+/**
  * Request schema for `POST /sendMessage`.
  *
- * `reply_markup`, `reply_parameters`, and `link_preview_options` are
- * modeled loosely (`Guardian.object().passthrough()`) — Telegram's
- * inline/reply-keyboard and reply/link-preview shapes are large,
- * independently-versioned structures that this connect passes through
- * as-is rather than fully re-modeling; Telegram itself validates them.
- * `entities` is similarly a passthrough array — it is an alternative to
- * `parse_mode` for pre-parsed formatting, and the two are mutually
- * exclusive per Telegram's docs, but that cross-field rule is not
- * enforced locally: Telegram rejects a request combining both with a
- * documented `400 Bad Request`.
+ * The schema is `.strict()`: an unknown key is rejected locally instead of
+ * being silently dropped. `reply_markup`, `reply_parameters` and
+ * `link_preview_options` are validated against their own schemas (see
+ * {@link ReplyMarkupSchemaObject}, {@link ReplyParametersSchemaObject},
+ * {@link LinkPreviewOptionsSchemaObject}). `entities`,
+ * `suggested_post_parameters` and `ephemeral_message_parameters` are
+ * passed through as-is; Telegram validates them.
+ *
+ * `entities` is an alternative to `parse_mode` for pre-parsed formatting,
+ * and the two are mutually exclusive per Telegram's docs, but that rule is
+ * not enforced locally: Telegram rejects a request combining both with a
+ * `400 Bad Request`. `disable_web_page_preview` is Telegram's legacy
+ * switch, replaced by `link_preview_options: { is_disabled: true }`;
+ * setting both is refused locally.
  *
  * Hand-written (rather than `GuardianInfer<typeof ...>`-derived): JSR's
  * public-API "slow types" check requires the *originating* declaration of
@@ -47,16 +72,26 @@ export const PARSE_MODES = ['MarkdownV2', 'HTML', 'Markdown'] as const;
 export type SendMessageRequestSchema = {
   /** Target chat: an integer chat id, or `@username` for a public channel/supergroup. */
   chat_id: ChatIdSchema;
-  /** Message text (1-4096 characters). */
+  /**
+   * Message text, 1-4096 characters (see {@link MESSAGE_TEXT_MAX_LENGTH}
+   * for how the local check counts them).
+   */
   text: string;
   /** Formatting mode applied to `text`. Mutually exclusive with `entities`. */
   parse_mode?: (typeof PARSE_MODES)[number];
   /** Pre-parsed formatting entities. Mutually exclusive with `parse_mode`. */
   entities?: unknown[];
   /** Link preview behavior for URLs found in `text`. */
-  link_preview_options?: Record<string, unknown>;
+  link_preview_options?: LinkPreviewOptionsSchema;
+  /**
+   * Legacy: disable the link preview. Prefer
+   * `link_preview_options: { is_disabled: true }`; don't set both.
+   */
+  disable_web_page_preview?: boolean;
   /** Unique identifier of the target message thread (topic), for forum supergroups. */
   message_thread_id?: number;
+  /** Direct messages topic to send to; required for a channel's direct messages chat. */
+  direct_messages_topic_id?: number;
   /** Unique identifier of the business connection to send the message through. */
   business_connection_id?: string;
   /** Unique identifier of the message effect to apply, for private chats. */
@@ -67,10 +102,14 @@ export type SendMessageRequestSchema = {
   protect_content?: boolean;
   /** Allow the paid broadcast of the message at a higher-than-default rate, for business accounts with enough Stars. */
   allow_paid_broadcast?: boolean;
+  /** Suggested-post parameters, for direct messages chats; passed through as-is. */
+  suggested_post_parameters?: Record<string, unknown>;
+  /** Ephemeral-message parameters; passed through as-is. */
+  ephemeral_message_parameters?: Record<string, unknown>;
   /** Describes the message being replied to. Replaces the deprecated `reply_to_message_id`. */
-  reply_parameters?: Record<string, unknown>;
+  reply_parameters?: ReplyParametersSchema;
   /** Inline keyboard, reply keyboard, or reply-removal/force-reply instruction. */
-  reply_markup?: Record<string, unknown>;
+  reply_markup?: ReplyMarkupSchema;
 };
 
 /** Request body validated before POST /sendMessage. */
@@ -78,19 +117,28 @@ export const SendMessageRequestSchemaObject: BaseGuardian<
   SendMessageRequestSchema
 > = Guardian.object({
   chat_id: chatIdGuard,
-  text: Guardian.string().minLength(1).maxLength(4096),
+  text: Guardian.string().minLength(1).maxLength(MESSAGE_TEXT_MAX_LENGTH),
   parse_mode: Guardian.enum(PARSE_MODES).optional(),
   entities: Guardian.array(Guardian.unknown()).optional(),
-  link_preview_options: Guardian.object().passthrough().optional(),
-  message_thread_id: Guardian.number().integer().optional(),
+  link_preview_options: LinkPreviewOptionsSchemaObject.optional(),
+  disable_web_page_preview: Guardian.boolean().strict().optional(),
+  message_thread_id: Guardian.number().integer().strict().optional(),
+  direct_messages_topic_id: Guardian.number().integer().strict().optional(),
   business_connection_id: Guardian.string().optional(),
   message_effect_id: Guardian.string().optional(),
-  disable_notification: Guardian.boolean().optional(),
-  protect_content: Guardian.boolean().optional(),
-  allow_paid_broadcast: Guardian.boolean().optional(),
-  reply_parameters: Guardian.object().passthrough().optional(),
-  reply_markup: Guardian.object().passthrough().optional(),
-}).describe({
+  disable_notification: Guardian.boolean().strict().optional(),
+  protect_content: Guardian.boolean().strict().optional(),
+  allow_paid_broadcast: Guardian.boolean().strict().optional(),
+  suggested_post_parameters: Guardian.object({}).passthrough().optional(),
+  ephemeral_message_parameters: Guardian.object({}).passthrough().optional(),
+  reply_parameters: ReplyParametersSchemaObject.optional(),
+  reply_markup: ReplyMarkupSchemaObject.optional(),
+}).strict().refine(
+  (request) =>
+    request.link_preview_options === undefined ||
+    request.disable_web_page_preview === undefined,
+  'set link_preview_options or the legacy disable_web_page_preview, not both',
+).describe({
   title: 'sendMessage request',
   description: 'Request body validated before POST /sendMessage.',
-});
+}) as unknown as BaseGuardian<SendMessageRequestSchema>;
