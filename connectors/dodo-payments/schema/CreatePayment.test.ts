@@ -107,6 +107,24 @@ describe('DodoPayments.schema.CreatePaymentRequest', () => {
     );
   });
 
+  it('rejects discount_code together with discount_codes', () => {
+    asserts.assertExists(
+      CreatePaymentRequestSchemaObject.safeParse({
+        ...base,
+        discount_code: 'A',
+        discount_codes: ['B'],
+      })[0],
+    );
+    asserts.assertEquals(
+      CreatePaymentRequestSchemaObject.safeParse({
+        ...base,
+        discount_code: null,
+        discount_codes: ['B'],
+      })[0],
+      null,
+    );
+  });
+
   it('rejects a missing billing country', () => {
     asserts.assertExists(
       CreatePaymentRequestSchemaObject.safeParse({ ...base, billing: {} })[0],

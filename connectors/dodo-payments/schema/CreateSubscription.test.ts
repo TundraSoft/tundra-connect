@@ -31,6 +31,24 @@ describe('DodoPayments.schema.CreateSubscriptionRequest', () => {
     asserts.assertEquals(body?.trial_period_days, 14);
   });
 
+  it('rejects discount_code together with discount_codes', () => {
+    asserts.assertExists(
+      CreateSubscriptionRequestSchemaObject.safeParse({
+        ...base,
+        discount_code: 'A',
+        discount_codes: ['B'],
+      })[0],
+    );
+    asserts.assertEquals(
+      CreateSubscriptionRequestSchemaObject.safeParse({
+        ...base,
+        discount_code: null,
+        discount_codes: ['B'],
+      })[0],
+      null,
+    );
+  });
+
   it('rejects a zero quantity — a subscription must cover at least one unit', () => {
     asserts.assertExists(
       CreateSubscriptionRequestSchemaObject.safeParse({

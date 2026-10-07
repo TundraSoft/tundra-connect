@@ -4,8 +4,9 @@ Typed [Dodo Payments](https://dodopayments.com) API client for Deno, Bun,
 Node.js and Cloudflare Workers. Dodo Payments is a merchant-of-record platform
 for digital products, and this client covers its checkout path end to end:
 initialize a payment, verify it actually completed, read a customer's history,
-create, change, pause or cancel subscriptions, manage the product catalogue,
-open the customer portal, and verify Standard Webhooks signatures.
+create, change, pause or cancel subscriptions, manage the product catalogue
+and discount codes, open the customer portal, and verify Standard Webhooks
+signatures.
 
 [![JSR](https://jsr.io/badges/@tundraconnect/dodo-payments)](https://jsr.io/@tundraconnect/dodo-payments)
 [![JSR Score](https://jsr.io/badges/@tundraconnect/dodo-payments/score)](https://jsr.io/@tundraconnect/dodo-payments)
@@ -18,13 +19,14 @@ behalf, which is why `billing.country` is required on every create call.
 This connect deliberately wraps the surface a checkout flow and its
 catalogue actually need, not the vendor's full ~147-endpoint API.
 
-| Area          | Methods                                                                                                                                                                                                                       |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Payments      | `createPayment`, `getPayment`, `isPaid`, `listPayments`, `listAllPayments`                                                                                                                                                    |
-| Subscriptions | `createSubscription`, `getSubscription`, `listSubscriptions`, `listAllSubscriptions`, `changePlan`, `cancelScheduledPlanChange`, `pauseSubscription`, `resumeSubscription`, `cancelSubscription`, `undoScheduledCancellation` |
-| Products      | `createProduct`, `getProduct`, `listProducts`, `listAllProducts`, `findProductsByMetadata`, `updateProduct`, `archiveProduct`, `unarchiveProduct`                                                                             |
-| Customers     | `getCustomer`, `createCustomerPortalSession`                                                                                                                                                                                  |
-| Webhooks      | `verifyWebhook`                                                                                                                                                                                                               |
+| Area          | Methods                                                                                                                                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Payments      | `createPayment`, `getPayment`, `isPaid`, `listPayments`, `listAllPayments`                                                                                                                                                           |
+| Subscriptions | `createSubscription`, `getSubscription`, `listSubscriptions`, `listAllSubscriptions`, `changePlan`, `cancelScheduledPlanChange`, `pauseSubscription`, `resumeSubscription`, `cancelSubscription`, `undoScheduledCancellation`        |
+| Products      | `createProduct`, `getProduct`, `listProducts`, `listAllProducts`, `findProductsByMetadata`, `updateProduct`, `archiveProduct`, `unarchiveProduct`                                                                                    |
+| Discounts     | `createDiscount`, `getDiscount`, `getDiscountByCode`, `listDiscounts`, `listAllDiscounts`, `updateDiscount`, `deleteDiscount`, `addDiscountCustomers`, `listDiscountCustomers`, `listAllDiscountCustomers`, `removeDiscountCustomer` |
+| Customers     | `getCustomer`, `createCustomerPortalSession`                                                                                                                                                                                         |
+| Webhooks      | `verifyWebhook`                                                                                                                                                                                                                      |
 
 Two things this connect is opinionated about, both because getting them
 wrong costs real money:
@@ -319,6 +321,39 @@ if (!existing) {
 To change a price without moving existing subscribers, create a new
 product and `archiveProduct` the old one; `unarchiveProduct` puts a product
 back on sale.
+
+### 7. Create discount codes
+
+A percentage `amount` is in basis points: `2000` is 20%. A flat code sets
+its deduction per currency in `currency_options`.
+
+```ts continued
+const welcome = await client.createDiscount({
+  type: 'percentage',
+  amount: 2000,
+  code: 'WELCOME20',
+  subscription_cycles: 1, // the first payment only
+  per_customer_usage_limit: 1,
+  customer_eligibility: 'first_time',
+  expires_at: '2026-12-31T23:59:59Z',
+  metadata: { partner_id: 'acme' },
+});
+
+await client.createSubscription({
+  product_id: 'prd_monthly',
+  quantity: 1,
+  customer: { email: 'buyer@example.com', name: 'Ada' },
+  billing: { country: 'US' },
+  discount_codes: [welcome.code],
+  payment_link: true,
+});
+```
+
+The request is checked before it is sent, and an unknown field is an error
+rather than silently dropped. See
+[Discounts](https://github.com/TundraSoft/tundra-connect/wiki/DodoPayments-API#discounts)
+for flat codes, updates, the allow list, and applying a code to an existing
+subscription.
 
 ## License
 

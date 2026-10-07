@@ -48,7 +48,12 @@ export type CreatePaymentRequestSchema = {
   payment_link?: boolean | null;
   return_url?: string | null;
   metadata?: Record<string, string>;
+  /**
+   * @deprecated Dodo's own deprecation: use `discount_codes`. Cannot be
+   * combined with it.
+   */
   discount_code?: string | null;
+  /** Up to 20 codes, applied in order. */
   discount_codes?: string[] | null;
   billing_currency?: string | null;
   customer_business_name?: string | null;
@@ -106,10 +111,15 @@ export const CreatePaymentRequestSchemaObject: BaseGuardian<
   show_saved_payment_methods: Guardian.boolean().optional(),
   short_link: Guardian.boolean().nullable().optional(),
   adaptive_currency_fees_inclusive: Guardian.boolean().nullable().optional(),
-}).describe({
+}).refine(
+  (req) =>
+    req.discount_code === undefined || req.discount_code === null ||
+    req.discount_codes === undefined || req.discount_codes === null,
+  'send `discount_codes` or the deprecated `discount_code`, not both',
+).describe({
   title: 'Create payment request',
   description: 'Body for POST /payments — initialize a one-time payment.',
-});
+}) as unknown as BaseGuardian<CreatePaymentRequestSchema>;
 
 /** Type definition for {@link CreatePaymentResponseSchemaObject}. */
 export type CreatePaymentResponseSchema = {

@@ -61,6 +61,30 @@ export {
 } from './CreateSubscription.ts';
 export { type CustomerSchema, CustomerSchemaObject } from './Customer.ts';
 export {
+  type CreateDiscountRequestSchema,
+  CreateDiscountRequestSchemaObject,
+  DISCOUNT_CUSTOMER_ELIGIBILITIES,
+  DISCOUNT_TYPES,
+  type DiscountCurrencyOptionRequestSchema,
+  DiscountCurrencyOptionRequestSchemaObject,
+  type DiscountCurrencyOptionSchema,
+  DiscountCurrencyOptionSchemaObject,
+  type DiscountCustomerEligibilitySchema,
+  DiscountCustomerEligibilitySchemaObject,
+  type DiscountCustomerListSchema,
+  DiscountCustomerListSchemaObject,
+  type DiscountCustomerSchema,
+  DiscountCustomerSchemaObject,
+  type DiscountListSchema,
+  DiscountListSchemaObject,
+  type DiscountSchema,
+  DiscountSchemaObject,
+  type DiscountTypeSchema,
+  DiscountTypeSchemaObject,
+  type UpdateDiscountRequestSchema,
+  UpdateDiscountRequestSchemaObject,
+} from './Discount.ts';
+export {
   type CustomerPortalSessionSchema,
   CustomerPortalSessionSchemaObject,
 } from './CustomerPortal.ts';
@@ -105,6 +129,8 @@ export {
   UsageBasedPriceSchemaObject,
 } from './Product.ts';
 export {
+  type SubscriptionDiscountSchema,
+  SubscriptionDiscountSchemaObject,
   type SubscriptionListSchema,
   SubscriptionListSchemaObject,
   type SubscriptionSchema,
