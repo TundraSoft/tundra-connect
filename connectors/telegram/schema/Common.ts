@@ -153,12 +153,110 @@ export const ChatSchemaObject: BaseGuardian<ChatSchema> = Guardian.object({
 });
 
 /**
+ * Documented `MessageEntity.type` values at the time of writing.
+ *
+ * {@link MessageEntitySchemaObject} deliberately accepts ANY string as
+ * `type`, not just these: entities arrive inside webhook updates, and a
+ * type Telegram adds later must not make a whole update fail to parse.
+ * Compare against this list when you need to know whether a type is one
+ * this package knows about.
+ */
+export const MESSAGE_ENTITY_TYPES = [
+  'mention',
+  'hashtag',
+  'cashtag',
+  'bot_command',
+  'url',
+  'email',
+  'phone_number',
+  'bold',
+  'italic',
+  'underline',
+  'strikethrough',
+  'spoiler',
+  'blockquote',
+  'expandable_blockquote',
+  'code',
+  'pre',
+  'text_link',
+  'text_mention',
+  'custom_emoji',
+  'date_time',
+] as const;
+
+/**
+ * Schema for a Telegram `MessageEntity` — one formatted or special span
+ * of a message's text (a `/command`, a URL, bold text, …).
+ *
+ * `offset` and `length` count UTF-16 code units, the same unit a
+ * JavaScript string's `.length` and `.slice()` use, so
+ * `text.slice(offset, offset + length)` extracts the entity's text
+ * directly.
+ *
+ * @example
+ * ```typescript
+ * import { MessageEntitySchemaObject } from '@tundraconnect/telegram/schemas';
+ *
+ * const [error, entity] = MessageEntitySchemaObject.safeParse({
+ *   type: 'bot_command',
+ *   offset: 0,
+ *   length: 6,
+ * });
+ * if (!error) {
+ *   console.log(entity.type);
+ * }
+ * ```
+ */
+export type MessageEntitySchema = {
+  /**
+   * Entity type: one of {@link MESSAGE_ENTITY_TYPES}, or a type added by
+   * Telegram after this package was published.
+   */
+  type: string;
+  /** Offset in UTF-16 code units to the start of the entity. */
+  offset: number;
+  /** Length of the entity in UTF-16 code units. */
+  length: number;
+  /** For `text_link` only: the URL opened when the text is tapped. */
+  url?: string;
+  /** For `text_mention` only: the mentioned user. */
+  user?: UserSchema;
+  /** For `pre` only: the programming language of the entity text. */
+  language?: string;
+  /** For `custom_emoji` only: the custom emoji's identifier. */
+  custom_emoji_id?: string;
+  /** For `date_time` only: the Unix time associated with the entity. */
+  unix_time?: number;
+  /** For `date_time` only: the date-time formatting string. */
+  date_time_format?: string;
+};
+
+/** One special entity in a message's text. */
+export const MessageEntitySchemaObject: BaseGuardian<MessageEntitySchema> =
+  Guardian.object({
+    type: Guardian.string().minLength(1),
+    offset: Guardian.number().integer().min(0),
+    length: Guardian.number().integer().min(0),
+    url: Guardian.string().optional(),
+    user: UserSchemaObject.optional(),
+    language: Guardian.string().optional(),
+    custom_emoji_id: Guardian.string().optional(),
+    unix_time: Guardian.number().integer().optional(),
+    date_time_format: Guardian.string().optional(),
+  }).passthrough().describe({
+    title: 'Message entity',
+    description: "One special entity in a message's text.",
+  });
+
+/**
  * Schema for a Telegram `Message` object.
  *
  * Telegram documents 100+ optional fields covering every message type
  * (photos, polls, service messages, …) — this models the subset a
- * text-message send flow (`sendMessage`'s response) actually uses;
- * `.passthrough()` keeps the rest reachable without a schema update.
+ * text-message bot uses: the sender, the chat, the text and its
+ * entities (where a `/command` is marked), and the group-migration
+ * service fields. `.passthrough()` keeps the rest reachable without a
+ * schema update.
  *
  * @example
  * ```typescript
@@ -176,7 +274,11 @@ export const ChatSchemaObject: BaseGuardian<ChatSchema> = Guardian.object({
  * ```
  */
 export type MessageSchema = {
-  /** Unique message identifier inside this chat. */
+  /**
+   * Unique message identifier inside this chat. Telegram documents `0` for
+   * ephemeral messages and for a message the server scheduled instead of
+   * sending immediately.
+   */
   message_id: number;
   /** Unix timestamp (seconds) the message was sent. */
   date: number;
@@ -184,19 +286,62 @@ export type MessageSchema = {
   chat: ChatSchema;
   /** Sender; absent for messages posted to channels anonymously. */
   from?: UserSchema;
+  /** Sender when the message was sent on behalf of a chat. */
+  sender_chat?: ChatSchema;
+  /** Forum topic (message thread) the message belongs to. */
+  message_thread_id?: number;
+  /** Unix timestamp (seconds) the message was last edited. */
+  edit_date?: number;
   /** Message text, for text messages. */
   text?: string;
+  /** Special entities in `text`: commands, URLs, formatting, … */
+  entities?: MessageEntitySchema[];
+  /**
+   * Service message: this group was migrated to a supergroup with this
+   * id. Send to the new id from now on.
+   */
+  migrate_to_chat_id?: number;
+  /** Service message: this supergroup was migrated from the group with this id. */
+  migrate_from_chat_id?: number;
 };
 
-/** A Telegram message, as returned by `sendMessage`. */
+/** A Telegram message, as returned by `sendMessage` or received in an update. */
 export const MessageSchemaObject: BaseGuardian<MessageSchema> = Guardian
   .object({
     message_id: Guardian.number().integer(),
     date: Guardian.number().integer(),
     chat: ChatSchemaObject,
     from: UserSchemaObject.optional(),
+    sender_chat: ChatSchemaObject.optional(),
+    message_thread_id: Guardian.number().integer().optional(),
+    edit_date: Guardian.number().integer().optional(),
     text: Guardian.string().optional(),
+    entities: Guardian.array(MessageEntitySchemaObject).optional(),
+    migrate_to_chat_id: Guardian.number().integer().optional(),
+    migrate_from_chat_id: Guardian.number().integer().optional(),
   }).passthrough().describe({
     title: 'Message',
-    description: 'A Telegram message, as returned by `sendMessage`.',
+    description:
+      'A Telegram message, as returned by `sendMessage` or received in an update.',
+  });
+
+/** Type of the bare `true` many Bot API methods return on success. */
+export type TrueResultSchema = true;
+
+/**
+ * The bare `true` that `setWebhook`, `deleteWebhook`, `setMyCommands`,
+ * `deleteMyCommands`, `answerCallbackQuery` and `deleteMessage` return as
+ * their `result`.
+ *
+ * @example
+ * ```typescript
+ * import { TrueResultSchemaObject } from '@tundraconnect/telegram/schemas';
+ *
+ * TrueResultSchemaObject.parse(true); // true
+ * ```
+ */
+export const TrueResultSchemaObject: BaseGuardian<TrueResultSchema> = Guardian
+  .literal(true).describe({
+    title: 'True result',
+    description: 'The bare `true` many Bot API methods return on success.',
   });

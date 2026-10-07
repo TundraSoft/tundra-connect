@@ -42,7 +42,7 @@ if you'd like to champion one.
 - **[Sentry](connectors/sentry/README.md)** — Typed Sentry API client: list projects; list, fetch and update issues; read issue events; and create releases.
 - **[Slack](connectors/slack/README.md)** — Typed Slack Web API client: post, update and delete messages, list channels and read history, look up users, and verify request signatures.
 - **[Stripe](connectors/stripe/README.md)** — Typed Stripe client: create and retrieve PaymentIntents and create customers, with idempotency keys and webhook signature verification.
-- **[Telegram](connectors/telegram/README.md)** — Typed Telegram Bot API client: send messages and fetch the bot's own identity.
+- **[Telegram](connectors/telegram/README.md)** — Typed Telegram Bot API client for webhook bots: send, edit and delete messages with inline keyboards, answer callback queries, manage the webhook and command menu, and verify and parse webhook updates and commands.
 - **[Twilio](connectors/twilio/README.md)** — Typed Twilio client: send SMS/MMS; place, list, update and delete voice calls; and verify webhook signatures.
 - **[UpstashRedis](connectors/upstash-redis/README.md)** — Typed Upstash Redis REST client: string, hash and list commands, TTLs, counters and pipelining over plain HTTPS — no TCP connection needed.
 - **[URLhaus](connectors/urlhaus/README.md)** — Typed URLhaus (abuse.ch) client: look up URLs, hosts and payloads in the malware-URL database, with not-listed results instead of errors and a hard per-call deadline.

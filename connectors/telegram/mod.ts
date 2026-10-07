@@ -3,8 +3,10 @@
  * API](https://core.telegram.org/bots/api) — the simple bot HTTPS API only, not
  * Telegram's much heavier MTProto client protocol.
  *
- * Typed Telegram Bot API client: send messages and fetch the bot's own
- * identity.
+ * Typed Telegram Bot API client for webhook bots: send, edit and delete
+ * messages with inline keyboards, answer callback queries, manage the
+ * webhook and the command menu, verify webhook requests and parse
+ * updates and commands.
  *
  * Subpaths: `./schemas` (Guardian schemas and inferred types) and `./errors`
  * (`TelegramError` and its code registry).
@@ -30,7 +32,16 @@
  */
 
 // Export main client class
-export { Telegram, type TelegramOptions } from './Telegram.ts';
+export {
+  type CommandSource,
+  type ParsedCommand,
+  Telegram,
+  type TelegramOptions,
+  type TelegramWebhookHeaders,
+  type UpdateKind,
+  type VerifyWebhookRequestOptions,
+  WEBHOOK_SECRET_HEADER,
+} from './Telegram.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

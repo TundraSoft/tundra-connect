@@ -4,7 +4,9 @@ import {
   botTokenGuard,
   chatIdGuard,
   ChatSchemaObject,
+  MessageEntitySchemaObject,
   MessageSchemaObject,
+  TrueResultSchemaObject,
 } from './Common.ts';
 
 describe('Telegram.schema.Common', () => {
@@ -194,6 +196,50 @@ describe('Telegram.schema.Common', () => {
       asserts.assertExists(
         MessageSchemaObject.safeParse({ message_id: 1 })[0],
       );
+    });
+  });
+  describe('MessageEntitySchemaObject', () => {
+    it('accepts a bot_command entity', () => {
+      const [error, entity] = MessageEntitySchemaObject.safeParse({
+        type: 'bot_command',
+        offset: 0,
+        length: 7,
+      });
+      asserts.assertEquals(error, null);
+      asserts.assertEquals(entity?.length, 7);
+    });
+
+    it('accepts an entity type added after this package was published', () => {
+      asserts.assertEquals(
+        MessageEntitySchemaObject.safeParse({
+          type: 'some_future_type',
+          offset: 1,
+          length: 2,
+        })[0],
+        null,
+      );
+    });
+
+    it('rejects a negative offset or a missing length', () => {
+      asserts.assertExists(
+        MessageEntitySchemaObject.safeParse({
+          type: 'bold',
+          offset: -1,
+          length: 1,
+        })[0],
+      );
+      asserts.assertExists(
+        MessageEntitySchemaObject.safeParse({ type: 'bold', offset: 0 })[0],
+      );
+    });
+  });
+
+  describe('TrueResultSchemaObject', () => {
+    it('accepts only the literal true', () => {
+      asserts.assertEquals(TrueResultSchemaObject.safeParse(true)[0], null);
+      asserts.assertExists(TrueResultSchemaObject.safeParse(false)[0]);
+      asserts.assertExists(TrueResultSchemaObject.safeParse('true')[0]);
+      asserts.assertExists(TrueResultSchemaObject.safeParse(1)[0]);
     });
   });
 });

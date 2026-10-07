@@ -18,7 +18,15 @@
  * @module
  */
 
+export * from './AnswerCallbackQuery.ts';
+export * from './BotCommand.ts';
 export * from './Common.ts';
+export * from './DeleteMessage.ts';
+export * from './EditMessage.ts';
 export * from './Error.ts';
+export * from './Keyboard.ts';
+export * from './MessageOptions.ts';
 export * from './SendMessage.ts';
+export * from './Update.ts';
 export * from './User.ts';
+export * from './Webhook.ts';
