@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/telegram",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Typed Telegram Bot API client for webhook bots: send, edit and delete messages with inline keyboards, answer callback queries, manage the webhook and command menu, and verify and parse webhook updates and commands.",
   "keywords": [

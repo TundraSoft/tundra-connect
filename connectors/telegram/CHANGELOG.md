@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/TundraSoft/tundra-connect/compare/telegram-v0.2.0...telegram-v0.3.0) (2026-10-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **telegram:** sendMessage's request schema is now strict. An unknown field is rejected instead of silently dropped, numbers and booleans are no longer coerced from strings, and reply_markup, reply_parameters and link_preview_options are typed objects instead of Record<string, unknown>.
+
+### Features
+
+* **telegram:** webhook bots — commands, inline keyboards, edits and update parsing ([9ed23d5](https://github.com/TundraSoft/tundra-connect/commit/9ed23d57ee6c16405d05618edb44eaea610eb826))
+
 ## [0.2.0](https://github.com/TundraSoft/tundra-connect/compare/telegram-v0.1.1...telegram-v0.2.0) (2026-10-04)
 
 
