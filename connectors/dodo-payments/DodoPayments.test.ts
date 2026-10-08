@@ -2150,5 +2150,74 @@ describe({
         asserts.assertEquals(full.refund_id, refund.refund_id);
       }
     });
+
+    it('round-trips discount codes, and pages without skipping one', async () => {
+      // Self-cleaning: both codes are deleted in `finally`, even when an
+      // assertion fails. The checks pin behaviour Dodo's docs get wrong.
+      const c = new DodoPayments({
+        auth: { type: 'BEARER', token: credentials.apiKey!, prefix: 'Bearer' },
+      });
+      const tag = Date.now().toString(36).toUpperCase();
+      const created: string[] = [];
+      try {
+        const pct = await c.createDiscount({
+          type: 'percentage',
+          amount: 1500,
+          code: `TCP${tag}`,
+          subscription_cycles: 1,
+          metadata: { suite: 'tundra-connect-live' },
+        });
+        created.push(pct.discount_id);
+        // A flat code's deduction is max_amount_possible; `amount` is
+        // stored but does not set it.
+        const flat = await c.createDiscount({
+          type: 'flat',
+          amount: 1,
+          code: `TCF${tag}`,
+          currency_options: [{ currency: 'USD', max_amount_possible: 250 }],
+        });
+        created.push(flat.discount_id);
+        asserts.assertEquals(
+          flat.currency_options?.[0]?.max_amount_possible,
+          250,
+        );
+        // A lone currency option becomes the default.
+        asserts.assertEquals(flat.currency_options?.[0]?.is_default, true);
+
+        asserts.assertEquals(
+          (await c.getDiscount(pct.discount_id)).code,
+          pct.code,
+        );
+        asserts.assertEquals(
+          (await c.getDiscountByCode(pct.code.toLowerCase())).discount_id,
+          pct.discount_id,
+        );
+        const updated = await c.updateDiscount(pct.discount_id, {
+          usage_limit: 10,
+        });
+        asserts.assertEquals(updated.usage_limit, 10);
+
+        // Pages are numbered from 0: walking one code per page must find
+        // exactly what a single large page holds (the old omitted → 2
+        // stepping skipped page 1).
+        const onePage = (await c.listDiscounts({ pageSize: 100 }))
+          .map((d) => d.discount_id).sort();
+        if (onePage.length < 100) {
+          const walked = (await Array.fromAsync(
+            c.listAllDiscounts({ pageSize: 1 }),
+          )).map((d) => d.discount_id).sort();
+          asserts.assertEquals(walked, onePage);
+        }
+      } finally {
+        for (const id of created) await c.deleteDiscount(id);
+      }
+      for (const id of created) {
+        const err = await asserts.assertRejects(
+          () => c.getDiscount(id),
+          DodoPaymentsError,
+        );
+        asserts.assertEquals(err.code, 'NOT_FOUND');
+      }
+    });
   },
 });

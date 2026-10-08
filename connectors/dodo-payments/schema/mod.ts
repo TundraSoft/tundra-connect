@@ -19,6 +19,7 @@
  */
 
 export {
+  BillingAddressRequestSchemaObject,
   type BillingAddressSchema,
   BillingAddressSchemaObject,
   type CustomerDetailsSchema,

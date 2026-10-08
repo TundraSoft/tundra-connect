@@ -60,6 +60,46 @@ describe('DodoPayments.schema.ProductCartItem', () => {
 });
 
 describe('DodoPayments.schema.CreatePaymentRequest', () => {
+  it('rejects an unknown field instead of silently dropping it', () => {
+    const [error] = CreatePaymentRequestSchemaObject.safeParse({
+      ...base,
+      discountCodes: ['SAVE20'],
+    });
+    asserts.assertStringIncludes(error!.message, 'discountCodes');
+  });
+
+  it('rejects unknown fields in the cart, customer and billing', () => {
+    for (
+      const body of [
+        {
+          ...base,
+          product_cart: [{ product_id: 'prd_1', quantity: 1, qty: 2 }],
+        },
+        { ...base, customer: { email: 'a@example.com', fullName: 'Ada' } },
+        { ...base, billing: { country: 'US', zip_code: '10001' } },
+      ]
+    ) {
+      asserts.assertExists(
+        CreatePaymentRequestSchemaObject.safeParse(body)[0],
+        JSON.stringify(body),
+      );
+    }
+  });
+
+  it('rejects a number or boolean sent as a string', () => {
+    for (
+      const body of [
+        { ...base, product_cart: [{ product_id: 'prd_1', quantity: '1' }] },
+        { ...base, payment_link: 'true' },
+      ]
+    ) {
+      asserts.assertExists(
+        CreatePaymentRequestSchemaObject.safeParse(body)[0],
+        JSON.stringify(body),
+      );
+    }
+  });
+
   it('accepts a minimal request', () => {
     asserts.assertEquals(
       CreatePaymentRequestSchemaObject.safeParse(base)[0],

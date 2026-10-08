@@ -13,6 +13,29 @@ const base = {
 };
 
 describe('DodoPayments.schema.CreateSubscriptionRequest', () => {
+  it('rejects an unknown field instead of silently dropping it', () => {
+    const [error] = CreateSubscriptionRequestSchemaObject.safeParse({
+      ...base,
+      discountCodes: ['SAVE20'],
+    });
+    asserts.assertStringIncludes(error!.message, 'discountCodes');
+  });
+
+  it('rejects a number or boolean sent as a string', () => {
+    for (
+      const body of [
+        { ...base, quantity: '1' },
+        { ...base, trial_period_days: '14' },
+        { ...base, payment_link: 'true' },
+      ]
+    ) {
+      asserts.assertExists(
+        CreateSubscriptionRequestSchemaObject.safeParse(body)[0],
+        JSON.stringify(body),
+      );
+    }
+  });
+
   it('accepts a minimal request', () => {
     asserts.assertEquals(
       CreateSubscriptionRequestSchemaObject.safeParse(base)[0],

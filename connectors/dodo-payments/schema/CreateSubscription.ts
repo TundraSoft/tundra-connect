@@ -1,6 +1,6 @@
 import { type BaseGuardian, Guardian } from '@guardian';
 import {
-  BillingAddressSchemaObject,
+  BillingAddressRequestSchemaObject,
   CustomerDetailsSchemaObject,
   CustomerRequestSchemaObject,
 } from './Common.ts';
@@ -54,13 +54,16 @@ export const CreateSubscriptionRequestSchemaObject: BaseGuardian<
   CreateSubscriptionRequestSchema
 > = Guardian.object({
   product_id: Guardian.string().notEmpty('`product_id` is required'),
-  quantity: Guardian.number().integer().min(1, '`quantity` must be at least 1'),
+  quantity: Guardian.number().strict().integer().min(
+    1,
+    '`quantity` must be at least 1',
+  ),
   customer: CustomerRequestSchemaObject,
-  billing: BillingAddressSchemaObject,
-  payment_link: Guardian.boolean().nullable().optional(),
+  billing: BillingAddressRequestSchemaObject,
+  payment_link: Guardian.boolean().strict().nullable().optional(),
   return_url: Guardian.string().nullable().optional(),
   metadata: Guardian.record(Guardian.string()).optional(),
-  trial_period_days: Guardian.number().integer().nullable().optional(),
+  trial_period_days: Guardian.number().strict().integer().nullable().optional(),
   discount_code: Guardian.string().nullable().optional(),
   discount_codes: Guardian.array(Guardian.string()).maxLength(20).nullable()
     .optional(),
@@ -70,11 +73,11 @@ export const CreateSubscriptionRequestSchemaObject: BaseGuardian<
   payment_method_id: Guardian.string().nullable().optional(),
   allowed_payment_method_types: Guardian.array(Guardian.string()).nullable()
     .optional(),
-  redirect_immediately: Guardian.boolean().optional(),
-  require_phone_number: Guardian.boolean().optional(),
-  show_saved_payment_methods: Guardian.boolean().optional(),
-  short_link: Guardian.boolean().nullable().optional(),
-}).refine(
+  redirect_immediately: Guardian.boolean().strict().optional(),
+  require_phone_number: Guardian.boolean().strict().optional(),
+  show_saved_payment_methods: Guardian.boolean().strict().optional(),
+  short_link: Guardian.boolean().strict().nullable().optional(),
+}).strict().refine(
   (req) =>
     req.discount_code === undefined || req.discount_code === null ||
     req.discount_codes === undefined || req.discount_codes === null,

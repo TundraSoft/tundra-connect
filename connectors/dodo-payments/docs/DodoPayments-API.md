@@ -37,6 +37,13 @@ environment-specific — a test key will not work against the live host.
 | `vendor` | `string`           | Always `'DodoPayments'`. |
 | `mode`   | `'test' \| 'live'` | The environment in use.  |
 
+## Validation
+
+Every request body is checked before it is sent and fails with
+`REQUEST_VALIDATION_ERROR`. Unknown fields are **rejected**, not dropped,
+and numbers and booleans must not arrive as strings. See
+[Schemas](DodoPayments-Schemas.md#request-schemas-are-strict).
+
 ## Amounts
 
 Every amount is an integer in the currency's **smallest unit** — cents for

@@ -1,6 +1,6 @@
 import { type BaseGuardian, Guardian } from '@guardian';
 import {
-  BillingAddressSchemaObject,
+  BillingAddressRequestSchemaObject,
   CustomerDetailsSchemaObject,
   CustomerRequestSchemaObject,
 } from './Common.ts';
@@ -29,12 +29,12 @@ export type ProductCartItemSchema = {
 export const ProductCartItemSchemaObject: BaseGuardian<ProductCartItemSchema> =
   Guardian.object({
     product_id: Guardian.string().notEmpty('`product_id` is required'),
-    quantity: Guardian.number().integer().min(
+    quantity: Guardian.number().strict().integer().min(
       0,
       '`quantity` cannot be negative',
     ),
-    amount: Guardian.number().integer().nullable().optional(),
-  }).describe({
+    amount: Guardian.number().strict().integer().nullable().optional(),
+  }).strict().describe({
     title: 'Product cart item',
     description: 'One product line of a one-time payment.',
   });
@@ -92,8 +92,8 @@ export const CreatePaymentRequestSchemaObject: BaseGuardian<
   product_cart: Guardian.array(ProductCartItemSchemaObject)
     .nonEmpty('`product_cart` must contain at least one product'),
   customer: CustomerRequestSchemaObject,
-  billing: BillingAddressSchemaObject,
-  payment_link: Guardian.boolean().nullable().optional(),
+  billing: BillingAddressRequestSchemaObject,
+  payment_link: Guardian.boolean().strict().nullable().optional(),
   return_url: Guardian.string().nullable().optional(),
   metadata: Guardian.record(Guardian.string()).optional(),
   discount_code: Guardian.string().nullable().optional(),
@@ -102,16 +102,17 @@ export const CreatePaymentRequestSchemaObject: BaseGuardian<
   billing_currency: Guardian.string().nullable().optional(),
   customer_business_name: Guardian.string().nullable().optional(),
   tax_id: Guardian.string().nullable().optional(),
-  force_3ds: Guardian.boolean().nullable().optional(),
+  force_3ds: Guardian.boolean().strict().nullable().optional(),
   payment_method_id: Guardian.string().nullable().optional(),
   allowed_payment_method_types: Guardian.array(Guardian.string()).nullable()
     .optional(),
-  redirect_immediately: Guardian.boolean().optional(),
-  require_phone_number: Guardian.boolean().optional(),
-  show_saved_payment_methods: Guardian.boolean().optional(),
-  short_link: Guardian.boolean().nullable().optional(),
-  adaptive_currency_fees_inclusive: Guardian.boolean().nullable().optional(),
-}).refine(
+  redirect_immediately: Guardian.boolean().strict().optional(),
+  require_phone_number: Guardian.boolean().strict().optional(),
+  show_saved_payment_methods: Guardian.boolean().strict().optional(),
+  short_link: Guardian.boolean().strict().nullable().optional(),
+  adaptive_currency_fees_inclusive: Guardian.boolean().strict().nullable()
+    .optional(),
+}).strict().refine(
   (req) =>
     req.discount_code === undefined || req.discount_code === null ||
     req.discount_codes === undefined || req.discount_codes === null,
