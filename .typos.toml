@@ -4,6 +4,12 @@
 [default]
 # Extend the default identifier list with more technical terms
 check-filename = true
+# Vendor id prefixes that read as typos. Matched as ids only, so the same
+# letters as a word (`adn` for "and") are still caught.
+extend-ignore-re = [
+  # Dodo Payments addon ids: adn_NX1zdqW4Hbivsqz8vI9dc
+  "\\badn_[A-Za-z0-9]+",
+]
 
 [default.extend-words]
 # Technical terms and proper nouns

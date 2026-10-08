@@ -18,6 +18,12 @@ import {
 | `PaymentSchemaObject`                       | `GET /payments/{id}` record.                 |
 | `PaymentListItemSchemaObject`               | One entry of `GET /payments`.                |
 | `PaymentListSchemaObject`                   | A `GET /payments` page.                      |
+| `CreateRefundRequestSchemaObject`           | `POST /refunds` body.                        |
+| `RefundItemRequestSchemaObject`             | One `items` entry of a refund request.       |
+| `RefundSchemaObject`                        | A refund record.                             |
+| `RefundListItemSchemaObject`                | One entry of `GET /refunds`.                 |
+| `RefundListSchemaObject`                    | A `GET /refunds` page.                       |
+| `RefundStatusSchemaObject`                  | Refund status enum.                          |
 | `CreateSubscriptionRequestSchemaObject`     | `POST /subscriptions` body.                  |
 | `CreateSubscriptionResponseSchemaObject`    | `POST /subscriptions` result.                |
 | `SubscriptionSchemaObject`                  | A subscription record.                       |
@@ -62,7 +68,8 @@ import {
 Constants: `INTENT_STATUSES`, `SUBSCRIPTION_STATUSES`, `TIME_INTERVALS`,
 `TAX_CATEGORIES`, `PRORATION_BILLING_MODES`, `PLAN_CHANGE_EFFECTIVE_AT`,
 `PLAN_CHANGE_ON_PAYMENT_FAILURE`, `DISCOUNT_TYPES`,
-`DISCOUNT_CUSTOMER_ELIGIBILITIES`.
+`DISCOUNT_CUSTOMER_ELIGIBILITIES`, `REFUND_STATUSES`,
+`REFUND_NETWORK_REFERENCE_TYPES`.
 
 ## Prices
 
@@ -115,6 +122,18 @@ still reads. Discount metadata has the same shape as product metadata.
 `SubscriptionDiscountSchemaObject` reads both shapes Dodo uses for a
 subscription's `discounts`: the full one from `getSubscription` and the
 short one from `listSubscriptions`. Only `discount_id` is required.
+
+## Refunds
+
+`CreateRefundRequestSchemaObject` is **strict**, like the discount
+requests: an unknown field is an error, and numbers and booleans are not
+coerced. An `items` list must name at least one line, each once, with a
+positive integer `amount` when it has one.
+
+On a refund record, `status` is the four-value `RefundStatusSchema`;
+`network_reference_type` is typed as `string`, so a new kind still reads.
+`metadata` is optional on the record although Dodo documents it as always
+present, because refunds only gained metadata in November 2025.
 
 ## Product metadata
 

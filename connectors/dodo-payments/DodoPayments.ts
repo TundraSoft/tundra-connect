@@ -29,6 +29,8 @@ import {
   CreatePaymentResponseSchemaObject,
   type CreateProductRequestSchema,
   CreateProductRequestSchemaObject,
+  type CreateRefundRequestSchema,
+  CreateRefundRequestSchemaObject,
   type CreateSubscriptionRequestSchema,
   CreateSubscriptionRequestSchemaObject,
   type CreateSubscriptionResponseSchema,
@@ -53,6 +55,11 @@ import {
   type ProductMetadataSchema,
   type ProductSchema,
   ProductSchemaObject,
+  type RefundListItemSchema,
+  RefundListSchemaObject,
+  type RefundSchema,
+  RefundSchemaObject,
+  type RefundStatusSchema,
   SubscriptionListSchemaObject,
   type SubscriptionSchema,
   SubscriptionSchemaObject,
@@ -127,6 +134,27 @@ export type ListPaymentsOptions = {
   createdAtLte?: string;
   /** 1-based page number. */
   pageNumber?: number;
+  pageSize?: number;
+};
+
+/**
+ * Filters for {@link DodoPayments.listRefunds}. Dodo offers no filter by
+ * payment: a payment's own refunds are on {@link DodoPayments.getPayment}'s
+ * record, under `refunds`.
+ */
+export type ListRefundsOptions = {
+  /** Only refunds of this customer's payments. */
+  customerId?: string;
+  /** Only refunds of this subscription's payments. */
+  subscriptionId?: string;
+  status?: RefundStatusSchema;
+  /** ISO-8601 lower bound on `created_at`. */
+  createdAtGte?: string;
+  /** ISO-8601 upper bound on `created_at`. */
+  createdAtLte?: string;
+  /** Page number, as Dodo counts them (from 0). */
+  pageNumber?: number;
+  /** Dodo's default is 10, its maximum 100. */
   pageSize?: number;
 };
 
@@ -257,8 +285,8 @@ export type VerifyWebhookOptions = {
  * Dodo Payments client — the surface a checkout flow and its catalogue
  * need: initialize a payment, read its status, verify it, list a
  * customer's history; create, change, pause or cancel a subscription; open
- * the customer portal; create, find, update and archive products; and
- * manage discount codes.
+ * the customer portal; refund a payment in full or in part; create, find,
+ * update and archive products; and manage discount codes.
  *
  * Dodo is a **merchant of record**: it takes on tax and compliance, which
  * is why `billing.country` is required on every create call.
@@ -504,6 +532,174 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     yield* this.__paginate(
       (pageNumber, pageSize) =>
         this.listPayments({ ...filters, pageNumber, pageSize }),
+      filters.pageSize,
+      maxPages,
+    );
+  }
+
+  // ── Refunds ─────────────────────────────────────────────────────────────
+
+  /**
+   * Refund a payment, in full or in part — `POST /refunds`.
+   *
+   * Without `items` the refund is FULL: the whole payment goes back. For a
+   * PARTIAL refund, list the payment's lines to refund by `item_id` (the
+   * product id of a line in its cart, or an add-on id), each with the
+   * `amount` to give back in the currency's smallest unit — tax included
+   * unless `tax_inclusive: false` — or without one to refund that line
+   * whole. A payment may be refunded in part several times; together the
+   * refunds may not exceed what was paid.
+   *
+   * The refund comes back usually `pending`. Only `succeeded` means the
+   * money went back: read it again with {@link getRefund}, or wait for the
+   * `refund.succeeded` / `refund.failed` webhook. Dodo pays a refund from
+   * the business's balance, refuses one past its refund window (30 days by
+   * default), and allows only one in flight per payment.
+   *
+   * This call is not idempotent: a retry after a timeout may refund twice.
+   * Dodo refuses a second refund while the first is `pending` or `review`
+   * (vendor code `EXISTING_REFUND_REQUEST_PROCESSING`), but a timed-out
+   * request should be followed by a read — the payment's `refunds`, or
+   * {@link listRefunds} — before it is sent again.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` when `request`
+   * fails local validation, including an unknown field; `INVALID_REQUEST`
+   * when Dodo refuses the refund (the reason is the `vendorCode`, e.g.
+   * `REFUND_WINDOW_EXPIRED`, `PAYMENT_NOT_SUCCEEDED`,
+   * `LINE_ITEM_REFUND_AMOUNT_TOO_HIGH`); `NOT_FOUND` for an unknown
+   * payment; plus the usual vendor codes and `RESPONSE_ERROR`.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * // A full refund.
+   * const refund = await client.createRefund({
+   *   payment_id: 'pay_1',
+   *   reason: 'Charged twice',
+   * });
+   *
+   * // A partial refund: $5.00 of one product line, tax included.
+   * await client.createRefund({
+   *   payment_id: 'pay_2',
+   *   items: [{ item_id: 'pdt_1', amount: 500 }],
+   *   metadata: { ticket: 'T-42' },
+   * });
+   * ```
+   */
+  public async createRefund(
+    request: CreateRefundRequestSchema,
+  ): Promise<RefundSchema> {
+    const payload = DodoPayments.__validate(
+      CreateRefundRequestSchemaObject,
+      request,
+    );
+    return await this.__requestAndValidate(
+      {
+        path: '/refunds',
+        method: 'POST',
+        contentType: 'JSON',
+        payload: payload as unknown as Record<string, unknown>,
+      },
+      RefundSchemaObject,
+    );
+  }
+
+  /**
+   * Fetch one refund — `GET /refunds/{refund_id}`. Use it to follow a
+   * `pending` refund to `succeeded` or `failed`, and to read the
+   * `network_reference` the customer can quote to their bank, which
+   * arrives days after the refund succeeds and no webhook announces.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `refundId`; `NOT_FOUND` for an unknown refund; plus the usual vendor
+   * and validation codes.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const refund = await client.getRefund('ref_1');
+   * if (refund.status === 'succeeded') console.log(refund.amount, refund.currency);
+   * ```
+   */
+  public async getRefund(refundId: string): Promise<RefundSchema> {
+    DodoPayments.__requireId(refundId, 'refundId');
+    return await this.__requestAndValidate(
+      {
+        path: `/refunds/${encodeURIComponent(refundId)}`,
+        method: 'GET',
+      },
+      RefundSchemaObject,
+    );
+  }
+
+  /**
+   * List refunds — `GET /refunds`.
+   *
+   * There is no filter by payment: a payment's refunds are on
+   * {@link getPayment}'s record, under `refunds` (each entry parses with
+   * `RefundListItemSchemaObject`).
+   *
+   * @returns One page of refund summaries. These are LIGHTER than
+   * {@link getRefund}'s record: no brand, customer or metadata.
+   *
+   * @throws {DodoPaymentsError} `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE` or `UNKNOWN_ERROR` from the vendor; `RESPONSE_ERROR` when the page fails validation.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const pending = await client.listRefunds({ status: 'pending', pageSize: 50 });
+   * ```
+   */
+  public async listRefunds(
+    options: ListRefundsOptions = {},
+  ): Promise<RefundListItemSchema[]> {
+    const query: Record<string, string> = {};
+    if (options.customerId) query.customer_id = options.customerId;
+    if (options.subscriptionId) query.subscription_id = options.subscriptionId;
+    if (options.status) query.status = options.status;
+    if (options.createdAtGte) query.created_at_gte = options.createdAtGte;
+    if (options.createdAtLte) query.created_at_lte = options.createdAtLte;
+    if (options.pageNumber !== undefined) {
+      query.page_number = String(options.pageNumber);
+    }
+    if (options.pageSize !== undefined) {
+      query.page_size = String(options.pageSize);
+    }
+    const page = await this.__requestAndValidate(
+      { path: '/refunds', method: 'GET', query },
+      RefundListSchemaObject,
+    );
+    return page.items;
+  }
+
+  /**
+   * Walk every refund matching `options`, fetching each page in turn — the
+   * auto-paging counterpart to {@link listRefunds}, with the same paging
+   * and termination rules as {@link listAllPayments}.
+   *
+   * @throws {DodoPaymentsError} The same codes as {@link listRefunds},
+   * raised from whichever page fails.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * for await (const refund of client.listAllRefunds({ customerId: 'cus_1' })) {
+   *   console.log(refund.refund_id, refund.status, refund.amount);
+   * }
+   * ```
+   */
+  public async *listAllRefunds(
+    options: Omit<ListRefundsOptions, 'pageNumber'> & { maxPages?: number } =
+      {},
+  ): AsyncGenerator<RefundListItemSchema, void, unknown> {
+    const { maxPages = DEFAULT_MAX_PAGES, ...filters } = options;
+    yield* this.__paginate(
+      (pageNumber, pageSize) =>
+        this.listRefunds({ ...filters, pageNumber, pageSize }),
       filters.pageSize,
       maxPages,
     );

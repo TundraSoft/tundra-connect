@@ -141,6 +141,100 @@ would spin forever against a rate-limited, money-handling API.
 > Prefer `listPayments` when one page is enough — the iterator issues one
 > request per page.
 
+## Refunds
+
+A refund gives a succeeded payment's money back, whole or in part, to the
+payment method it came from.
+
+### `createRefund(request)`
+
+`POST /refunds`. Required: `payment_id`.
+
+```ts
+// A full refund.
+const refund = await client.createRefund({
+  payment_id: 'pay_1',
+  reason: 'Charged twice',
+});
+
+// A partial refund: $5.00 of one product line, and one add-on in full.
+await client.createRefund({
+  payment_id: 'pay_2',
+  items: [
+    { item_id: 'prd_1', amount: 500 },
+    { item_id: 'adn_1' },
+  ],
+  metadata: { ticket: 'T-42' },
+});
+```
+
+| Field                   | Meaning                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| `payment_id`            | The payment to refund. It must have succeeded.                                         |
+| `items`                 | Omitted: a FULL refund. Listed: a PARTIAL refund of those lines only.                  |
+| `items[].item_id`       | The line: the `product_id` of a product in the payment's cart, or an add-on id.        |
+| `items[].amount`        | Minor units to give back on that line. Omitted or `null`: the whole line.              |
+| `items[].tax_inclusive` | Whether `amount` includes tax. Dodo's default is `true`.                               |
+| `reason`                | Recorded with the refund and shown on the customer's receipt. At most 3000 characters. |
+| `metadata`              | String, number or boolean values, the same shape as product metadata.                  |
+
+The request is checked locally before it is sent: unknown fields are
+**rejected** (a misspelt `item` dropped silently would turn a partial
+refund into a full one), amounts must be positive integers, `items` lists
+at least one line and each line once.
+
+Dodo's own rules, which it checks and this client does not:
+
+- the payment succeeded, and is within the refund window (30 days by
+  default; vendor code `REFUND_WINDOW_EXPIRED`);
+- together with earlier refunds, no more than was paid
+  (`REFUND_AMOUNT_EXCEEDS_PAID_AMOUNT`, `LINE_ITEM_REFUND_AMOUNT_TOO_HIGH`);
+- only one refund in flight per payment: one `pending` or `review` must
+  finish first (`EXISTING_REFUND_REQUEST_PROCESSING`);
+- the business's Dodo balance covers it. Dodo pays refunds from the
+  balance, not from the payment, so a refund right after a payout can be
+  refused.
+
+These fail with `INVALID_REQUEST`, the reason in `vendorCode`. An unknown
+payment is `NOT_FOUND` (checked in test mode on 2026-10-08).
+
+The refund usually comes back `pending`. **Only `succeeded` means the money
+went back**: read it again with `getRefund`, or act on the
+`refund.succeeded` / `refund.failed` webhook. `is_partial` says whether it
+gave back part of the payment.
+
+> `createRefund` is not idempotent. After a timeout, read the payment's
+> `refunds` (or `listRefunds`) before sending it again.
+
+### `getRefund(refundId)`
+
+`GET /refunds/{refund_id}` — the full record: status, amount, currency,
+reason, `is_partial`, the customer, metadata, and `network_reference`. The
+network reference (with its kind in `network_reference_type`: ARN, STAN,
+RRN or `other`) is what the customer quotes to their bank; it arrives 1 to
+3 business days after the refund succeeds, and no webhook announces it.
+
+### `listRefunds(options?)` / `listAllRefunds(options?)`
+
+`GET /refunds` — refund summaries, lighter than `getRefund`'s record: no
+brand, customer or metadata.
+
+| Option                          | Query param                         |
+| ------------------------------- | ----------------------------------- |
+| `customerId`                    | `customer_id`                       |
+| `subscriptionId`                | `subscription_id`                   |
+| `status`                        | `status`                            |
+| `createdAtGte` / `createdAtLte` | `created_at_gte` / `created_at_lte` |
+| `pageNumber` / `pageSize`       | `page_number` / `page_size`         |
+
+Dodo has **no filter by payment**. A payment's refunds are on its own
+record: `getPayment(id).refunds`, each entry the list item's shape (parse
+it with `RefundListItemSchemaObject`), with `refund_status` (`'partial'` or
+`'full'`, absent while nothing succeeded) beside it. Both pass through
+untyped on `PaymentSchema`.
+
+`listAllRefunds` pages the same way as `listAllPayments`.
+
 ## Customers
 
 ### `getCustomer(customerId)`

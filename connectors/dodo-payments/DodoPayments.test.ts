@@ -1755,6 +1755,206 @@ describe('DodoPayments — discount allow list', () => {
   });
 });
 
+const REFUND = {
+  refund_id: 'ref_1',
+  payment_id: 'pay_1',
+  business_id: 'biz_1',
+  brand_id: 'brd_1',
+  status: 'pending',
+  created_at: '2026-01-01T00:00:00Z',
+  is_partial: true,
+  amount: 500,
+  currency: 'USD',
+  reason: 'Charged twice',
+  customer: CUSTOMER,
+  metadata: { ticket: 'T-42' },
+};
+
+const REFUND_ITEM = {
+  refund_id: 'ref_1',
+  payment_id: 'pay_1',
+  business_id: 'biz_1',
+  status: 'succeeded',
+  created_at: '2026-01-01T00:00:00Z',
+  is_partial: false,
+  amount: 1999,
+  currency: 'USD',
+};
+
+describe('DodoPayments — refunds', () => {
+  it('POSTs a full refund to /refunds with no items', async () => {
+    const c = client({ ...REFUND, is_partial: false, amount: 1999 });
+    const refund = await c.createRefund({
+      payment_id: 'pay_1',
+      reason: 'Charged twice',
+    });
+    asserts.assertEquals(c.request!.method, 'POST');
+    asserts.assertEquals(new URL(c.request!.url).pathname, '/refunds');
+    asserts.assertEquals(JSON.parse(c.request!.body!), {
+      payment_id: 'pay_1',
+      reason: 'Charged twice',
+    });
+    asserts.assertEquals(refund.refund_id, 'ref_1');
+    asserts.assertEquals(refund.is_partial, false);
+  });
+
+  it('sends a partial refund as items, each line with its amount', async () => {
+    const c = client(REFUND);
+    const refund = await c.createRefund({
+      payment_id: 'pay_1',
+      items: [
+        { item_id: 'pdt_1', amount: 500 },
+        { item_id: 'adn_1', tax_inclusive: false },
+      ],
+      metadata: { ticket: 'T-42' },
+    });
+    asserts.assertEquals(JSON.parse(c.request!.body!), {
+      payment_id: 'pay_1',
+      items: [
+        { item_id: 'pdt_1', amount: 500 },
+        { item_id: 'adn_1', tax_inclusive: false },
+      ],
+      metadata: { ticket: 'T-42' },
+    });
+    asserts.assertEquals(refund.status, 'pending');
+    asserts.assertEquals(refund.metadata?.ticket, 'T-42');
+  });
+
+  it('rejects an invalid refund before sending', async () => {
+    const c = client(REFUND);
+    const bad = [
+      {},
+      { payment_id: '' },
+      { payment_id: 'pay_1', amount: 500 },
+      { payment_id: 'pay_1', items: [] },
+      { payment_id: 'pay_1', items: [{ item_id: 'pdt_1', amount: 0 }] },
+      { payment_id: 'pay_1', items: [{ item_id: 'pdt_1', amount: '500' }] },
+    ];
+    for (const request of bad) {
+      const err = await asserts.assertRejects(
+        () => c.createRefund(request as never),
+        DodoPaymentsError,
+      );
+      asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    }
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('maps a refused refund to INVALID_REQUEST, keeping the vendor code', async () => {
+    const c = client(
+      { code: 'REFUND_WINDOW_EXPIRED', message: 'too late' },
+      422,
+    );
+    const err = await asserts.assertRejects(
+      () => c.createRefund({ payment_id: 'pay_1' }),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'INVALID_REQUEST');
+    asserts.assertEquals(
+      err.getContextValue('vendorCode'),
+      'REFUND_WINDOW_EXPIRED',
+    );
+  });
+
+  it('fails a refund record that does not validate with RESPONSE_ERROR', async () => {
+    const c = client({ ...REFUND, status: 'done' });
+    const err = await asserts.assertRejects(
+      () => c.createRefund({ payment_id: 'pay_1' }),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
+  it('GETs a refund by id, url-encoded', async () => {
+    const c = client({ ...REFUND, status: 'succeeded' });
+    const refund = await c.getRefund('ref/1');
+    asserts.assertEquals(c.request!.method, 'GET');
+    asserts.assert(c.request!.url.endsWith('/refunds/ref%2F1'));
+    asserts.assertEquals(refund.status, 'succeeded');
+  });
+
+  it('maps an unknown refund to NOT_FOUND', async () => {
+    const c = client({ code: 'NOT_FOUND', message: 'no' }, 404);
+    const err = await asserts.assertRejects(
+      () => c.getRefund('ref_x'),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'NOT_FOUND');
+  });
+
+  it('rejects a blank refund id without sending', async () => {
+    const c = client(REFUND);
+    for (const id of ['', ' ']) {
+      const err = await asserts.assertRejects(
+        () => c.getRefund(id),
+        DodoPaymentsError,
+      );
+      asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+    }
+    asserts.assertEquals(c.request, undefined);
+  });
+
+  it('lists refunds with its filters', async () => {
+    const c = client({ items: [REFUND_ITEM] });
+    const items = await c.listRefunds({
+      customerId: 'cus_1',
+      subscriptionId: 'sub_1',
+      status: 'succeeded',
+      createdAtGte: '2026-01-01T00:00:00Z',
+      createdAtLte: '2026-02-01T00:00:00Z',
+      pageNumber: 2,
+      pageSize: 50,
+    });
+    const url = new URL(c.request!.url);
+    asserts.assertEquals(url.pathname, '/refunds');
+    asserts.assertEquals(url.searchParams.get('customer_id'), 'cus_1');
+    asserts.assertEquals(url.searchParams.get('subscription_id'), 'sub_1');
+    asserts.assertEquals(url.searchParams.get('status'), 'succeeded');
+    asserts.assertEquals(
+      url.searchParams.get('created_at_gte'),
+      '2026-01-01T00:00:00Z',
+    );
+    asserts.assertEquals(
+      url.searchParams.get('created_at_lte'),
+      '2026-02-01T00:00:00Z',
+    );
+    asserts.assertEquals(url.searchParams.get('page_number'), '2');
+    asserts.assertEquals(url.searchParams.get('page_size'), '50');
+    asserts.assertEquals(items[0]?.refund_id, 'ref_1');
+  });
+
+  it('sends no filters when none are given', async () => {
+    const c = client({ items: [] });
+    asserts.assertEquals(await c.listRefunds(), []);
+    asserts.assertEquals(new URL(c.request!.url).search, '');
+  });
+
+  it('walks every refund page', async () => {
+    const c = new PagingMockDodo({ auth: AUTH });
+    c.setPages([
+      { items: [REFUND_ITEM, { ...REFUND_ITEM, refund_id: 'ref_2' }] },
+      { items: [{ ...REFUND_ITEM, refund_id: 'ref_3' }] },
+      { items: [] },
+    ]);
+    const all = await Array.fromAsync(
+      c.listAllRefunds({ status: 'succeeded' }),
+    );
+    asserts.assertEquals(all.map((r) => r.refund_id), [
+      'ref_1',
+      'ref_2',
+      'ref_3',
+    ]);
+    const pages = c.urls.map((u) => new URL(u).searchParams);
+    asserts.assertEquals(pages.map((q) => q.get('page_number')), [
+      null,
+      '1',
+      '2',
+    ]);
+    asserts.assert(pages.every((q) => q.get('status') === 'succeeded'));
+    asserts.assert(pages.every((q) => q.get('page_size') === '100'));
+  });
+});
+
 describe('DodoPayments — plan changes', () => {
   const change = {
     product_id: 'pdt_pro',
@@ -1934,6 +2134,21 @@ describe({
       asserts.assertEquals(c.mode, 'test');
       const payments = await c.listPayments({ pageSize: 1 });
       asserts.assert(Array.isArray(payments));
+    });
+
+    it('lists refunds against the real test-mode API', async () => {
+      // Read-only. Creating a refund is deliberately NOT live-tested: it
+      // needs a succeeded payment (a real checkout) and a test-mode
+      // balance that covers it, and a refund has no inverse.
+      const c = new DodoPayments({
+        auth: { type: 'BEARER', token: credentials.apiKey!, prefix: 'Bearer' },
+      });
+      const refunds = await c.listRefunds({ pageSize: 5 });
+      asserts.assert(Array.isArray(refunds));
+      for (const refund of refunds.slice(0, 1)) {
+        const full = await c.getRefund(refund.refund_id);
+        asserts.assertEquals(full.refund_id, refund.refund_id);
+      }
     });
   },
 });
