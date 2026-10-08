@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/dodo-payments",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "description": "Typed Dodo Payments client: create, verify and refund payments, manage subscriptions and plan changes, sync products and discount codes, open the customer portal, and verify Standard Webhooks signatures.",
   "keywords": [
