@@ -142,10 +142,13 @@ describe('Telegram.schema.Common', () => {
       );
     });
 
-    it('rejects an undocumented chat type', () => {
-      asserts.assertExists(
-        ChatSchemaObject.safeParse({ id: 1, type: 'forum' })[0],
-      );
+    it('reads an undocumented chat type rather than failing the update', () => {
+      const [error, chat] = ChatSchemaObject.safeParse({
+        id: 1,
+        type: 'forum',
+      });
+      asserts.assertEquals(error, null);
+      asserts.assertEquals(chat?.type, 'forum');
     });
   });
 

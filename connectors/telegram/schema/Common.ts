@@ -24,7 +24,11 @@ import { type UserSchema, UserSchemaObject } from './User.ts';
  * ```
  */
 
-/** Documented `Chat.type` values. */
+/**
+ * Documented `Chat.type` values. {@link ChatSchemaObject} accepts any string
+ * there, so compare against these rather than relying on the type to
+ * narrow.
+ */
 export const CHAT_TYPES = [
   'private',
   'group',
@@ -127,8 +131,13 @@ export const botTokenGuard: BaseGuardian<BotTokenSchema> = Guardian.string()
 export type ChatSchema = {
   /** Unique chat identifier; may exceed 32 significant bits. */
   id: number;
-  /** Chat type. */
-  type: (typeof CHAT_TYPES)[number];
+  /**
+   * Chat type: one of {@link CHAT_TYPES}, or a type added by Telegram after
+   * this package was published. Typed as `string` for the same reason as
+   * `MessageEntity.type`: a chat arrives inside every webhook update, and an
+   * unknown type must not make the whole update fail to parse.
+   */
+  type: string;
   /** Title, for supergroups, channels, and group chats. */
   title?: string;
   /** `@username`, for private chats, supergroups, and channels, when public. */
@@ -142,7 +151,7 @@ export type ChatSchema = {
 /** The chat a Telegram message belongs to. */
 export const ChatSchemaObject: BaseGuardian<ChatSchema> = Guardian.object({
   id: Guardian.number().integer(),
-  type: Guardian.enum(CHAT_TYPES),
+  type: Guardian.string(),
   title: Guardian.string().optional(),
   username: Guardian.string().optional(),
   first_name: Guardian.string().optional(),
