@@ -114,6 +114,36 @@ export const BillingAddressSchemaObject: BaseGuardian<BillingAddressSchema> =
     description: 'Billing address; `country` drives merchant-of-record tax.',
   });
 
+/**
+ * Schema for a billing address in a REQUEST. Same fields as
+ * {@link BillingAddressSchemaObject}, but unknown fields are rejected
+ * rather than passed through, so a misspelt `zip_code` fails instead of
+ * being sent.
+ *
+ * @example
+ * ```typescript
+ * import { BillingAddressRequestSchemaObject } from '@tundraconnect/dodo-payments/schemas';
+ *
+ * const [error, billing] = BillingAddressRequestSchemaObject.safeParse({
+ *   country: 'DE',
+ *   zipcode: '10115',
+ * });
+ * ```
+ */
+export const BillingAddressRequestSchemaObject: BaseGuardian<
+  BillingAddressSchema
+> = Guardian.object({
+  country: Guardian.string().notEmpty('`billing.country` is required'),
+  city: Guardian.string().nullable().optional(),
+  state: Guardian.string().nullable().optional(),
+  street: Guardian.string().nullable().optional(),
+  zipcode: Guardian.string().nullable().optional(),
+}).strict().describe({
+  title: 'Billing address request',
+  description:
+    'Billing address sent on a create call; unknown fields rejected.',
+});
+
 /** Type definition for {@link CustomerDetailsSchemaObject}. */
 export type CustomerDetailsSchema = {
   customer_id: string;
@@ -178,12 +208,12 @@ export const CustomerRequestSchemaObject: BaseGuardian<CustomerRequestSchema> =
     [
       Guardian.object({
         customer_id: Guardian.string().notEmpty(),
-      }),
+      }).strict(),
       Guardian.object({
         email: Guardian.string().email(),
         name: Guardian.string().nullable().optional(),
         phone_number: Guardian.string().nullable().optional(),
-      }),
+      }).strict(),
     ],
     '`customer` must be either { customer_id } or { email, name?, phone_number? }',
   );

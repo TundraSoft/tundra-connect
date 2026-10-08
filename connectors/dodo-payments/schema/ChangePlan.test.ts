@@ -38,6 +38,35 @@ describe('DodoPayments.schema.ProrationBillingMode', () => {
 });
 
 describe('DodoPayments.schema.ChangePlanRequest', () => {
+  it('rejects unknown fields, at the top level and in an addon', () => {
+    asserts.assertStringIncludes(
+      ChangePlanRequestSchemaObject.safeParse({ ...valid, discountCodes: [] })[
+        0
+      ]!.message,
+      'discountCodes',
+    );
+    asserts.assertExists(
+      ChangePlanRequestSchemaObject.safeParse({
+        ...valid,
+        addons: [{ addon_id: 'adn_1', quantity: 1, price: 5 }],
+      })[0],
+    );
+  });
+
+  it('rejects a number or boolean sent as a string', () => {
+    for (
+      const body of [
+        { ...valid, quantity: '1' },
+        { ...valid, cancel_scheduled_change_plan: 'true' },
+      ]
+    ) {
+      asserts.assertExists(
+        ChangePlanRequestSchemaObject.safeParse(body)[0],
+        JSON.stringify(body),
+      );
+    }
+  });
+
   it('accepts the minimal change', () => {
     asserts.assertEquals(
       ChangePlanRequestSchemaObject.safeParse(valid)[0],

@@ -1,6 +1,7 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import {
+  BillingAddressRequestSchemaObject,
   BillingAddressSchemaObject,
   CustomerDetailsSchemaObject,
   CustomerRequestSchemaObject,
@@ -62,6 +63,21 @@ describe('DodoPayments.schema.SubscriptionStatus', () => {
 });
 
 describe('DodoPayments.schema.BillingAddress', () => {
+  it('the request form rejects an unknown field the response form keeps', () => {
+    const address = { country: 'US', zip_code: '10001' };
+    asserts.assertEquals(
+      BillingAddressSchemaObject.safeParse(address)[0],
+      null,
+    );
+    asserts.assertExists(
+      BillingAddressRequestSchemaObject.safeParse(address)[0],
+    );
+    asserts.assertEquals(
+      BillingAddressRequestSchemaObject.safeParse({ country: 'US' })[0],
+      null,
+    );
+  });
+
   it('accepts a country-only address', () => {
     asserts.assertEquals(
       BillingAddressSchemaObject.safeParse({ country: 'US' })[0],
@@ -123,6 +139,20 @@ describe('DodoPayments.schema.CustomerDetails', () => {
 });
 
 describe('DodoPayments.schema.CustomerRequest', () => {
+  it('rejects an id combined with contact fields, and unknown fields', () => {
+    for (
+      const customer of [
+        { customer_id: 'cus_1', email: 'a@example.com' },
+        { email: 'a@example.com', fullName: 'Ada' },
+      ]
+    ) {
+      asserts.assertExists(
+        CustomerRequestSchemaObject.safeParse(customer)[0],
+        JSON.stringify(customer),
+      );
+    }
+  });
+
   it('accepts an existing customer by id', () => {
     asserts.assertEquals(
       CustomerRequestSchemaObject.safeParse({ customer_id: 'cus_1' })[0],

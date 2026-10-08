@@ -157,6 +157,41 @@ describe('DodoPayments.schema.ProductPriceRequest', () => {
 });
 
 describe('DodoPayments.schema.CreateProductRequest', () => {
+  it('rejects unknown fields, at the top level and in the price', () => {
+    const base = { name: 'Pack', tax_category: 'saas', price: ONE_TIME };
+    asserts.assertStringIncludes(
+      CreateProductRequestSchemaObject.safeParse({ ...base, taxCategory: 'x' })[
+        0
+      ]!.message,
+      'taxCategory',
+    );
+    asserts.assertExists(
+      CreateProductRequestSchemaObject.safeParse({
+        ...base,
+        price: { ...MONTHLY, trialDays: 7 },
+      })[0],
+    );
+  });
+
+  it('rejects a number or boolean sent as a string in the price', () => {
+    for (
+      const price of [
+        { ...ONE_TIME, price: '4900' },
+        { ...MONTHLY, payment_frequency_count: '1' },
+        { ...MONTHLY, trial_payment_method_optional: 'true' },
+      ]
+    ) {
+      asserts.assertExists(
+        CreateProductRequestSchemaObject.safeParse({
+          name: 'Pack',
+          tax_category: 'saas',
+          price,
+        })[0],
+        JSON.stringify(price),
+      );
+    }
+  });
+
   const valid = {
     name: 'Credit pack (500)',
     tax_category: 'saas',
@@ -197,6 +232,12 @@ describe('DodoPayments.schema.CreateProductRequest', () => {
 });
 
 describe('DodoPayments.schema.UpdateProductRequest', () => {
+  it('rejects an unknown field', () => {
+    asserts.assertExists(
+      UpdateProductRequestSchemaObject.safeParse({ title: 'Renamed' })[0],
+    );
+  });
+
   it('accepts a partial update', () => {
     asserts.assertEquals(
       UpdateProductRequestSchemaObject.safeParse({ name: 'Renamed' })[0],
@@ -216,6 +257,18 @@ describe('DodoPayments.schema.UpdateProductRequest', () => {
 });
 
 describe('DodoPayments.schema.Product', () => {
+  it('still reads a response leniently — new price fields pass through', () => {
+    const [error, product] = ProductSchemaObject.safeParse({
+      ...PRODUCT,
+      price: { ...MONTHLY, some_new_field: true },
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(
+      (product?.price as Record<string, unknown>).some_new_field,
+      true,
+    );
+  });
+
   it('accepts a product and narrows its price by type', () => {
     const [error, product] = ProductSchemaObject.safeParse(PRODUCT);
     asserts.assertEquals(error, null);

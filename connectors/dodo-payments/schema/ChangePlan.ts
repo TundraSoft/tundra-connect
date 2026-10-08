@@ -125,22 +125,28 @@ export const ChangePlanRequestSchemaObject: BaseGuardian<
   ChangePlanRequestSchema
 > = Guardian.object({
   product_id: Guardian.string().notEmpty('`product_id` is required'),
-  quantity: Guardian.number().integer().min(1, '`quantity` must be at least 1'),
+  quantity: Guardian.number().strict().integer().min(
+    1,
+    '`quantity` must be at least 1',
+  ),
   proration_billing_mode: ProrationBillingModeSchemaObject,
   effective_at: Guardian.enum(PLAN_CHANGE_EFFECTIVE_AT).optional(),
   on_payment_failure: Guardian.enum(PLAN_CHANGE_ON_PAYMENT_FAILURE).nullable()
     .optional(),
-  collect_via_payment_link: Guardian.boolean().optional(),
-  cancel_scheduled_change_plan: Guardian.boolean().optional(),
-  addons: Guardian.array(Guardian.object({
-    addon_id: Guardian.string().notEmpty(),
-    quantity: Guardian.number().integer().min(0),
-  })).nullable().optional(),
+  collect_via_payment_link: Guardian.boolean().strict().optional(),
+  cancel_scheduled_change_plan: Guardian.boolean().strict().optional(),
+  addons: Guardian.array(
+    Guardian.object({
+      addon_id: Guardian.string().notEmpty(),
+      quantity: Guardian.number().strict().integer().min(0),
+    }).strict(),
+  ).nullable().optional(),
   discount_codes: Guardian.array(Guardian.string()).maxLength(20).nullable()
     .optional(),
   metadata: Guardian.record(Guardian.string()).nullable().optional(),
-  adaptive_currency_fees_inclusive: Guardian.boolean().nullable().optional(),
-}).refine(
+  adaptive_currency_fees_inclusive: Guardian.boolean().strict().nullable()
+    .optional(),
+}).strict().refine(
   (req) =>
     !req.collect_via_payment_link ||
     ((req.effective_at ?? 'immediately') === 'immediately' &&

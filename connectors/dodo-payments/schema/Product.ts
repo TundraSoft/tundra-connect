@@ -148,51 +148,59 @@ export type ProductPriceRequestSchema =
   | OneTimePriceSchema
   | RecurringPriceSchema;
 
-const minorUnits = () =>
-  Guardian.number().integer().min(0, 'amounts are non-negative minor units');
+// Requests refuse numbers and booleans sent as strings (`strict`); responses
+// keep Guardian's coercion so a vendor quirk never fails a read.
+const num = (strict: boolean) =>
+  strict ? Guardian.number().strict() : Guardian.number();
+const bool = (strict: boolean) =>
+  strict ? Guardian.boolean().strict() : Guardian.boolean();
+
+const minorUnits = (strict: boolean) =>
+  num(strict).integer().min(0, 'amounts are non-negative minor units');
 const currencyCode = () =>
   Guardian.string().pattern(
     /^[A-Z]{3}$/,
     '`currency` must be an uppercase ISO 4217 code, e.g. USD',
   );
-const count = () =>
-  Guardian.number().integer().min(1, 'interval counts must be at least 1');
-const basisPoints = () =>
-  Guardian.number().integer().min(0).max(
+const count = (strict: boolean) =>
+  num(strict).integer().min(1, 'interval counts must be at least 1');
+const basisPoints = (strict: boolean) =>
+  num(strict).integer().min(0).max(
     10_000,
     '`discount_bps` must be between 0 and 10000',
   ).nullable().optional();
 
-// Built by factories so the request branches (strict) and the response
-// branches (passthrough, since Dodo adds price fields over time) are
-// separate guardians over the same field rules.
-const oneTimeFields = () => ({
+// Built by factories so the request branches (strict: unknown fields and
+// string-typed numbers rejected) and the response branches (passthrough,
+// since Dodo adds price fields over time) are separate guardians over the
+// same field rules.
+const oneTimeFields = (strict = false) => ({
   type: Guardian.literal('one_time_price'),
-  price: minorUnits(),
+  price: minorUnits(strict),
   currency: currencyCode(),
-  discount_bps: basisPoints(),
-  pay_what_you_want: Guardian.boolean().optional(),
-  suggested_price: Guardian.number().integer().min(0).nullable().optional(),
-  tax_inclusive: Guardian.boolean().nullable().optional(),
-  purchasing_power_parity: Guardian.boolean().optional(),
+  discount_bps: basisPoints(strict),
+  pay_what_you_want: bool(strict).optional(),
+  suggested_price: num(strict).integer().min(0).nullable().optional(),
+  tax_inclusive: bool(strict).nullable().optional(),
+  purchasing_power_parity: bool(strict).optional(),
 });
 
-const recurringFields = () => ({
+const recurringFields = (strict = false) => ({
   type: Guardian.literal('recurring_price'),
-  price: minorUnits(),
+  price: minorUnits(strict),
   currency: currencyCode(),
-  payment_frequency_count: count(),
+  payment_frequency_count: count(strict),
   payment_frequency_interval: TimeIntervalSchemaObject,
-  subscription_period_count: count(),
+  subscription_period_count: count(strict),
   subscription_period_interval: TimeIntervalSchemaObject,
-  trial_period_days: Guardian.number().integer().min(0).optional(),
-  trial_amount: Guardian.number().integer().min(0).nullable().optional(),
-  trial_payment_method_optional: Guardian.boolean().optional(),
-  trial_apply_discounts: Guardian.boolean().nullable().optional(),
-  zero_amount_payment_method_optional: Guardian.boolean().optional(),
-  discount_bps: basisPoints(),
-  tax_inclusive: Guardian.boolean().nullable().optional(),
-  purchasing_power_parity: Guardian.boolean().optional(),
+  trial_period_days: num(strict).integer().min(0).optional(),
+  trial_amount: num(strict).integer().min(0).nullable().optional(),
+  trial_payment_method_optional: bool(strict).optional(),
+  trial_apply_discounts: bool(strict).nullable().optional(),
+  zero_amount_payment_method_optional: bool(strict).optional(),
+  discount_bps: basisPoints(strict),
+  tax_inclusive: bool(strict).nullable().optional(),
+  purchasing_power_parity: bool(strict).optional(),
 });
 
 /**
@@ -301,7 +309,8 @@ export const PriceSchemaObject: BaseGuardian<PriceSchema> = Guardian
 
 /**
  * Schema for the price of a product being created or updated: one-time or
- * recurring. Unknown fields are dropped rather than sent.
+ * recurring. Unknown fields are rejected, and numbers and booleans must
+ * not arrive as strings.
  *
  * @example
  * ```typescript
@@ -323,8 +332,12 @@ export const PriceSchemaObject: BaseGuardian<PriceSchema> = Guardian
 export const ProductPriceRequestSchemaObject: BaseGuardian<
   ProductPriceRequestSchema
 > = Guardian.discriminatedUnion('type', [
-  Guardian.object(oneTimeFields()) as ObjectGuardian<OneTimePriceSchema>,
-  Guardian.object(recurringFields()) as ObjectGuardian<RecurringPriceSchema>,
+  Guardian.object(oneTimeFields(true)).strict() as ObjectGuardian<
+    OneTimePriceSchema
+  >,
+  Guardian.object(recurringFields(true)).strict() as ObjectGuardian<
+    RecurringPriceSchema
+  >,
 ]).describe({
   title: 'Product price request',
   description: 'Price of a product being created: one-time or recurring.',
@@ -380,7 +393,7 @@ export const CreateProductRequestSchemaObject: BaseGuardian<
   ...productFields,
   tax_category: TaxCategorySchemaObject,
   price: ProductPriceRequestSchemaObject,
-}).describe({
+}).strict().describe({
   title: 'Create product request',
   description: 'Body for POST /products.',
 });
@@ -425,7 +438,7 @@ export const UpdateProductRequestSchemaObject: BaseGuardian<
   name: productFields.name.optional(),
   tax_category: TaxCategorySchemaObject.optional(),
   price: ProductPriceRequestSchemaObject.optional(),
-}).refine(
+}).strict().refine(
   (update) => Object.values(update).some((value) => value !== undefined),
   'an update must change at least one field',
 ).describe({

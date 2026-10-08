@@ -29,7 +29,8 @@ import {
 | `SubscriptionSchemaObject`                  | A subscription record.                       |
 | `SubscriptionListSchemaObject`              | A `GET /subscriptions` page.                 |
 | `ProductCartItemSchemaObject`               | One product line.                            |
-| `BillingAddressSchemaObject`                | Billing address.                             |
+| `BillingAddressSchemaObject`                | Billing address on a record.                 |
+| `BillingAddressRequestSchemaObject`         | Billing address in a request (strict).       |
 | `CustomerRequestSchemaObject`               | The `customer` field of a create request.    |
 | `CustomerDetailsSchemaObject`               | The embedded customer summary.               |
 | `CustomerSchemaObject`                      | A full customer record (`getCustomer`).      |
@@ -170,6 +171,32 @@ leaves it empty on list responses, so absent means "not reported", not
 A union, matching the vendor: **either** `{ customer_id }` **or**
 `{ email, name?, phone_number? }`. Passing neither is rejected locally
 rather than producing an opaque 422.
+
+## Request schemas are strict
+
+Every request schema rejects an unknown field instead of dropping it, and
+refuses a number or boolean sent as a string (`quantity: '1'`,
+`payment_link: 'true'`). This covers payments, subscriptions, plan
+changes, products, discounts and refunds, and their nested objects (cart
+lines, customer, billing address, prices, addons). A typo like
+`discountCodes` would otherwise be dropped silently and the request sent
+without it — a full-price subscription with no error.
+
+```ts
+import { CreateSubscriptionRequestSchemaObject } from '@tundraconnect/dodo-payments/schemas';
+
+const [error] = CreateSubscriptionRequestSchemaObject.safeParse({
+  product_id: 'prd_monthly',
+  quantity: 1,
+  customer: { customer_id: 'cus_1' },
+  billing: { country: 'US' },
+  discountCodes: ['WELCOME20'], // typo for discount_codes
+});
+error?.message; // "Unknown property 'discountCodes' is not allowed in strict mode"
+```
+
+The `customer` union is strict too, so `{ customer_id, email }` matches
+neither form and is rejected: pass the id alone for an existing customer.
 
 ## Response schemas pass unknown fields through
 
