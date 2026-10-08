@@ -26,6 +26,20 @@ const message = {
 };
 
 describe('Telegram.schema.Update', () => {
+  it('parses a message from a chat type this package does not know', () => {
+    const [error, update] = UpdateSchemaObject.safeParse({
+      update_id: 7,
+      message: {
+        message_id: 1,
+        date: 1735689600,
+        chat: { id: -100123, type: 'some_future_type' },
+        text: '/status',
+      },
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(update?.message?.chat.type, 'some_future_type');
+  });
+
   it('accepts a command message with its bot_command entity', () => {
     const [error, update] = UpdateSchemaObject.safeParse({
       update_id: 1,

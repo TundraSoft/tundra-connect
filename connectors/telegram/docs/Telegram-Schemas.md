@@ -32,9 +32,9 @@ Two rules hold throughout:
 - **Response and update schemas pass unknown fields through.** Telegram adds
   fields and update kinds over time; they stay reachable at runtime (through
   a `Record<string, unknown>` cast) and never fail the parse. A
-  `MessageEntity.type` or `ChatMember.status` value this package doesn't
-  know is accepted for the same reason. `Chat.type` is still checked against
-  the four documented values.
+  `MessageEntity.type`, `ChatMember.status` or `Chat.type` value this
+  package doesn't know is accepted for the same reason; the documented
+  values are exported as constants (`CHAT_TYPES`, …) to compare against.
 
 ## Request Schemas
 
