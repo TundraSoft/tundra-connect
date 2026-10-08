@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.5.0...dodo-payments-v0.6.0) (2026-10-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **dodo-payments:** a request carrying an unknown field, a number or boolean as a string, or a `customer` with both `customer_id` and contact fields now fails with REQUEST_VALIDATION_ERROR before it is sent.
+
+### Features
+
+* **dodo-payments:** reject unknown fields on every request ([2bdfb5a](https://github.com/TundraSoft/tundra-connect/commit/2bdfb5a50cef174ea28dce5aa29d0074fd92fb81))
+
 ## [0.5.0](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.4.0...dodo-payments-v0.5.0) (2026-10-08)
 
 

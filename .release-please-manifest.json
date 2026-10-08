@@ -7,7 +7,7 @@
   "connectors/cloudflare-turnstile": "0.1.1",
   "connectors/coingecko": "0.2.0",
   "connectors/discord": "0.2.0",
-  "connectors/dodo-payments": "0.5.0",
+  "connectors/dodo-payments": "0.6.0",
   "connectors/gcs": "0.2.0",
   "connectors/google-analytics": "0.1.0",
   "connectors/google-web-risk": "0.2.0",
@@ -24,7 +24,7 @@
   "connectors/sentry": "0.2.0",
   "connectors/slack": "0.2.0",
   "connectors/stripe": "0.2.0",
-  "connectors/telegram": "0.3.0",
+  "connectors/telegram": "0.3.1",
   "connectors/twilio": "0.2.0",
   "connectors/upstash-redis": "0.2.0",
   "connectors/urlhaus": "0.2.0"

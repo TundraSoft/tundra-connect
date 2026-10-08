@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/TundraSoft/tundra-connect/compare/telegram-v0.3.0...telegram-v0.3.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **telegram:** read any chat type instead of failing the update ([0d3e852](https://github.com/TundraSoft/tundra-connect/commit/0d3e8528bd7eb7ff34c108aabc4f2fcd926bae8b))
+* **telegram:** read any chat type instead of failing the update ([12ddab4](https://github.com/TundraSoft/tundra-connect/commit/12ddab4cdeff310bb732b8fff7d35114cfe16f60))
+
 ## [0.3.0](https://github.com/TundraSoft/tundra-connect/compare/telegram-v0.2.0...telegram-v0.3.0) (2026-10-07)
 
 
