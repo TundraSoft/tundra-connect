@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.4.0...dodo-payments-v0.5.0) (2026-10-08)
+
+
+### Features
+
+* **dodo-payments:** refunds ([50af583](https://github.com/TundraSoft/tundra-connect/commit/50af5837d0756229adaabffb9a9c862273477062))
+* **dodo-payments:** refunds ([e384c73](https://github.com/TundraSoft/tundra-connect/commit/e384c73987c9d7d0115263d98f0af28f4c44142c))
+
 ## [0.4.0](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.3.0...dodo-payments-v0.4.0) (2026-10-07)
 
 

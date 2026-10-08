@@ -7,7 +7,7 @@
   "connectors/cloudflare-turnstile": "0.1.1",
   "connectors/coingecko": "0.2.0",
   "connectors/discord": "0.2.0",
-  "connectors/dodo-payments": "0.4.0",
+  "connectors/dodo-payments": "0.5.0",
   "connectors/gcs": "0.2.0",
   "connectors/google-analytics": "0.1.0",
   "connectors/google-web-risk": "0.2.0",
