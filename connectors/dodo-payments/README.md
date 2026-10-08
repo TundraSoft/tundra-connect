@@ -4,9 +4,9 @@ Typed [Dodo Payments](https://dodopayments.com) API client for Deno, Bun,
 Node.js and Cloudflare Workers. Dodo Payments is a merchant-of-record platform
 for digital products, and this client covers its checkout path end to end:
 initialize a payment, verify it actually completed, read a customer's history,
-create, change, pause or cancel subscriptions, manage the product catalogue
-and discount codes, open the customer portal, and verify Standard Webhooks
-signatures.
+create, change, pause or cancel subscriptions, refund a payment in full or in
+part, manage the product catalogue and discount codes, open the customer
+portal, and verify Standard Webhooks signatures.
 
 [![JSR](https://jsr.io/badges/@tundraconnect/dodo-payments)](https://jsr.io/@tundraconnect/dodo-payments)
 [![JSR Score](https://jsr.io/badges/@tundraconnect/dodo-payments/score)](https://jsr.io/@tundraconnect/dodo-payments)
@@ -22,6 +22,7 @@ catalogue actually need, not the vendor's full ~147-endpoint API.
 | Area          | Methods                                                                                                                                                                                                                              |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Payments      | `createPayment`, `getPayment`, `isPaid`, `listPayments`, `listAllPayments`                                                                                                                                                           |
+| Refunds       | `createRefund`, `getRefund`, `listRefunds`, `listAllRefunds`                                                                                                                                                                         |
 | Subscriptions | `createSubscription`, `getSubscription`, `listSubscriptions`, `listAllSubscriptions`, `changePlan`, `cancelScheduledPlanChange`, `pauseSubscription`, `resumeSubscription`, `cancelSubscription`, `undoScheduledCancellation`        |
 | Products      | `createProduct`, `getProduct`, `listProducts`, `listAllProducts`, `findProductsByMetadata`, `updateProduct`, `archiveProduct`, `unarchiveProduct`                                                                                    |
 | Discounts     | `createDiscount`, `getDiscount`, `getDiscountByCode`, `listDiscounts`, `listAllDiscounts`, `updateDiscount`, `deleteDiscount`, `addDiscountCustomers`, `listDiscountCustomers`, `listAllDiscountCustomers`, `removeDiscountCustomer` |
@@ -354,6 +355,34 @@ rather than silently dropped. See
 [Discounts](https://github.com/TundraSoft/tundra-connect/wiki/DodoPayments-API#discounts)
 for flat codes, updates, the allow list, and applying a code to an existing
 subscription.
+
+### 8. Refund a payment
+
+Without `items` the whole payment is refunded. To refund part of it, name
+the payment's lines by product (or add-on) id, each with the amount to give
+back in minor units, tax included.
+
+```ts continued
+// In full.
+const refund = await client.createRefund({
+  payment_id: 'pay_1',
+  reason: 'Charged twice',
+});
+
+// In part: $5.00 of one product line.
+await client.createRefund({
+  payment_id: 'pay_2',
+  items: [{ item_id: 'prd_1', amount: 500 }],
+});
+
+// A new refund is usually `pending`; only `succeeded` means the money went back.
+const later = await client.getRefund(refund.refund_id);
+console.log(later.status, later.amount, later.currency);
+```
+
+See
+[Refunds](https://github.com/TundraSoft/tundra-connect/wiki/DodoPayments-API#refunds)
+for the rules Dodo applies and how to read a payment's refunds.
 
 ## License
 

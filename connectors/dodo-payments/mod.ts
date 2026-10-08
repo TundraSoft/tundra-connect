@@ -3,8 +3,9 @@
  * [Dodo Payments](https://dodopayments.com), a merchant-of-record platform for
  * digital products. Covers the checkout path end to end: initialize a payment,
  * verify it actually completed, read a customer's history, and create, change,
- * pause or cancel subscriptions — plus the product catalogue, discount
- * codes, the customer portal, and Standard Webhooks signature verification.
+ * pause or cancel subscriptions, and refund a payment in full or in part —
+ * plus the product catalogue, discount codes, the customer portal, and
+ * Standard Webhooks signature verification.
  *
  * Subpaths: `./schemas` (Guardian schemas and inferred types) and `./errors`
  * (`DodoPaymentsError` and its code registry).
@@ -52,6 +53,7 @@ export {
   type ListDiscountsOptions,
   type ListPaymentsOptions,
   type ListProductsOptions,
+  type ListRefundsOptions,
   type ListSubscriptionsOptions,
   LIVE_API,
   TEST_API,

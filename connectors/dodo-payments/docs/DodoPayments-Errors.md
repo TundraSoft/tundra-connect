@@ -73,6 +73,15 @@ answers two redemptions racing for a code's last use with a 503
 (`DISCOUNT_CONCURRENT_REDEMPTION`), which arrives as a transient
 `SERVICE_UNAVAILABLE`: retry it.
 
+Refund failures arrive as `INVALID_REQUEST` and are told apart by
+`vendorCode`: `REFUND_WINDOW_EXPIRED`, `PAYMENT_NOT_SUCCEEDED`,
+`EXISTING_REFUND_REQUEST_PROCESSING` (one is still `pending` or `review`),
+`REFUND_AMOUNT_EXCEEDS_PAID_AMOUNT`, `PAYMENT_HAS_BEEN_REFUNDED`,
+`NOTHING_TO_REFUND`, `PARTIAL_REFUND_NOT_ALLOWED`, and the per-line
+`LINE_ITEM_NOT_FOUND`, `LINE_ITEM_FULLY_REFUNDED`,
+`LINE_ITEM_REFUND_AMOUNT_TOO_HIGH` and `LINE_ITEM_REFUND_AMOUNT_TOO_LOW`.
+`createRefund` for an unknown payment is `NOT_FOUND`.
+
 A failure body that isn't the documented `{ code, message }` envelope — a
 gateway 502 serving HTML, say — still classifies by status; `vendorCode` is
 simply absent.
