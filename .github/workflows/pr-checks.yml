@@ -12,8 +12,14 @@ permissions:
   contents: read
   pull-requests: read
 
+# Only a new push cancels the run before it. Every other event (`opened`,
+# `edited`, `labeled`, …) runs in a group of its own: those events re-check
+# the SAME commit, and a cancelled run there leaves cancelled checks on the
+# head commit beside the passing ones, which marks the PR's status as
+# failed. release-please opens, labels and edits its PR in quick succession,
+# which is how a release PR with every check green ended up blocked.
 concurrency:
-  group: pr-checks-${{ github.event.pull_request.number }}
+  group: pr-checks-${{ github.event.pull_request.number }}-${{ github.event.action == 'synchronize' && 'push' || github.run_id }}
   cancel-in-progress: true
 
 jobs:
