@@ -21,6 +21,7 @@ body:
         - DodoPayments
         - GCS
         - GoogleAnalytics
+        - GoogleCertificateManager
         - GoogleWebRisk
         - Kalshi
         - ntfy

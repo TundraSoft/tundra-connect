@@ -36,6 +36,7 @@ on:
           - connectors/dodo-payments
           - connectors/gcs
           - connectors/google-analytics
+          - connectors/google-certificate-manager
           - connectors/google-web-risk
           - connectors/kalshi
           - connectors/ntfy

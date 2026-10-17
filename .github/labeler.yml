@@ -45,6 +45,9 @@ documentation:
 'connector: google-analytics':
   - changed-files:
       - any-glob-to-any-file: connectors/google-analytics/**
+'connector: google-certificate-manager':
+  - changed-files:
+      - any-glob-to-any-file: connectors/google-certificate-manager/**
 'connector: google-web-risk':
   - changed-files:
       - any-glob-to-any-file: connectors/google-web-risk/**
