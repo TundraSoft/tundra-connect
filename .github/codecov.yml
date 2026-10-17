@@ -57,6 +57,10 @@ component_management:
         name: google-analytics
         paths:
           - connectors/google-analytics/**
+      - component_id: google-certificate-manager
+        name: google-certificate-manager
+        paths:
+          - connectors/google-certificate-manager/**
       - component_id: google-web-risk
         name: google-web-risk
         paths:

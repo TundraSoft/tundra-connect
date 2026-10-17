@@ -15,7 +15,7 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-29 connects are implemented today:
+30 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
@@ -28,6 +28,7 @@ if you'd like to champion one.
 - **[DodoPayments](connectors/dodo-payments/README.md)** — Typed Dodo Payments client: create, verify and refund payments, manage subscriptions and plan changes, sync products and discount codes, open the customer portal, and verify Standard Webhooks signatures.
 - **[GCS](connectors/gcs/README.md)** — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.
 - **[GoogleAnalytics](connectors/google-analytics/README.md)** — Typed Google Analytics 4 Measurement Protocol client: send server-side events and validate them against the debug endpoint, with GA4's event, parameter and user-property limits checked before the request is made.
+- **[GoogleCertificateManager](connectors/google-certificate-manager/README.md)** — Typed Google Cloud Certificate Manager client: create, read, list and delete managed TLS certificates and certificate map entries, poll long-running operations, with service-account auth on Workers, Deno, Bun and Node.
 - **[GoogleWebRisk](connectors/google-web-risk/README.md)** — Typed Google Web Risk client: check a URL against Google's malware, phishing and unwanted-software lists with the Lookup API's uris:search, under a hard per-call deadline.
 - **[Kalshi](connectors/kalshi/README.md)** — Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders.
 - **[ntfy](connectors/ntfy/README.md)** — Typed ntfy.sh client for publishing push notifications to a topic.

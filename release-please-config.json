@@ -178,6 +178,18 @@
         }
       ]
     },
+    "connectors/google-certificate-manager": {
+      "release-type": "node",
+      "component": "google-certificate-manager",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/google-web-risk": {
       "release-type": "node",
       "component": "google-web-risk",

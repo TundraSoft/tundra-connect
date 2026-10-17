@@ -10,6 +10,7 @@
   "dodo-payments": "DodoPayments",
   "gcs": "GCS",
   "google-analytics": "GoogleAnalytics",
+  "google-certificate-manager": "GoogleCertificateManager",
   "google-web-risk": "GoogleWebRisk",
   "kalshi": "Kalshi",
   "ntfy": "ntfy",
