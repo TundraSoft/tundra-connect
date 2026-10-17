@@ -389,7 +389,8 @@ export class GoogleCertificateManager
 
   /** The Certificate Manager location (`global` unless configured). */
   get location(): string {
-    return this._getOption('location') ?? 'global';
+    // Always set: the constructor supplies 'global' as the default.
+    return this._getOption('location') as string;
   }
 
   /** The default certificate map for map-entry calls, if configured. */
@@ -1267,9 +1268,8 @@ export class GoogleCertificateManager
       case 429:
         return 'RATE_LIMITED';
     }
-    if (status >= 500) return 'SERVICE_UNAVAILABLE';
-    if (status >= 400) return 'INVALID_REQUEST';
-    return 'UNKNOWN_ERROR';
+    // Only called for status >= 400 (see __toError).
+    return status >= 500 ? 'SERVICE_UNAVAILABLE' : 'INVALID_REQUEST';
   }
 
   /**

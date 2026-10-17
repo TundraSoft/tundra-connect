@@ -225,6 +225,17 @@ describe('GoogleCertificateManager — configuration', () => {
     }
   });
 
+  it('rejects a client constructed without an auth key at all', () => {
+    const err = asserts.assertThrows(
+      () =>
+        new GoogleCertificateManager(
+          { projectId: PROJECT } as GoogleCertificateManagerOptions,
+        ),
+      GoogleCertificateManagerError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_AUTH');
+  });
+
   it('rejects a service account without clientEmail or privateKey', () => {
     for (const field of ['clientEmail', 'privateKey'] as const) {
       const err = asserts.assertThrows(
@@ -382,7 +393,12 @@ describe('GoogleCertificateManager — service-account auth', () => {
     const c = new MockCM({ auth: SERVICE_ACCOUNT }).reply({
       body: { token_type: 'Bearer' },
     });
-    await rejects(() => c.getCertificate('a-1'), 'TOKEN_EXCHANGE_FAILED');
+    const err = await rejects(
+      () => c.getCertificate('a-1'),
+      'TOKEN_EXCHANGE_FAILED',
+    );
+    asserts.assertEquals(err.getContextValue('status'), 200);
+    asserts.assertExists(err.getContextValue('responseError'));
   });
 
   it('maps an unusable private key to JWT_SIGNING_FAILED', async () => {
@@ -653,6 +669,7 @@ describe('GoogleCertificateManager — certificate map entries', () => {
       { ...ok, certificates: ['a', 'b', 'c', 'd', 'e'] },
       { ...ok, certificates: ['Not An Id'] },
       { ...ok, certificates: ['projects/p/locations/global/certificates/..'] },
+      undefined,
     ];
     for (const options of bad) {
       await rejects(
@@ -788,6 +805,12 @@ describe('GoogleCertificateManager — operations', () => {
         ),
       'ALREADY_EXISTS',
     );
+    const bare = await rejects(
+      () => c.waitForOperation(operation({ done: true, error: {} })),
+      'UNKNOWN_ERROR',
+    );
+    asserts.assertEquals(bare.getContextValue('vendorStatus'), undefined);
+    asserts.assertEquals(bare.getContextValue('detail'), 'no detail');
     asserts.assertEquals(err.getContextValue('vendorStatus'), 'ALREADY_EXISTS');
   });
 

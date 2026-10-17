@@ -80,6 +80,17 @@ describe('GoogleCertificateManager.resourceId', () => {
     );
   });
 
+  it('punycodes a Unicode wildcard hostname', () => {
+    asserts.assertEquals(
+      hostnameToResourceId('*.bücher.example'),
+      hostnameToResourceId('*.xn--bcher-kva.example'),
+    );
+    asserts.assertMatch(
+      hostnameToResourceId('*.bücher.example'),
+      /^wildcard-xn-bcher-kva-example-[0-9a-f]{8}$/,
+    );
+  });
+
   it('rejects something that is not a hostname', () => {
     const bad: unknown[] = [
       '',
@@ -90,6 +101,7 @@ describe('GoogleCertificateManager.resourceId', () => {
       'exa mple.com',
       '-example.com',
       'example..com',
+      'bü cher.example',
       `${'a'.repeat(64)}.com`,
     ];
     for (const hostname of bad) {
