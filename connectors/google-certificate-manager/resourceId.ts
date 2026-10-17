@@ -87,12 +87,12 @@ export function hostnameToResourceId(
     }
   }
 
-  const slug = host.replace(/^\*\./, 'wildcard.')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  let head = prefix ? `${prefix.replace(/-+$/, '')}-${slug}` : slug;
+  const slug = trimHyphens(
+    host.replace(/^\*\./, 'wildcard.').replace(/[^a-z0-9]+/g, '-'),
+  );
+  let head = prefix ? `${trimHyphens(prefix)}-${slug}` : slug;
   if (!/^[a-z]/.test(head)) head = `h-${head}`;
-  head = head.slice(0, 63 - HASH_SUFFIX_LENGTH).replace(/-+$/, '');
+  head = trimHyphens(head.slice(0, 63 - HASH_SUFFIX_LENGTH));
 
   return `${head}-${fnv1a32(host)}`;
 }
@@ -131,6 +131,18 @@ function normaliseHostname(hostname: string): string {
     });
   }
   return host;
+}
+
+/**
+ * `value` without leading or trailing hyphens. A scan rather than
+ * `/^-+|-+$/`, whose backtracking is quadratic on a long run of hyphens.
+ */
+function trimHyphens(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === '-') start++;
+  while (end > start && value[end - 1] === '-') end--;
+  return value.slice(start, end);
 }
 
 /** 32-bit FNV-1a over the UTF-16 code units of `value`, as 8 hex digits. */

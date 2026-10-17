@@ -64,6 +64,13 @@ describe('GoogleCertificateManager.resourceId', () => {
     asserts.assertNotEquals(id, other);
   });
 
+  it('trims long runs of hyphens', () => {
+    const host = `a${'-'.repeat(61)}a.${'b'.repeat(60)}.com`;
+    const id = hostnameToResourceId(host, { prefix: 'p-' });
+    asserts.assert(isValidResourceId(id), id);
+    asserts.assertEquals(id.includes('--'), false);
+  });
+
   it('punycodes a Unicode hostname', () => {
     const id = hostnameToResourceId('bücher.example');
     asserts.assertMatch(id, /^xn-bcher-kva-example-[0-9a-f]{8}$/);
