@@ -25,7 +25,8 @@ failures surface as one typed error class per vendor.
 - **Messaging and notifications:** Slack, Discord, Telegram, Twilio SMS and
   voice, SendGrid and Cloudflare email, ntfy push
 - **Market data and prediction markets:** CoinGecko, Open Exchange Rates,
-  Kalshi, Polymarket, Binance (real-time WebSocket feeds for all three)
+  Kalshi, Polymarket, Binance (real-time WebSocket feeds for all three),
+  Pyth Pro
 - **Search, data and operations:** Algolia, Upstash Redis, Sentry,
   OpenWeatherMap
 - **URL safety:** Google Web Risk, URLhaus (abuse.ch)
@@ -66,6 +67,7 @@ CI-verified).
 - **[OpenWeatherMap](./connectors/openweathermap/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/openweathermap)](https://jsr.io/@tundraconnect/openweathermap) — Typed OpenWeatherMap client: current weather and 5-day / 3-hour forecasts by city name or coordinates.
 - **[PayPal](./connectors/paypal/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/paypal)](https://jsr.io/@tundraconnect/paypal) — Typed PayPal client for Orders v2: create, fetch, capture and refund, with automatic OAuth2 tokens, idempotency keys and webhook verification.
 - **[Polymarket](./connectors/polymarket/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/polymarket)](https://jsr.io/@tundraconnect/polymarket) — Typed Polymarket client: Gamma market discovery, CLOB trading with secp256k1/EIP-712 order signing, portfolio positions and value, gasless split/merge/redeem, and real-time WebSocket feeds for order books, trades, your orders and reference prices.
+- **[Pyth](./connectors/pyth/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/pyth)](https://jsr.io/@tundraconnect/pyth) — Typed Pyth Pro (Pyth Lazer) price stream for Deno, Bun, Node.js, browsers and Cloudflare Workers: all redundant WebSocket endpoints at once, merged into one validated stream with per-endpoint health and gap detection.
 - **[Razorpay](./connectors/razorpay/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/razorpay)](https://jsr.io/@tundraconnect/razorpay) — Typed Razorpay client: create and fetch orders; capture, fetch and list payments; create payment links; and verify webhook signatures.
 - **[Resend](./connectors/resend/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/resend)](https://jsr.io/@tundraconnect/resend) — Typed Resend client: send single and batch transactional email with idempotency keys, retrieve delivery status, reschedule or cancel scheduled email, and verify Svix-signed webhooks.
 - **[S3](./connectors/s3/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/s3)](https://jsr.io/@tundraconnect/s3) — Typed S3 client with SigV4 signing for AWS S3, Cloudflare R2, MinIO and DigitalOcean Spaces: object CRUD and listing, plus streamed multipart uploads and downloads.

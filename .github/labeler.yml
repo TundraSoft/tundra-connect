@@ -72,6 +72,9 @@ documentation:
 'connector: polymarket':
   - changed-files:
       - any-glob-to-any-file: connectors/polymarket/**
+'connector: pyth':
+  - changed-files:
+      - any-glob-to-any-file: connectors/pyth/**
 'connector: razorpay':
   - changed-files:
       - any-glob-to-any-file: connectors/razorpay/**

@@ -286,6 +286,18 @@
         }
       ]
     },
+    "connectors/pyth": {
+      "release-type": "node",
+      "component": "pyth",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/razorpay": {
       "release-type": "node",
       "component": "razorpay",
