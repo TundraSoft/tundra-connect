@@ -367,6 +367,15 @@ and the **browser** even though those aren't in CI yet: stick to `fetch`,
 `URL`, `crypto.subtle`, and other standard Web APIs; never import
 `node:*`/`Deno.*` APIs directly in a connect's implementation.
 
+**Plain V8 is a tested target too.** `deno task test:plain-v8` bundles every
+connect's suites and runs them in a bare `deno_core` isolate with only the
+web extensions — no `Deno`, `process`, `Bun`, `Buffer` or `global` (CI job
+"Test (plain V8)"). It refuses static `node:`/`bun:` imports and turns
+dynamic ones into a throw, so a code path that only works through a
+runtime built-in fails there. This is the runtime an embedder such as a
+Rust `deno_core` host provides; keep it green. Suites that need a real
+server (the WebSocket mock server) are skipped by it.
+
 ## Naming & style
 
 - Files/classes: `PascalCase.ts`. Barrels/helpers: `camelCase.ts` or
