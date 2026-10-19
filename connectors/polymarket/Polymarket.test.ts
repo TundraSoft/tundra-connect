@@ -6,6 +6,9 @@ import { PolymarketError } from './errors/mod.ts';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { hmacSign } from './PolymarketAuth.ts';
 import { PolymarketSigner } from './PolymarketSigner.ts';
+import signingVectors from './fixtures/signing-vectors.json' with {
+  type: 'json',
+};
 
 // Publicly-known Hardhat/Anvil test key — safe to hardcode; the same key
 // this connect's crypto modules pin their SDK test vectors against.
@@ -1962,4 +1965,273 @@ describe('Polymarket — auth.signer / auth.hmac', () => {
     );
     asserts.assertEquals(err.code, 'NO_API_CREDENTIALS');
   });
+});
+
+// ── Prepared orders (identity before submission) ────────────────────────────
+
+describe('Polymarket — prepareOrder / submitPrepared', () => {
+  const trader = () =>
+    new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        privateKey: TEST_KEY,
+        funder: PROXY,
+        apiCredentials: CREDS,
+      },
+    });
+  const base = {
+    tokenId: TOKEN,
+    side: 'BUY' as const,
+    price: 0.55,
+    shares: 9,
+    orderType: 'GTC' as const,
+    version: 2 as const,
+    negRisk: false,
+  };
+
+  it('a fixed salt and clock give the shared vector hash and signature', async () => {
+    const c = trader();
+    for (const v of signingVectors.orders) {
+      const prepared = await c.prepareOrder({
+        tokenId: v.input.tokenId,
+        side: v.input.side as 'BUY' | 'SELL',
+        price: v.input.price,
+        shares: v.input.shares,
+        orderType: 'GTC',
+        version: v.input.version as 1 | 2,
+        negRisk: v.input.negRisk,
+        salt: v.input.salt,
+        nowMs: v.input.nowMs,
+      });
+      asserts.assertEquals(prepared.orderHash, v.digest);
+      asserts.assertEquals(prepared.signature, v.signature);
+      asserts.assertEquals(prepared.order, v.wire);
+    }
+    asserts.assertEquals(
+      c.requests.length,
+      0,
+      'version/negRisk given: no lookups',
+    );
+  });
+
+  it('is deterministic for a salt, and the salt changes the identity', async () => {
+    const c = trader();
+    const a = await c.prepareOrder({ ...base, salt: 1, nowMs: 1_000 });
+    const b = await c.prepareOrder({ ...base, salt: 1, nowMs: 1_000 });
+    const other = await c.prepareOrder({ ...base, salt: 2, nowMs: 1_000 });
+    asserts.assertEquals(a.orderHash, b.orderHash);
+    asserts.assertNotEquals(a.orderHash, other.orderHash);
+    const random = await c.prepareOrder(base);
+    asserts.assert(Number.isSafeInteger(random.salt));
+  });
+
+  it('refuses an invalid salt or clock', async () => {
+    const c = trader();
+    for (
+      const bad of [{ salt: -1 }, { salt: 2 ** 53 }, { salt: 1.5 }, {
+        nowMs: -5,
+      }]
+    ) {
+      const err = await asserts.assertRejects(
+        () => c.prepareOrder({ ...base, ...bad }),
+        PolymarketError,
+      );
+      asserts.assertEquals(err.code, 'ORDER_REJECTED');
+    }
+  });
+
+  it('submitPrepared sends the order exactly as signed', async () => {
+    const c = trader();
+    const prepared = await c.prepareOrder({ ...base, salt: 7, postOnly: true });
+    c.setResponse({
+      success: true,
+      orderID: prepared.orderHash,
+      status: 'live',
+      makingAmount: '',
+      takingAmount: '',
+    });
+    const result = await c.submitPrepared(prepared);
+    const body = JSON.parse(c.lastRequest!.body!);
+    asserts.assertEquals(body.order, prepared.order);
+    asserts.assertEquals(body.owner, CREDS.apiKey);
+    asserts.assertEquals(body.postOnly, true);
+    asserts.assertEquals(result.orderHash, prepared.orderHash);
+    asserts.assertEquals(result.id, prepared.orderHash);
+  });
+
+  it('submitPrepared never rebuilds: a version change is ORDER_VERSION_STALE', async () => {
+    const c = trader();
+    const prepared = await c.prepareOrder({ ...base, version: 1, salt: 3 });
+    c.setResponseQueue([
+      { body: { error: 'order_version_mismatch' }, status: 400 },
+      { body: { version: 2 } },
+    ]);
+    const err = await asserts.assertRejects(
+      () => c.submitPrepared(prepared),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'ORDER_VERSION_STALE');
+    asserts.assertEquals(err.getContextValue('orderHash'), prepared.orderHash);
+    asserts.assertEquals(err.getContextValue('preparedVersion'), 1);
+    asserts.assertEquals(err.getContextValue('currentVersion'), 2);
+    asserts.assertEquals(
+      c.requests.filter((r) => r.url.endsWith('/order')).length,
+      1,
+      'exactly one order POST — nothing re-signed or resent',
+    );
+  });
+
+  it('submitting the same prepared order twice is ORDER_DUPLICATE', async () => {
+    const c = trader();
+    const prepared = await c.prepareOrder({ ...base, salt: 11 });
+    c.setResponse({
+      error: `order ${prepared.orderHash} is invalid. Duplicated.`,
+    }, 400);
+    const err = await asserts.assertRejects(
+      () => c.submitPrepared(prepared),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'ORDER_DUPLICATE');
+    asserts.assertEquals(err.getContextValue('orderHash'), prepared.orderHash);
+  });
+
+  it('a plain rejection now carries the venue message from `error`', async () => {
+    const c = trader();
+    const prepared = await c.prepareOrder({ ...base, salt: 12 });
+    c.setResponse({ error: 'not enough balance / allowance' }, 400);
+    const err = await asserts.assertRejects(
+      () => c.submitPrepared(prepared),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'ORDER_REJECTED');
+    asserts.assertStringIncludes(err.message, 'not enough balance');
+  });
+
+  it('prepareOrders + submitPreparedBatch: per-row codes, nothing rebuilt', async () => {
+    const c = trader();
+    c.setResponseQueue([{ body: { version: 2 } }, {
+      body: { neg_risk: false },
+    }]);
+    const prepared = await c.prepareOrders([
+      { ...base, version: undefined, negRisk: undefined, salt: 1 },
+      { ...base, version: undefined, negRisk: undefined, salt: 2 },
+      { ...base, version: undefined, negRisk: undefined, salt: 3 },
+    ]);
+    asserts.assertEquals(
+      c.requests.length,
+      2,
+      'one version + one neg-risk lookup',
+    );
+    c.setResponse([
+      { success: true, orderID: prepared[0]!.orderHash, status: 'live' },
+      { success: false, errorMsg: 'order_version_mismatch' },
+      {
+        success: false,
+        errorMsg: `order ${prepared[2]!.orderHash} is invalid. Duplicated.`,
+      },
+    ]);
+    const results = await c.submitPreparedBatch(prepared);
+    asserts.assertEquals(results.map((r) => r.rejectionCode), [
+      undefined,
+      'VERSION_STALE',
+      'DUPLICATE',
+    ]);
+    asserts.assertEquals(
+      results.map((r) => r.orderHash),
+      prepared.map((p) => p.orderHash),
+    );
+    const body = JSON.parse(c.lastRequest!.body!) as { order: unknown }[];
+    asserts.assertEquals(
+      body.map((b) => b.order),
+      prepared.map((p) => p.order),
+    );
+    asserts.assertEquals(
+      c.requests.filter((r) => r.url.endsWith('/orders')).length,
+      1,
+    );
+  });
+
+  it('getOrder looks up any order by hash', async () => {
+    const c = trader();
+    c.setResponse({
+      id: '0xabc',
+      status: 'MATCHED',
+      owner: CREDS.apiKey,
+      maker_address: PROXY,
+      market: '0xc',
+      asset_id: TOKEN,
+      side: 'BUY',
+      original_size: '9',
+      size_matched: '9',
+      price: '0.55',
+      outcome: 'Yes',
+      expiration: '0',
+      order_type: 'GTC',
+      associate_trades: ['t1'],
+      created_at: 1748779200,
+    });
+    const order = await c.getOrder('0xabc');
+    asserts.assertEquals(order.status, 'MATCHED');
+    asserts.assertEquals(order.sizeMatched, 9);
+    asserts.assert(c.lastRequest!.url.includes('/data/order/0xabc'));
+  });
+});
+
+// ── Live: duplicate submission (places a real order) ────────────────────────
+// Needs a funded proxy wallet: CONNECTOR_POLYMARKET_PRIVATE_KEY,
+// CONNECTOR_POLYMARKET_FUNDER and LIVE_TEST_ALLOW_ORDERS. It rests one
+// post-only BUY of 5 shares at 0.01 ($0.05 of collateral) far below the
+// market, submits the SAME prepared order a second time to record how the
+// venue treats a duplicate, then cancels the order in `finally`.
+const orderTestsEnabled = !!credentials.privateKey &&
+  !!env.get('CONNECTOR_POLYMARKET_FUNDER') &&
+  !!env.get('LIVE_TEST_ALLOW_ORDERS');
+
+describe({
+  name: 'Polymarket — live prepared-order duplicate',
+  ignore: !orderTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('a resubmitted prepared order is refused as ORDER_DUPLICATE, never placed twice', async () => {
+      const client = new Polymarket({
+        auth: {
+          type: 'CUSTOM',
+          privateKey: credentials.privateKey!,
+          funder: env.get('CONNECTOR_POLYMARKET_FUNDER')!,
+        },
+      });
+      await client.deriveApiCredentials();
+      const { markets } = await client.getMarkets({ limit: 20, closed: false });
+      const market = markets.find((m) =>
+        m.clobTokenIds.length > 0 && m.acceptingOrders !== false
+      );
+      asserts.assert(market, 'no open market to rest an order on');
+      const prepared = await client.prepareOrder({
+        tokenId: market.clobTokenIds[0]!,
+        side: 'BUY',
+        price: 0.01,
+        shares: 5,
+        orderType: 'GTC',
+        postOnly: true,
+      });
+      try {
+        const first = await client.submitPrepared(prepared);
+        asserts.assertEquals(
+          first.id,
+          prepared.orderHash,
+          'the venue order id is the EIP-712 hash',
+        );
+        const err = await asserts.assertRejects(
+          () => client.submitPrepared(prepared),
+          PolymarketError,
+        );
+        asserts.assertEquals(err.code, 'ORDER_DUPLICATE');
+        const order = await client.getOrder(prepared.orderHash);
+        asserts.assertEquals(order.id, prepared.orderHash);
+      } finally {
+        await client.cancelOrder(prepared.orderHash).catch(() => {});
+      }
+    });
+  },
 });

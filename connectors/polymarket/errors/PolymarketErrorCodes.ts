@@ -32,6 +32,10 @@ export const PolymarketErrorCodes = {
     'No CLOB API credentials — call deriveApiCredentials() first, or construct the client with `auth.apiCredentials` already set.',
 
   ORDER_REJECTED: 'Polymarket rejected the order: ${detail}',
+  ORDER_VERSION_STALE:
+    'This prepared order (${orderHash}) was signed for protocol version ${preparedVersion}; the venue now serves ${currentVersion}. Prepare a new order — it will have a new hash.',
+  ORDER_DUPLICATE:
+    'Polymarket already has this exact order (${orderHash}) — it was not placed again. Check the original with getOrder().',
   ORDER_VERSION_MISMATCH_PERSISTED:
     'Polymarket reported order_version_mismatch again after refreshing the protocol version and re-signing once.',
 

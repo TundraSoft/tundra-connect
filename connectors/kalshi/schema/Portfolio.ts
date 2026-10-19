@@ -195,8 +195,11 @@ export const PositionsPageSchemaObject: BaseGuardian<PositionsPage> = Guardian
 /** One execution from `GET /portfolio/fills`. */
 export type Fill = {
   fillId: string;
+  /** Trade id — the same id the public trade tape and the WebSocket `fill` carry. */
+  tradeId?: string;
   orderId?: string;
   ticker?: string;
+  marketTicker?: string;
   outcomeSide?: string;
   bookSide?: string;
   count?: number;
@@ -209,8 +212,10 @@ export type Fill = {
 
 const RENAME_FILL: Record<string, string> = {
   fill_id: 'fillId',
+  trade_id: 'tradeId',
   order_id: 'orderId',
   ticker: 'ticker',
+  market_ticker: 'marketTicker',
   outcome_side: 'outcomeSide',
   book_side: 'bookSide',
   count_fp: 'count',
@@ -223,8 +228,10 @@ const RENAME_FILL: Record<string, string> = {
 
 const _fill = Guardian.object({
   fillId: Guardian.string().minLength(1),
+  tradeId: Guardian.string().optional(),
   orderId: Guardian.string().optional(),
   ticker: Guardian.string().optional(),
+  marketTicker: Guardian.string().optional(),
   outcomeSide: Guardian.string().optional(),
   bookSide: Guardian.string().optional(),
   count: Guardian.number().optional(),

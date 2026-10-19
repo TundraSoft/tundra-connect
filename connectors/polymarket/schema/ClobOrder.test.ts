@@ -34,6 +34,21 @@ describe('ClobOrder schemas', () => {
     asserts.assertEquals(result.orderId, undefined);
   });
 
+  it('reads the documented `{ error }` rejection body as errorMsg', () => {
+    const parsed = ClobPostOrderResponseSchemaObject.parse({
+      error: 'order 0xabc is invalid. Duplicated.',
+    });
+    asserts.assertEquals(
+      parsed.errorMsg,
+      'order 0xabc is invalid. Duplicated.',
+    );
+    const both = ClobPostOrderResponseSchemaObject.parse({
+      error: 'outer',
+      errorMsg: 'inner',
+    });
+    asserts.assertEquals(both.errorMsg, 'inner');
+  });
+
   it('parses a cancel response, normalizing not_canceled to notCanceled', () => {
     const result = ClobCancelResponseSchemaObject.parse({
       canceled: ['a', 'b'],

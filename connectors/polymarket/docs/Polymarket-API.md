@@ -197,14 +197,58 @@ Builds the EIP-712 `Order` struct (protocol version 1 or 2, selected via
 `getVersion()` unless you pass `version` explicitly), quantizes nothing on
 your behalf — `price`/`shares` are sent exactly as given, so pre-quantize
 with the venue's cent rule yourself if you're computing a size from a USD
-budget — signs it with `auth.privateKey`, and `POST`s it. If the venue
-responds `order_version_mismatch`, this refreshes the cached protocol
-version and retries exactly once with a freshly-built, freshly-signed
-order; a mismatch that survives the retry throws
+budget — signs it with `auth.privateKey` (or `auth.signer`), and `POST`s
+it: `prepareOrder()` then `submitPrepared()`. If the venue responds
+`order_version_mismatch`, this refreshes the cached protocol version and
+retries exactly once with a freshly-built, freshly-signed order — a NEW
+order with a new hash; a mismatch that survives the retry throws
 `ORDER_VERSION_MISMATCH_PERSISTED`. A genuine rejection (any other non-2xx)
 throws `ORDER_REJECTED` with the vendor's detail message. A FAK/FOK
 "no match" is never thrown — it's a normal, expected outcome reported via
 `result.noMatch`.
+
+### `prepareOrder()` / `submitPrepared()` — identity before sending
+
+Polymarket has no client order id: an order's identity is the EIP-712 hash
+of the signed order, and that depends on a salt chosen when it is built.
+To record an order before sending it (and reconcile it after a crash),
+split building from sending:
+
+```ts
+const prepared = await client.prepareOrder({
+  tokenId: '7132...',
+  side: 'BUY',
+  price: 0.55,
+  shares: 9,
+  orderType: 'GTC',
+  // salt: 123456789, nowMs: 1784600000000 — fix both for a reproducible hash
+});
+await journal.record(prepared.orderHash, prepared); // identity, before sending
+const result = await client.submitPrepared(prepared); // result.id === prepared.orderHash
+```
+
+- `prepareOrder()` builds and signs only. With the same options, `salt`
+  and `nowMs` it always returns the same `orderHash`, `signature` and
+  `order` (the shared vectors in
+  [fixtures/signing-vectors.json](../fixtures/signing-vectors.json) pin
+  this).
+- `submitPrepared()` sends the order exactly as signed and never rebuilds
+  it. If the venue moved to another protocol version since the order was
+  signed it throws `ORDER_VERSION_STALE` (`preparedVersion`,
+  `currentVersion`, `orderHash` in the context): prepare a new order on
+  purpose — it will have a new hash.
+- Sending the same prepared order twice does not place it twice. The CLOB
+  rejects the second one as `INVALID_ORDER_DUPLICATED` (HTTP 400,
+  `order <hash> is invalid. Duplicated.`), surfaced as `ORDER_DUPLICATE`;
+  read the original's state with `getOrder(orderHash)`. That retry after an
+  unknown outcome (a timeout, a crash between send and response) is
+  therefore safe. This follows Polymarket's documented error; the gated
+  live test (`LIVE_TEST_ALLOW_ORDERS`) confirms it against the venue.
+- `prepareOrders()` / `submitPreparedBatch()` do the same for many orders
+  (one version and one neg-risk lookup per distinct token; 15 per request,
+  chunks concurrent). A batch never throws for a vendor-side outcome: each
+  row is an `OrderResult` with `rejectionCode: 'VERSION_STALE'` or
+  `'DUPLICATE'` where those apply, and every row carries `orderHash`.
 
 ### `submitOrders()` — bulk, up to 15 per request, auto-chunked
 
@@ -264,6 +308,7 @@ Three sources feed the portfolio view, and they differ in auth and units:
 | Method                | Source              | Auth | Notes                                                                                                                                                                                                            |
 | --------------------- | ------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `getBalance()`        | CLOB                | L2   | USDC collateral by default; `{ tokenId }` for the share balance of one outcome. The vendor sends 6-decimal base units — `balance` is already divided (`125.5`), `balanceRaw` is the wire string (`'125500000'`). |
+| `getOrder(id)`        | CLOB `/data/order`  | L2   | One order by id (its `orderHash`) in any state — resting, matched or cancelled. Throws `NOT_FOUND` for an id the account never placed.                                                                           |
 | `getOpenOrders()`     | CLOB `/data/orders` | L2   | Cursor-paginated; filter by `market`, `assetId` or `id`. `expiration === 0` means GTC.                                                                                                                           |
 | `getFills()`          | CLOB `/data/trades` | L2   | Cursor-paginated; filter by `market`, `assetId`, `makerAddress`, `before`/`after` (Unix seconds). `traderSide` says whether you took or made.                                                                    |
 | `getPositions()`      | Data API            | none | Keyed by wallet — defaults to `auth.funder`, pass `user` for any wallet. Offset-paginated (`limit`/`offset`); `redeemable`/`mergeable` filters.                                                                  |
@@ -300,6 +345,16 @@ for (const p of await client.getPositions({ redeemable: true })) {
   });
 }
 ```
+
+#### Reconciling after a restart
+
+| Need                                 | Call                                                                                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| An order recorded before it was sent | `getOrder(orderHash)` — its status and `sizeMatched`, whatever happened to it. `NOT_FOUND` means it never reached the venue.          |
+| Every open order                     | `getOpenOrders()`, paging with `cursor`. Each `id` is the order hash.                                                                 |
+| Fills since a point in time          | `getFills({ after: unixSeconds })`, paging with `cursor`. `takerOrderId` and `makerOrders[].order_id` link each fill to order hashes. |
+| Positions                            | `getPositions()`, paging with `limit`/`offset`.                                                                                       |
+| Cash                                 | `getBalance()` (USDC) and `getBalance({ tokenId })` (shares of one outcome).                                                          |
 
 The Data API is public and reads any wallet — it is the same data the
 Polymarket profile pages show. It lags the CLOB by a few seconds after a

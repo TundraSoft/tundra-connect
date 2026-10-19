@@ -66,6 +66,10 @@ export const ClobPostOrderResponseSchemaObject: BaseGuardian<
     if (obj.orderId === undefined && obj.orderID !== undefined) {
       obj.orderId = obj.orderID;
     }
+    // The CLOB's documented error body is `{ "error": "..." }`, not `errorMsg`.
+    if (obj.errorMsg === undefined && typeof obj.error === 'string') {
+      obj.errorMsg = obj.error;
+    }
     if (obj.tradeIds === undefined && obj.tradeIDs !== undefined) {
       obj.tradeIds = obj.tradeIDs;
     }
