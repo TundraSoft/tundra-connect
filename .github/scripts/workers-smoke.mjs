@@ -88,7 +88,58 @@ const SPECS = [
   { dir: 'twilio', error: 'TwilioError', make: `new lib.Twilio({ accountSid: 'AC' + '1'.repeat(32), authToken: 'token' })`, call: `c.getCall('CA' + '0'.repeat(32))` },
   { dir: 'upstash-redis', error: 'UpstashRedisError', make: `new lib.UpstashRedis({ auth: { type: 'BEARER', token: 'test-token', prefix: 'Bearer' }, baseURL: 'https://us1-merry-cat-32748.upstash.io' })`, call: `c.get('foo')` },
   { dir: 'urlhaus', error: 'URLhausError', make: `new lib.URLhaus({ auth: { type: 'CUSTOM', authKey: 'test-auth-key' }, timeout: 1.5 })`, call: `c.lookupUrl({ url: 'http://example.com/x.exe' })` },
+  // WebSocket feeds (`./sockets`): driven through a fake WebSocket factory,
+  // since the smoke test has no network. Proves the socket core, the
+  // venue's handshake (Kalshi's RSA-PSS signature) and Guardian parsing all
+  // run in workerd; `expect` is the first venue event type it must yield.
+  { dir: 'polymarket', label: 'market socket', socket: true, make: `new lib.PolymarketMarketSocket({ assetIds: ['1'], webSocket: fake })`, frames: [q({ event_type: 'book', market: '0xm', asset_id: '1', timestamp: '1782753357257', hash: 'h', bids: [{ price: '0.4', size: '10' }], asks: [] })], expect: 'book' },
+  { dir: 'kalshi', label: 'signed socket', socket: true, make: `new lib.KalshiSocket({ auth: { accessKey: 'key-id', privateKeyPem: ${q(rsaPem)} }, subscriptions: [{ channel: 'trade' }], webSocket: fake })`, frames: [q({ type: 'trade', sid: 1, seq: 1, msg: { trade_id: 't', market_ticker: 'M', yes_price_dollars: '0.36', no_price_dollars: '0.64', count_fp: '1.00' } })], expect: 'trade', header: 'KALSHI-ACCESS-SIGNATURE' },
+  { dir: 'binance', label: 'market socket', socket: true, make: `new lib.BinanceMarketSocket({ streams: { trade: ['BTCUSDT'] }, webSocket: fake })`, frames: [q({ stream: 'btcusdt@trade', data: { e: 'trade', E: 1, s: 'BTCUSDT', t: 1, p: '1.5', q: '2', T: 1, m: false } })], expect: 'trade' },
 ];
+
+function socketWorkerSource(spec) {
+  return `import * as lib from './lib.mjs';
+const FRAMES = [${spec.frames.map((f) => JSON.stringify(f)).join(', ')}];
+let opened;
+class FakeWebSocket extends EventTarget {
+  constructor(url, init) {
+    super();
+    this.url = url;
+    this.headers = init?.headers;
+    this.sent = [];
+    this.readyState = 0;
+    opened = this;
+    setTimeout(() => {
+      this.readyState = 1;
+      this.dispatchEvent(new Event('open'));
+      for (const data of FRAMES) this.dispatchEvent(new MessageEvent('message', { data }));
+    }, 0);
+  }
+  send(data) { this.sent.push(data); }
+  close() { this.readyState = 3; }
+}
+const fake = (url, init) => new FakeWebSocket(url, init);
+export default {
+  async fetch() {
+    const out = {};
+    try {
+      const s = ${spec.make};
+      for await (const e of s) {
+        if (e.type === 'connected') continue;
+        out.type = e.type;
+        if (e.type === 'error' || e.type === 'invalid') out.message = String(e.error?.message).slice(0, 400);
+        break;
+      }
+      out.sent = opened?.sent?.length ?? 0;
+      out.header = ${spec.header ? `!!opened?.headers?.[${JSON.stringify(spec.header)}]` : 'true'};
+    } catch (e) {
+      out.type = 'threw';
+      out.message = String(e?.message ?? e).slice(0, 400);
+    }
+    return Response.json(out);
+  },
+};`;
+}
 
 function workerSource(spec) {
   return `import * as lib from './lib.mjs';
@@ -136,6 +187,11 @@ async function bundle(dir) {
 }
 
 function verdict(spec, out) {
+  if (spec.socket) {
+    if (out.type !== spec.expect) return `expected a ${spec.expect} event`;
+    if (out.sent < 1) return 'sent no subscription';
+    return out.header ? null : `no ${spec.header} handshake header`;
+  }
   if (spec.webhook) {
     return out.outcome === 'rejected' && out.code === spec.webhook &&
         out.fetched === 0
@@ -158,7 +214,7 @@ for (const spec of specs) {
   let out = {};
   const mf = new Miniflare({
     modules: [
-      { type: 'ESModule', path: 'worker.mjs', contents: workerSource(spec) },
+      { type: 'ESModule', path: 'worker.mjs', contents: spec.socket ? socketWorkerSource(spec) : workerSource(spec) },
       { type: 'ESModule', path: 'lib.mjs', contents: await bundle(spec.dir) },
     ],
     compatibilityDate: COMPATIBILITY_DATE,
@@ -177,7 +233,9 @@ for (const spec of specs) {
     console.log(`✗ ${name} — ${problem}`);
     console.log(`    ${JSON.stringify(out)}`);
   } else {
-    const detail = spec.webhook
+    const detail = spec.socket
+      ? `${out.type} event, ${out.sent} frame(s) sent`
+      : spec.webhook
       ? `${out.code}, no fetch`
       : `fetch reached, ${out.error} ${out.code}`;
     console.log(`✓ ${name} — ${detail}`);
