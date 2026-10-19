@@ -37,6 +37,8 @@ http = "http"
 https = "https"
 iso = "iso"
 json = "json"
+# Pyth Lazer — the former (and endpoint) name of Pyth Pro
+lazer = "lazer"
 jwt = "jwt"
 md5 = "md5"
 mongodb = "mongodb"
