@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/TundraSoft/tundra-connect/compare/polymarket-v0.2.0...polymarket-v0.3.0) (2026-10-19)
+
+
+### Features
+
+* **polymarket:** accept a caller-supplied signer and HMAC ([4ad1c5e](https://github.com/TundraSoft/tundra-connect/commit/4ad1c5e07cbf1dc376a9ed6e7400fa7a975963ca))
+* **polymarket:** add WebSocket feeds as a ./sockets export ([7188866](https://github.com/TundraSoft/tundra-connect/commit/718886617ff3da0248c3ee8aeccc3d30d2c5dfb6))
+* **polymarket:** prepare an order separately from submitting it ([d62efab](https://github.com/TundraSoft/tundra-connect/commit/d62efab6851fcb2dbc047bbd4cc0edba7bdf9922))
+
+
+### Bug Fixes
+
+* **polymarket:** read the CLOB's `{ error }` rejection body as errorMsg ([6cdc128](https://github.com/TundraSoft/tundra-connect/commit/6cdc1288aec9a7d98b6d96de9e25301aea33b176))
+
 ## [0.2.0](https://github.com/TundraSoft/tundra-connect/compare/polymarket-v0.1.1...polymarket-v0.2.0) (2026-10-04)
 
 
