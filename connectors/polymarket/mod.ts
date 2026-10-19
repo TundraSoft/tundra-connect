@@ -94,6 +94,8 @@ export {
   type PolymarketAuth,
   type PolymarketAuthCommon,
   type PolymarketOptions,
+  type PreparedOrder,
+  type PrepareOrderOptions,
   RELAYER_API,
   type SubmitOrderOptions,
 } from './Polymarket.ts';

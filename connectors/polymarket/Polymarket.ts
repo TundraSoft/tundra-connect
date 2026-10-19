@@ -14,7 +14,7 @@ import {
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
 import { type BaseGuardian, type GuardianError } from '@guardian';
-import { checksumAddress } from './PolymarketEip712.ts';
+import { checksumAddress, toHex } from './PolymarketEip712.ts';
 import {
   buildL1Headers,
   buildL2Headers,
@@ -29,7 +29,7 @@ import {
 } from './PolymarketSigner.ts';
 import {
   buildOrder,
-  type BuildOrderParams,
+  orderDigest,
   type OrderSide,
   orderWireJson,
   type ProtocolVersion,
@@ -52,6 +52,8 @@ import {
   type ClobCancelResponse,
   ClobCancelResponseSchemaObject,
   ClobNegRiskSchemaObject,
+  type ClobOpenOrder,
+  ClobOpenOrderSchemaObject,
   type ClobOpenOrdersPage,
   ClobOpenOrdersPageSchemaObject,
   type ClobOrderBook,
@@ -313,6 +315,41 @@ export type SubmitOrderOptions = {
 /** Inputs to {@link Polymarket.submitOrders} — one order; `version` is resolved once for the whole batch, not per-order. */
 export type BulkOrderInput = Omit<SubmitOrderOptions, 'version'>;
 
+/** Inputs to {@link Polymarket.prepareOrder} — an order plus the two values that fix its identity. */
+export type PrepareOrderOptions = SubmitOrderOptions & {
+  /** Fixed salt — an integer below 2^53. Random when omitted. */
+  salt?: number;
+  /** Build clock, Unix ms: the V2 order's signed `timestamp`. @default Date.now() */
+  nowMs?: number;
+};
+
+/**
+ * A built and signed order that has not been sent. Its `orderHash` is the
+ * order's identity on Polymarket (the EIP-712 hash the CLOB reports as the
+ * order id), known before submission. Send it with
+ * {@link Polymarket.submitPrepared} — never rebuilt, so the hash holds.
+ */
+export type PreparedOrder = {
+  /** EIP-712 hash of the signed order — Polymarket's order id. */
+  orderHash: `0x${string}`;
+  salt: number;
+  /** The protocol version it was signed for. */
+  version: ProtocolVersion;
+  negRisk: boolean;
+  tokenId: string;
+  side: OrderSide;
+  price: number;
+  shares: number;
+  orderType: SubmitOrderOptions['orderType'];
+  /** The signed `timestamp` (ms) — V2's struct field; also used for V1's salt entropy. */
+  timestampMs: number;
+  signature: `0x${string}`;
+  /** The signed order exactly as it goes on the wire (`order` in the request body). */
+  order: Record<string, unknown>;
+  postOnly?: boolean;
+  deferExec?: boolean;
+};
+
 /** Discriminant for {@link Polymarket.order} — the CLOB's `OrderSide` plus the Relayer's collateral actions. */
 export type OrderAction = OrderSide | 'SPLIT' | 'MERGE' | 'REDEEM';
 
@@ -357,8 +394,18 @@ export type OrderResult = {
   rejected: boolean;
   /** The vendor's rejection detail, present when `rejected` is `true`. */
   detail?: string;
+  /**
+   * Why a batch row was rejected, when it is one this client can name:
+   * `VERSION_STALE` (signed for a protocol version the venue no longer
+   * serves — prepare a new order) or `DUPLICATE` (this exact order was
+   * already placed). Only set by {@link Polymarket.submitPreparedBatch}
+   * and {@link Polymarket.submitOrders}.
+   */
+  rejectionCode?: 'VERSION_STALE' | 'DUPLICATE';
   /** The CLOB order id, or the Relayer transaction id. */
   id: string;
+  /** BUY/SELL only — the signed order's EIP-712 hash, its identity before and after sending. */
+  orderHash?: `0x${string}`;
   status: string;
   /** BUY/SELL only — the `price` requested. */
   requestedPrice?: number;
@@ -833,6 +880,35 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   }
 
   /**
+   * One of the account's orders by id — its `orderHash` — whatever its
+   * status: resting, fully matched or cancelled. The reconciliation lookup
+   * for an order recorded before it was sent (see {@link prepareOrder}).
+   *
+   * @throws {PolymarketError} `NOT_FOUND` when the venue has no such order
+   * for this account; `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`;
+   * `RESPONSE_ERROR` when the body fails validation.
+   *
+   * @example
+   * ```typescript
+   * const order = await client.getOrder(prepared.orderHash);
+   * console.log(order.status, order.sizeMatched, order.originalSize);
+   * ```
+   */
+  public async getOrder(orderId: string): Promise<ClobOpenOrder> {
+    const signer = this.__requireSigner();
+    const creds = this.__requireApiCreds();
+    return await this.__requestAndValidate(
+      {
+        path: `/data/order/${encodeURIComponent(orderId)}`,
+        baseURL: this.__clobBaseURL,
+        method: 'GET',
+        auth: this.__l2Auth(signer, creds),
+      },
+      ClobOpenOrderSchemaObject,
+    );
+  }
+
+  /**
    * The account's own executions (fills), newest first. One page per
    * call; pass `nextCursor` back as `cursor` for the next.
    *
@@ -965,11 +1041,170 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   }
 
   /**
-   * Build, sign, and submit one marketable order. On `order_version_mismatch`
-   * (the venue serving a different protocol version than cached), refreshes
-   * the version and retries once — every other outcome (a fill, a partial
-   * fill, a graceful FAK/FOK no-match, or a genuine rejection) is returned,
-   * not retried.
+   * Build and sign one order WITHOUT sending it. The result carries the
+   * order's identity — `orderHash`, the EIP-712 hash Polymarket uses as the
+   * order id — so it can be recorded before {@link submitPrepared} sends
+   * it. Deterministic: the same options, `salt` and `nowMs` always give the
+   * same `orderHash` and signature.
+   *
+   * @param options.salt - Fixed salt (an integer below 2^53). Random when omitted.
+   * @param options.nowMs - Build clock (ms) — the V2 order's signed
+   * `timestamp` and the random salt's entropy. @default Date.now()
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` without a signer
+   * or `auth.funder`, `ORDER_REJECTED` for a locally invalid order (a GTD
+   * order without `expirationTime`, an invalid `salt`/`nowMs`).
+   *
+   * @example
+   * ```typescript
+   * const prepared = await client.prepareOrder({
+   *   tokenId, side: 'BUY', price: 0.55, shares: 9, orderType: 'GTC',
+   * });
+   * await journal.record(prepared.orderHash); // identity known before sending
+   * const result = await client.submitPrepared(prepared);
+   * ```
+   */
+  public async prepareOrder(
+    options: PrepareOrderOptions,
+  ): Promise<PreparedOrder> {
+    const signer = this.__requireSigner();
+    const funder = this.__requireFunder();
+    Polymarket.__validateOrderInput(options);
+    const [version, negRisk] = await Promise.all([
+      options.version !== undefined
+        ? Promise.resolve(options.version)
+        : this.getVersion(),
+      options.negRisk !== undefined
+        ? Promise.resolve(options.negRisk)
+        : this.getNegRisk(options.tokenId),
+    ]);
+    return await this.__prepare(signer, funder, version, negRisk, options);
+  }
+
+  /**
+   * {@link prepareOrder} for many orders at once — one version lookup and
+   * one neg-risk lookup per distinct token. Results are in input order.
+   *
+   * @throws {PolymarketError} As {@link prepareOrder}; a locally invalid
+   * order refuses the whole batch.
+   */
+  public async prepareOrders(
+    orders: readonly PrepareOrderOptions[],
+  ): Promise<PreparedOrder[]> {
+    if (orders.length === 0) return [];
+    const signer = this.__requireSigner();
+    const funder = this.__requireFunder();
+    for (const order of orders) Polymarket.__validateOrderInput(order);
+    const uncachedTokenIds = [
+      ...new Set(
+        orders.filter((order) => order.negRisk === undefined).map((order) =>
+          order.tokenId
+        ),
+      ),
+    ];
+    const negRiskByToken = new Map<string, boolean>();
+    const needsVersion = orders.some((order) => order.version === undefined);
+    const [version] = await Promise.all([
+      needsVersion ? this.getVersion() : Promise.resolve(undefined),
+      Promise.all(
+        uncachedTokenIds.map(async (tokenId) => {
+          negRiskByToken.set(tokenId, await this.getNegRisk(tokenId));
+        }),
+      ),
+    ]);
+    return await Promise.all(orders.map((order) =>
+      this.__prepare(
+        signer,
+        funder,
+        order.version ?? version!,
+        order.negRisk ?? negRiskByToken.get(order.tokenId)!,
+        order,
+      )
+    ));
+  }
+
+  /**
+   * Send a {@link PreparedOrder} exactly as it was signed — never rebuilt,
+   * never re-signed, so its `orderHash` stays the order's identity.
+   *
+   * Sending the same prepared order twice does not place it twice: the
+   * CLOB rejects the second one (`INVALID_ORDER_DUPLICATED`, HTTP 400),
+   * surfaced as `ORDER_DUPLICATE` — check the original's outcome with
+   * {@link getOrder}`(orderHash)`.
+   *
+   * @throws {PolymarketError} `ORDER_VERSION_STALE` when the venue now
+   * serves a different protocol version than the order was signed for
+   * (prepare a new order — it will have a new hash), `ORDER_DUPLICATE`
+   * when this order was already placed, `ORDER_REJECTED` for any other
+   * rejection, `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`.
+   */
+  public async submitPrepared(order: PreparedOrder): Promise<OrderResult> {
+    const signer = this.__requireSigner();
+    const creds = this.__requireApiCreds();
+    const { response, parsed } = await this.__requestOrderResponse<
+      ClobPostOrderResponse
+    >(
+      {
+        path: '/order',
+        baseURL: this.__clobBaseURL,
+        method: 'POST',
+        contentType: 'JSON',
+        payload: Polymarket.__preparedBody(order, creds.apiKey),
+        auth: this.__l2Auth(signer, creds),
+      },
+      (data) => ClobPostOrderResponseSchemaObject.parse(data),
+    );
+    if (this.__isVersionMismatch(response, parsed)) {
+      throw await this.__staleError(order, response.status);
+    }
+    if (Polymarket.__isDuplicateEntry(response.status, parsed)) {
+      throw new PolymarketError('ORDER_DUPLICATE', {
+        orderHash: order.orderHash,
+        status: response.status,
+        detail: parsed.errorMsg,
+      });
+    }
+    return {
+      ...this.__toSubmitOrderResult(response, parsed, order.side, order.price),
+      orderHash: order.orderHash,
+    };
+  }
+
+  /**
+   * Send many {@link PreparedOrder}s, {@link BULK_ORDER_CHUNK_SIZE} per
+   * `POST /orders` (chunks run concurrently), each exactly as signed.
+   * Never throws for a vendor-side outcome: every input maps to one result
+   * in the same order, with `rejected`/`detail` set — and `rejectionCode`
+   * `'VERSION_STALE'` (re-prepare it) or `'DUPLICATE'` (already placed)
+   * where those apply.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` /
+   * `NO_API_CREDENTIALS`, `RESPONSE_ERROR` for an anomalous response.
+   */
+  public async submitPreparedBatch(
+    orders: readonly PreparedOrder[],
+  ): Promise<OrderResult[]> {
+    if (orders.length === 0) return [];
+    const signer = this.__requireSigner();
+    const creds = this.__requireApiCreds();
+    const chunks: PreparedOrder[][] = [];
+    for (let i = 0; i < orders.length; i += BULK_ORDER_CHUNK_SIZE) {
+      chunks.push(orders.slice(i, i + BULK_ORDER_CHUNK_SIZE));
+    }
+    const results = await Promise.all(
+      chunks.map((chunk) => this.__postPreparedChunk(signer, creds, chunk)),
+    );
+    return results.flat();
+  }
+
+  /**
+   * Build, sign, and submit one marketable order — {@link prepareOrder}
+   * then {@link submitPrepared}. On `order_version_mismatch` (the venue
+   * serving a different protocol version than cached) it prepares a NEW
+   * order (new salt, new hash) for the fresh version and submits that,
+   * once — every other outcome (a fill, a partial fill, a graceful FAK/FOK
+   * no-match, or a genuine rejection) is returned, not retried. Use
+   * prepare/submit directly when the order's identity must be known before
+   * it is sent.
    *
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`
    * when `auth`/derived credentials are missing, `CONFIG_MISSING_PRIVATE_KEY`
@@ -992,69 +1227,44 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   public async submitOrder(
     options: SubmitOrderOptions,
   ): Promise<OrderResult> {
-    const signer = this.__requireSigner();
-    const creds = this.__requireApiCreds();
-    const funder = this.__requireFunder();
-    Polymarket.__validateOrderInput(options);
-
-    const [version, negRisk] = await Promise.all([
-      options.version !== undefined
-        ? Promise.resolve(options.version)
-        : this.getVersion(),
-      options.negRisk !== undefined
-        ? Promise.resolve(options.negRisk)
-        : this.getNegRisk(options.tokenId),
-    ]);
-
-    const attempt = async (
-      protocolVersion: ProtocolVersion,
-    ): Promise<
-      { response: RESTlerResponse<unknown>; parsed: ClobPostOrderResponse }
-    > => {
-      const payload = await this.__buildOrderPayload(
-        signer,
-        funder,
-        protocolVersion,
-        negRisk,
-        options,
-        creds.apiKey,
-      );
-      return await this.__requestOrderResponse<ClobPostOrderResponse>(
-        {
-          path: '/order',
-          baseURL: this.__clobBaseURL,
-          method: 'POST',
-          contentType: 'JSON',
-          payload,
-          auth: this.__l2Auth(signer, creds),
-        },
-        (data) => ClobPostOrderResponseSchemaObject.parse(data),
-      );
-    };
-
-    let { response, parsed } = await attempt(version);
-    if (this.__isVersionMismatch(response, parsed)) {
-      const freshVersion = await this.getVersion(true);
-      ({ response, parsed } = await attempt(freshVersion));
-      if (this.__isVersionMismatch(response, parsed)) {
-        throw new PolymarketError('ORDER_VERSION_MISMATCH_PERSISTED', {
-          status: response.status,
-        });
+    this.__requireSigner();
+    this.__requireApiCreds();
+    this.__requireFunder();
+    const prepared = await this.prepareOrder(options);
+    try {
+      return await this.submitPrepared(prepared);
+    } catch (err) {
+      if (
+        !(err instanceof PolymarketError) || err.code !== 'ORDER_VERSION_STALE'
+      ) {
+        throw err;
+      }
+      const fresh = await this.prepareOrder({
+        ...options,
+        version: err.getContextValue('currentVersion') as ProtocolVersion,
+        negRisk: prepared.negRisk,
+      });
+      try {
+        return await this.submitPrepared(fresh);
+      } catch (retryErr) {
+        if (
+          retryErr instanceof PolymarketError &&
+          retryErr.code === 'ORDER_VERSION_STALE'
+        ) {
+          throw new PolymarketError('ORDER_VERSION_MISMATCH_PERSISTED', {
+            status: retryErr.getContextValue('status'),
+          });
+        }
+        throw retryErr;
       }
     }
-
-    return this.__toSubmitOrderResult(
-      response,
-      parsed,
-      options.side,
-      options.price,
-    );
   }
 
   /**
    * Build, sign, and submit up to {@link BULK_ORDER_CHUNK_SIZE} orders per
-   * `POST /orders` call — larger inputs are chunked automatically, every
-   * chunk submitted concurrently. A VENDOR-side rejection of one order
+   * `POST /orders` call — {@link prepareOrders} then
+   * {@link submitPreparedBatch}; larger inputs are chunked automatically,
+   * every chunk submitted concurrently. A VENDOR-side rejection of one order
    * never throws and never discards any other order's outcome, in this
    * chunk or any other — each input maps to exactly one result, in the
    * same order, with `rejected`/`detail` set instead. This includes a
@@ -1064,8 +1274,12 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * exception, so one bad chunk can never discard another chunk's
    * genuine results.
    *
-   * Unlike `submitOrder`, this never throws `ORDER_VERSION_MISMATCH_PERSISTED`
-   * — a persisted mismatch is a per-row rejection here, for the same reason.
+   * Only the orders that hit `order_version_mismatch` are re-prepared (a
+   * new order, new hash) for the fresh version and resent — never a
+   * sibling that already went through, which would risk a double fill.
+   * Unlike `submitOrder`, this never throws
+   * `ORDER_VERSION_MISMATCH_PERSISTED` — a persisted mismatch is a per-row
+   * rejection here, for the same reason.
    *
    * A LOCALLY-refused order (currently: a `GTD` order missing
    * `expirationTime`) is different — it refuses the WHOLE batch before
@@ -1092,65 +1306,35 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     orders: readonly BulkOrderInput[],
   ): Promise<OrderResult[]> {
     if (orders.length === 0) return [];
-    const signer = this.__requireSigner();
-    const creds = this.__requireApiCreds();
-    const funder = this.__requireFunder();
-    for (const order of orders) Polymarket.__validateOrderInput(order);
-
-    // Dedupe per-token lookups: a batch commonly reuses the same tokenId
-    // across several orders (e.g. resting GTC legs at different price
-    // levels), and firing one /neg-risk request per ORDER rather than per
-    // unique TOKEN would multiply that out for no reason — getNegRisk's own
-    // cache can't help here since concurrent calls all miss it before the
-    // first one resolves. Independent of the version lookup below, so both
-    // run concurrently rather than paying two round-trips back to back.
-    const uncachedTokenIds = [
-      ...new Set(
-        orders.filter((order) => order.negRisk === undefined).map((order) =>
-          order.tokenId
-        ),
-      ),
-    ];
-    const negRiskByToken = new Map<string, boolean>();
-    const [version] = await Promise.all([
-      this.getVersion(),
-      Promise.all(
-        uncachedTokenIds.map(async (tokenId) => {
-          negRiskByToken.set(tokenId, await this.getNegRisk(tokenId));
-        }),
-      ),
-    ]);
-    const negRisks = orders.map((order) =>
-      order.negRisk ?? negRiskByToken.get(order.tokenId)!
+    this.__requireSigner();
+    this.__requireApiCreds();
+    this.__requireFunder();
+    const prepared = await this.prepareOrders(orders);
+    const results = await this.submitPreparedBatch(prepared);
+    const stale = results.flatMap((r, i) =>
+      r.rejectionCode === 'VERSION_STALE' ? [i] : []
     );
+    if (stale.length === 0) return results;
 
-    const chunks: Array<
-      { chunk: readonly BulkOrderInput[]; negRisks: readonly boolean[] }
-    > = [];
-    for (let i = 0; i < orders.length; i += BULK_ORDER_CHUNK_SIZE) {
-      chunks.push({
-        chunk: orders.slice(i, i + BULK_ORDER_CHUNK_SIZE),
-        negRisks: negRisks.slice(i, i + BULK_ORDER_CHUNK_SIZE),
-      });
-    }
-    // Chunks are independent requests — submit them concurrently rather
-    // than one at a time; wall-clock is bounded by the slowest chunk, not
-    // their sum. __submitOrderChunk never throws for a vendor-side
-    // rejection (see this method's doc comment), so one chunk's failure
-    // can never prevent another's results from coming back.
-    const chunkResults = await Promise.all(
-      chunks.map(({ chunk, negRisks: chunkNegRisks }) =>
-        this.__submitOrderChunk(
-          signer,
-          creds,
-          funder,
-          version,
-          chunk,
-          chunkNegRisks,
-        )
-      ),
+    const freshVersion = await this.getVersion(true);
+    const retried = await this.submitPreparedBatch(
+      await this.prepareOrders(stale.map((i) => ({
+        ...orders[i]!,
+        version: freshVersion,
+        negRisk: prepared[i]!.negRisk,
+      }))),
     );
-    return chunkResults.flat();
+    stale.forEach((origIndex, j) => {
+      const retry = retried[j]!;
+      results[origIndex] = retry.rejectionCode === 'VERSION_STALE'
+        ? {
+          ...retry,
+          detail:
+            'order_version_mismatch persisted after refreshing the protocol version and retrying once',
+        }
+        : retry;
+    });
+    return results;
   }
 
   /**
@@ -1663,19 +1847,31 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     }
   }
 
-  /**
-   * Builds one order's signed wire payload — the shared step between
-   * {@link submitOrder} and {@link submitOrders}.
-   */
-  private async __buildOrderPayload(
+  /** Builds and signs one order — the shared step behind every prepare/submit method. */
+  private async __prepare(
     signer: DigestSigner,
     funder: `0x${string}`,
     version: ProtocolVersion,
     negRisk: boolean,
-    input: BulkOrderInput,
-    owner: string,
-  ): Promise<Record<string, unknown>> {
-    const params: BuildOrderParams = {
+    input: PrepareOrderOptions,
+  ): Promise<PreparedOrder> {
+    if (
+      input.salt !== undefined &&
+      (!Number.isSafeInteger(input.salt) || input.salt < 0)
+    ) {
+      throw new PolymarketError('ORDER_REJECTED', {
+        detail: 'salt must be a non-negative integer below 2^53',
+      });
+    }
+    if (
+      input.nowMs !== undefined &&
+      (!Number.isSafeInteger(input.nowMs) || input.nowMs < 0)
+    ) {
+      throw new PolymarketError('ORDER_REJECTED', {
+        detail: 'nowMs must be a non-negative integer (Unix milliseconds)',
+      });
+    }
+    const built = buildOrder({
       version,
       negRisk,
       funder,
@@ -1684,160 +1880,149 @@ export class Polymarket extends RESTler<PolymarketOptions> {
       side: input.side,
       price: input.price,
       shares: input.shares,
-      nowMs: Date.now(),
+      nowMs: input.nowMs ?? Date.now(),
       signatureType: this.__signatureType,
       expirationTime: input.expirationTime,
-    };
-    const built = buildOrder(params);
+      salt: input.salt,
+    });
     const signature = await signOrder(signer, built);
-    const payload: Record<string, unknown> = {
-      order: orderWireJson(built, signature),
+    return {
+      orderHash: `0x${toHex(orderDigest(built))}`,
+      salt: built.salt,
+      version,
+      negRisk,
+      tokenId: input.tokenId,
+      side: input.side,
+      price: input.price,
+      shares: input.shares,
       orderType: input.orderType,
+      timestampMs: built.timestampMs,
+      signature,
+      order: orderWireJson(built, signature),
+      ...(input.postOnly !== undefined && { postOnly: input.postOnly }),
+      ...(input.deferExec !== undefined && { deferExec: input.deferExec }),
+    };
+  }
+
+  /** The `POST /order(s)` body for one prepared order. `owner` is the API key — not part of the signature. */
+  private static __preparedBody(
+    order: PreparedOrder,
+    owner: string,
+  ): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      order: order.order,
+      orderType: order.orderType,
       owner,
     };
-    if (input.postOnly !== undefined) payload.postOnly = input.postOnly;
-    if (input.deferExec !== undefined) payload.deferExec = input.deferExec;
-    return payload;
+    if (order.postOnly !== undefined) body.postOnly = order.postOnly;
+    if (order.deferExec !== undefined) body.deferExec = order.deferExec;
+    return body;
+  }
+
+  /** `ORDER_VERSION_STALE` for `order`, naming the version the venue serves now. */
+  private async __staleError(
+    order: PreparedOrder,
+    status: number | null,
+  ): Promise<PolymarketError> {
+    let currentVersion: ProtocolVersion | undefined;
+    try {
+      currentVersion = await this.getVersion(true);
+    } catch {
+      currentVersion = undefined;
+    }
+    return new PolymarketError('ORDER_VERSION_STALE', {
+      orderHash: order.orderHash,
+      preparedVersion: order.version,
+      currentVersion,
+      status,
+    });
+  }
+
+  /** Whether a rejection is the CLOB's `INVALID_ORDER_DUPLICATED`. */
+  private static __isDuplicateEntry(
+    status: number | null,
+    entry: ClobPostOrderResponse,
+  ): boolean {
+    if (
+      status !== null && status >= 200 && status < 300 &&
+      entry.success !== false
+    ) {
+      return false;
+    }
+    const text = `${entry.code ?? ''} ${entry.errorMsg ?? ''}`.toLowerCase();
+    return text.includes('duplicated');
   }
 
   /**
-   * Submits one chunk (at most {@link BULK_ORDER_CHUNK_SIZE} orders) to
-   * `POST /orders`. A `2xx` response can still carry a per-order
-   * `order_version_mismatch` on just SOME entries (see
-   * {@link __isMismatchEntry}) — only THOSE specific orders are rebuilt
-   * (fresh protocol version) and resent, never the whole chunk. Resending
-   * a sibling order that already matched on the first attempt would
-   * submit a second, freshly-signed order for a position that's already
-   * filled: every rebuild uses a `Date.now()`-derived salt/timestamp (see
-   * `PolymarketOrder.ts`'s `makeSalt`), so a "resubmission" is
-   * cryptographically a brand-new order the venue has no way to recognize
-   * as one it already handled — a real double-fill risk the previous
-   * whole-chunk retry carried.
-   *
-   * Never throws for a vendor-side outcome (whole-chunk rejection, a
-   * persisted mismatch after retry) — both become per-row `rejected: true`
-   * results instead, so this chunk's genuine outcomes (and any sibling
-   * chunk's) are never discarded by one chunk's failure.
+   * Posts one chunk (at most {@link BULK_ORDER_CHUNK_SIZE} prepared orders)
+   * to `POST /orders` exactly as signed. Never throws for a vendor-side
+   * outcome — a whole-chunk rejection becomes a per-row `rejected: true`
+   * result, so one chunk's failure never discards another's outcomes.
    */
-  private async __submitOrderChunk(
+  private async __postPreparedChunk(
     signer: DigestSigner,
     creds: L2Credentials,
-    funder: `0x${string}`,
-    version: ProtocolVersion,
-    chunk: readonly BulkOrderInput[],
-    negRisks: readonly boolean[],
+    chunk: readonly PreparedOrder[],
   ): Promise<OrderResult[]> {
-    const post = async (
-      protocolVersion: ProtocolVersion,
-      postChunk: readonly BulkOrderInput[],
-      postNegRisks: readonly boolean[],
-    ): Promise<
-      { response: RESTlerResponse<unknown>; parsed: ClobPostOrderResponse[] }
-    > => {
-      const payload = await Promise.all(
-        postChunk.map((order, i) =>
-          this.__buildOrderPayload(
-            signer,
-            funder,
-            protocolVersion,
-            postNegRisks[i]!,
-            order,
-            creds.apiKey,
-          )
+    const { response, parsed } = await this.__requestOrderResponse<
+      ClobPostOrderResponse[]
+    >(
+      // `RESTlerContentTypePayload`'s type doesn't model a JSON ARRAY body
+      // (only `Record<string, unknown>`/`string`/...) even though
+      // `_buildBody`'s runtime just `JSON.stringify`s whatever `payload`
+      // is — the cast resolves that type-only gap, mirroring
+      // `__deleteWithBody`'s identical rationale below.
+      {
+        path: '/orders',
+        baseURL: this.__clobBaseURL,
+        method: 'POST',
+        contentType: 'JSON',
+        payload: chunk.map((order) =>
+          Polymarket.__preparedBody(order, creds.apiKey)
         ),
-      );
-      return await this.__requestOrderResponse<ClobPostOrderResponse[]>(
-        // `RESTlerContentTypePayload`'s type doesn't model a JSON ARRAY body
-        // (only `Record<string, unknown>`/`string`/...) even though
-        // `_buildBody`'s runtime just `JSON.stringify`s whatever `payload`
-        // is — the cast resolves that type-only gap, mirroring
-        // `__deleteWithBody`'s identical rationale below.
-        {
-          path: '/orders',
-          baseURL: this.__clobBaseURL,
-          method: 'POST',
-          contentType: 'JSON',
-          payload,
-          auth: this.__l2Auth(signer, creds),
-        } as unknown as RESTlerEndpoint,
-        // A whole-chunk rejection (invalid payload, >15 orders, an
-        // owner/signer mismatch) comes back as a single error OBJECT, not
-        // an array — normalize it to a one-element array so parsing never
-        // fails; the caller detects that shape via the length mismatch
-        // against what it posted.
-        (data) =>
-          (Array.isArray(data) ? data : [data]).map((entry) =>
-            ClobPostOrderResponseSchemaObject.parse(entry)
-          ),
-      );
-    };
-
-    const { response, parsed } = await post(version, chunk, negRisks);
+        auth: this.__l2Auth(signer, creds),
+      } as unknown as RESTlerEndpoint,
+      // A whole-chunk rejection (invalid payload, >15 orders, an
+      // owner/signer mismatch) comes back as a single error OBJECT, not
+      // an array — normalize it to a one-element array so parsing never
+      // fails; the length mismatch below detects that shape.
+      (data) =>
+        (Array.isArray(data) ? data : [data]).map((entry) =>
+          ClobPostOrderResponseSchemaObject.parse(entry)
+        ),
+    );
     const status = response.status ?? 0;
     const httpOk = status >= 200 && status < 300;
+    let entries = parsed;
     if (!httpOk && parsed.length !== chunk.length) {
-      // The vendor returned one error for the whole request, not one per
-      // order — every order in this chunk was refused, none partially.
-      const detail = parsed[0]?.errorMsg ?? 'unknown reason';
-      return chunk.map((order) =>
-        this.__toBulkOrderResult(
-          status,
-          { errorMsg: detail, success: false },
-          order.side,
-          order.price,
-        )
-      );
+      // One error for the whole request — every order in this chunk was
+      // refused, none partially.
+      const one = parsed[0] ?? {};
+      entries = chunk.map(() => ({ ...one, success: false }));
     }
-
-    const mismatchIndices: number[] = [];
-    parsed.forEach((entry, i) => {
-      if (Polymarket.__isMismatchEntry(entry)) mismatchIndices.push(i);
-    });
-
-    if (mismatchIndices.length > 0) {
-      const freshVersion = await this.getVersion(true);
-      const retryChunk = mismatchIndices.map((i) => chunk[i]!);
-      const retryNegRisks = mismatchIndices.map((i) => negRisks[i]!);
-      const retry = await post(freshVersion, retryChunk, retryNegRisks);
-      const retryStatus = retry.response.status ?? 0;
-      const retryHttpOk = retryStatus >= 200 && retryStatus < 300;
-      const retryFailedWhole = !retryHttpOk &&
-        retry.parsed.length !== retryChunk.length;
-      mismatchIndices.forEach((origIndex, j) => {
-        parsed[origIndex] = retryFailedWhole
-          ? {
-            errorMsg: retry.parsed[0]?.errorMsg ?? 'unknown reason',
-            success: false,
-          }
-          : retry.parsed[j]!;
-      });
-      // Any entry still showing a mismatch after the retry is a genuine,
-      // persisted problem — reported per-row (never thrown), matching this
-      // method's "never discard another order's outcome" contract.
-      for (const i of mismatchIndices) {
-        if (Polymarket.__isMismatchEntry(parsed[i]!)) {
-          parsed[i] = {
-            errorMsg:
-              'order_version_mismatch persisted after refreshing the protocol version and retrying once',
-            success: false,
-          };
-        }
-      }
-    }
-
-    if (parsed.length !== chunk.length) {
-      // Anomalous vendor response shape (shouldn't happen once the checks
-      // above have run) — fail loudly and typed rather than silently
-      // returning fewer results than orders submitted, or crashing on an
-      // out-of-range `chunk[i]` below.
+    if (entries.length !== chunk.length) {
+      // Anomalous vendor response shape — fail loudly and typed rather than
+      // silently returning fewer results than orders submitted.
       throw new PolymarketError('RESPONSE_ERROR', {
         responseError:
-          `expected ${chunk.length} bulk order results, got ${parsed.length}`,
+          `expected ${chunk.length} bulk order results, got ${entries.length}`,
       });
     }
-    return parsed.map((entry, i) =>
-      this.__toBulkOrderResult(status, entry, chunk[i]!.side, chunk[i]!.price)
-    );
+    return entries.map((entry, i) => {
+      const order = chunk[i]!;
+      const result: OrderResult = {
+        ...this.__toBulkOrderResult(status, entry, order.side, order.price),
+        orderHash: order.orderHash,
+      };
+      if (Polymarket.__isMismatchEntry(entry)) {
+        result.rejectionCode = 'VERSION_STALE';
+      } else if (
+        Polymarket.__isDuplicateEntry(null, entry) && result.rejected
+      ) {
+        result.rejectionCode = 'DUPLICATE';
+      }
+      return result;
+    });
   }
 
   /** Whether one bulk-response entry reports the vendor's `order_version_mismatch` marker. */

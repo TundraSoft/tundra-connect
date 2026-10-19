@@ -169,6 +169,8 @@ export type BuildOrderParams = {
   signatureType?: number;
   /** Unix SECONDS the order auto-cancels at — only meaningful for a `GTD` order. `0`/omitted means "never" (GTC/FOK/FAK's existing behavior, unchanged). */
   expirationTime?: number;
+  /** Fixed salt (an integer below 2^53) — makes the order, and its hash, reproducible. @default {@link makeSalt}(nowMs) */
+  salt?: number;
 };
 
 /** An order's fields exactly as signed (amounts as `bigint`; {@link orderWireJson} stringifies them). */
@@ -225,7 +227,7 @@ export function buildOrder(p: BuildOrderParams): BuiltOrder {
     version: p.version,
     domainVersion: String(p.version),
     verifyingContract,
-    salt: makeSalt(p.nowMs),
+    salt: p.salt ?? makeSalt(p.nowMs),
     maker: p.funder,
     signer: p.signerAddress,
     taker: ZERO_ADDRESS,
