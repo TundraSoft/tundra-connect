@@ -19,6 +19,7 @@
   "connectors/openweathermap": "0.2.0",
   "connectors/paypal": "0.2.0",
   "connectors/polymarket": "0.2.0",
+  "connectors/pyth": "0.0.0",
   "connectors/razorpay": "0.2.0",
   "connectors/resend": "0.2.0",
   "connectors/s3": "0.2.0",

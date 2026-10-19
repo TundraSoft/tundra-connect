@@ -127,8 +127,11 @@ export class MockFeedServer {
           headers[k] = v;
         });
         const u = new URL(req.url);
+        // A client that offers subprotocols aborts unless one is selected.
+        const offered = req.headers.get('sec-websocket-protocol');
         return {
           data: { id: ++server!.#nextId, headers, path: u.pathname + u.search },
+          ...(offered && { protocol: offered.split(',')[0]!.trim() }),
         };
       },
     });

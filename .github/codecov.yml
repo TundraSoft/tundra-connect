@@ -93,6 +93,10 @@ component_management:
         name: polymarket
         paths:
           - connectors/polymarket/**
+      - component_id: pyth
+        name: pyth
+        paths:
+          - connectors/pyth/**
       - component_id: razorpay
         name: razorpay
         paths:

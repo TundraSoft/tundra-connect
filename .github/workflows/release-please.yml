@@ -45,6 +45,7 @@ on:
           - connectors/openweathermap
           - connectors/paypal
           - connectors/polymarket
+          - connectors/pyth
           - connectors/razorpay
           - connectors/resend
           - connectors/s3

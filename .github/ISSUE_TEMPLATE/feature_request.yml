@@ -30,6 +30,7 @@ body:
         - OpenWeatherMap
         - PayPal
         - Polymarket
+        - Pyth
         - Razorpay
         - Resend
         - S3

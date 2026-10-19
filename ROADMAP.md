@@ -15,7 +15,7 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-31 connects are implemented today:
+32 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
@@ -37,6 +37,7 @@ if you'd like to champion one.
 - **[OpenWeatherMap](connectors/openweathermap/README.md)** — Typed OpenWeatherMap client: current weather and 5-day / 3-hour forecasts by city name or coordinates.
 - **[PayPal](connectors/paypal/README.md)** — Typed PayPal client for Orders v2: create, fetch, capture and refund, with automatic OAuth2 tokens, idempotency keys and webhook verification.
 - **[Polymarket](connectors/polymarket/README.md)** — Typed Polymarket client: Gamma market discovery, CLOB trading with secp256k1/EIP-712 order signing, portfolio positions and value, gasless split/merge/redeem, and real-time WebSocket feeds for order books, trades, your orders and reference prices.
+- **[Pyth](connectors/pyth/README.md)** — Typed Pyth Pro (Pyth Lazer) price stream for Deno, Bun, Node.js, browsers and Cloudflare Workers: all redundant WebSocket endpoints at once, merged into one validated stream with per-endpoint health and gap detection.
 - **[Razorpay](connectors/razorpay/README.md)** — Typed Razorpay client: create and fetch orders; capture, fetch and list payments; create payment links; and verify webhook signatures.
 - **[Resend](connectors/resend/README.md)** — Typed Resend client: send single and batch transactional email with idempotency keys, retrieve delivery status, reschedule or cancel scheduled email, and verify Svix-signed webhooks.
 - **[S3](connectors/s3/README.md)** — Typed S3 client with SigV4 signing for AWS S3, Cloudflare R2, MinIO and DigitalOcean Spaces: object CRUD and listing, plus streamed multipart uploads and downloads.
