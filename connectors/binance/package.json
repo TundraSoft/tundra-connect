@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/binance",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Typed Binance.com spot market-data streams for Deno, Bun, Node.js, browsers and Cloudflare Workers: raw trades, best bid/ask and full-depth order-book diffs over WebSocket, with reconnects and gap detection.",
   "keywords": [
