@@ -1,6 +1,7 @@
 const ALIASES = new Map([
   ['@asserts', '@std/assert'],
   ['@test', '@tundralibs/compat/test'],
+  ['@wss', '@tundralibs/compat/websocket'],
   ['@restler', '@tundralibs/restler'],
   ['@guardian', '@tundralibs/guardian'],
   ['@utils', '@tundralibs/utils'],

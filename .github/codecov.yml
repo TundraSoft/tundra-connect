@@ -21,6 +21,10 @@ component_management:
         name: azure-blob
         paths:
           - connectors/azure-blob/**
+      - component_id: binance
+        name: binance
+        paths:
+          - connectors/binance/**
       - component_id: cloudflare-dns
         name: cloudflare-dns
         paths:

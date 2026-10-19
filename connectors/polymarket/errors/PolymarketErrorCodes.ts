@@ -45,6 +45,25 @@ export const PolymarketErrorCodes = {
     'The Polymarket API did not answer within the ${timeoutSeconds}s timeout.',
   NETWORK_ERROR:
     'The request to Polymarket failed before a response (DNS, TLS or connection failure).',
+
+  SOCKET_UNSUPPORTED_RUNTIME:
+    'The ${feed} socket could not create a WebSocket: ${detail}. Pass a `webSocket` factory on runtimes without a usable global WebSocket.',
+  SOCKET_RECONNECT_EXHAUSTED:
+    'The ${feed} socket gave up after ${attempts} reconnect attempts (last: ${reason}).',
+  SOCKET_BUFFER_OVERFLOW:
+    'The ${feed} socket buffered more than ${maxBufferedEvents} unread events and closed rather than drop any.',
+  SOCKET_IN_USE:
+    'The ${feed} socket already has an active iterator; only one consumer may read it.',
+  SOCKET_CLOSED: 'The ${feed} socket is closed.',
+  SOCKET_HANDLER_ERROR: 'The ${feed} socket failed while ${during}: ${detail}',
+  SOCKET_INVALID_MESSAGE:
+    'A ${feed} `${venueType}` message did not match the expected schema.',
+  SOCKET_VENUE_ERROR:
+    'Polymarket reported an error on the ${feed} socket: ${detail}',
+  SOCKET_AUTH_FAILED:
+    'Polymarket refused the ${feed} socket credentials: ${detail}',
+  SOCKET_MISSING_CREDENTIALS:
+    'The ${feed} socket needs CLOB API credentials — pass `auth.apiCredentials` (the same object the REST client uses).',
 } as const;
 
 /** Valid Polymarket error code. */

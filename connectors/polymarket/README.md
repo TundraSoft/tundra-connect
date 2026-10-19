@@ -3,9 +3,10 @@
 Typed [Polymarket](https://polymarket.com) prediction-market client for Deno,
 Bun, Node.js and Cloudflare Workers. It covers **Gamma** market discovery (no
 auth), **CLOB** trading with secp256k1/EIP-712 order signing (L1/L2 auth),
-portfolio positions and value, and gasless split, merge and redeem. An
-alternative to the official `@polymarket/clob-client` for the endpoints it
-covers.
+portfolio positions and value, gasless split, merge and redeem, and
+real-time **WebSocket feeds** (order books, trades, your orders and fills,
+Chainlink/Binance reference prices). An alternative to the official
+`@polymarket/clob-client` for the endpoints it covers.
 
 [![JSR](https://jsr.io/badges/@tundraconnect/polymarket)](https://jsr.io/@tundraconnect/polymarket)
 [![JSR Score](https://jsr.io/badges/@tundraconnect/polymarket/score)](https://jsr.io/@tundraconnect/polymarket)
@@ -29,6 +30,14 @@ One `Polymarket` client covers both APIs, matching how a Gamma market's
   `getPortfolioValue()`: the public, read-only portfolio view keyed by
   wallet address (mark-to-market value and PnL). No signing; defaults to
   `auth.funder`, reads any wallet via `user`.
+- **WebSocket feeds** (`@tundraconnect/polymarket/sockets`, importable
+  without the REST client) — `PolymarketMarketSocket` (full-depth books,
+  every level change, trades, tick-size changes), `PolymarketUserSocket`
+  (your orders and trades), `PolymarketPriceSocket` (PolyBolt reference
+  prices) and `PolymarketLiveDataSocket` (Chainlink and Binance prices).
+  Async iterables of Guardian-validated events with automatic reconnects
+  and explicit reconnect/gap events — see
+  [Sockets](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-Sockets).
 - **Relayer** (`relayer-v2.polymarket.com`) — `split()`/`merge()`/`redeem()`,
   gasless collateral split/merge/redeem via a signed EIP-191 proxy
   meta-transaction. Requires `auth.relayerApiKey`/`auth.relayerApiKeyAddress`,
@@ -80,10 +89,8 @@ client with these calls, the same way you would for order signing.
 
 ### Out of scope (for now)
 
-- **WebSocket market/user feeds** (`wss://ws-subscriptions-clob.polymarket.com`)
-  are real-time push channels, a different integration shape than this
-  repo's REST-only connects; whether/how to add one is an open decision,
-  not yet built.
+- The real-time data socket's **activity** and **comments** topics, and
+  the **sports** feed — only the crypto reference prices are wired up.
 - Data API **activity/leaderboard/holders** feeds — only the portfolio
   half (`/positions`, `/value`) is wired up, via `getPositions()` /
   `getPortfolioValue()`.
@@ -111,6 +118,7 @@ reassign the protected `_fetch`.
 | [API](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-API)         | Client configuration and endpoint methods  |
 | [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-Errors)   | Error codes and diagnostic metadata        |
 | [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-Schemas) | Public Guardian schemas and inferred types |
+| [Sockets](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-Sockets) | Real-time WebSocket feeds                  |
 
 ## Upstream
 

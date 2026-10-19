@@ -6,7 +6,8 @@
  * Typed Kalshi client: public market data, plus RSA-PSS-signed trading —
  * balance, positions, fills and orders; place, amend and cancel orders.
  *
- * Subpaths: `./schemas` (Guardian schemas and inferred types) and `./errors`
+ * Subpaths: `./schemas` (Guardian schemas and inferred types), `./sockets`
+ * (the WebSocket feed, importable without the REST client) and `./errors`
  * (`KalshiError` and its code registry).
  *
  * @example
@@ -74,3 +75,6 @@ export * from './errors/mod.ts';
 
 // Export the full schema barrel for advanced usage
 export * from './schema/mod.ts';
+
+// Export the WebSocket feed (also importable alone from `./sockets`)
+export * from './socket/mod.ts';

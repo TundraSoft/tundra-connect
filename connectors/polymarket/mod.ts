@@ -7,7 +7,8 @@
  * secp256k1/EIP-712 order signing, portfolio positions and value, and gasless
  * split/merge/redeem.
  *
- * Subpaths: `./schemas` (Guardian schemas and inferred types) and `./errors`
+ * Subpaths: `./schemas` (Guardian schemas and inferred types), `./sockets`
+ * (WebSocket feeds, importable without the REST client) and `./errors`
  * (`PolymarketError` and its code registry).
  *
  * @example
@@ -113,3 +114,6 @@ export * from './errors/mod.ts';
 export * from './schema/mod.ts';
 export type { ProtocolVersion } from './PolymarketOrder.ts';
 export type { OrderSide } from './PolymarketOrder.ts';
+
+// Export the WebSocket feeds (also importable alone from `./sockets`)
+export * from './socket/mod.ts';

@@ -341,6 +341,66 @@ an `x-amz-version-id`-style header, not a JSON body) or with no body to
 validate at all (a `DELETE` returning `204`) calls `_makeRequest` directly,
 unchanged. `responseSchema` only ever sees `response.body`.
 
+## WebSocket feeds
+
+A connect whose vendor streams data over WebSocket ships it as an
+**independent `./sockets` export** of the same package — never a separate
+package, and never mixed into the REST client class. Importing
+`@tundraconnect/<connect>/sockets` must not load the REST client: sockets
+import only their own files, the `schema/` files they validate with, the
+`errors/` barrel, and narrow helpers like a signer.
+
+```
+connectors/<connect>/socket/
+├── FeedSocket.ts            # VENDORED core — identical in every connect
+├── FeedSocket.test.ts       # VENDORED
+├── fixtures/MockFeedServer.ts  # VENDORED loopback test server
+├── <Connect><Feed>Socket.ts    # one class per venue feed
+├── <Connect><Feed>Socket.test.ts
+└── mod.ts                   # barrel → `./sockets` (also re-exported by the root mod.ts)
+```
+
+- **The core is vendored, not shared.** Every connect is published on its
+  own, so `FeedSocket.ts`, its test and the mock server are copied into each
+  connect that has sockets. The canonical copy is
+  `connectors/polymarket/socket/`; edit it and run
+  `deno task check:socket-core --fix` to sync the others. CI runs the check
+  without `--fix`.
+- **Transport is the global `WebSocket` only** — no `ws` package, `node:*` or
+  `Deno.*` — so a socket runs on Deno, Bun, Node 22+, browsers, Cloudflare
+  Workers and a bare `deno_core` with the web extensions. A signed handshake
+  passes headers as `new WebSocket(url, { headers })` (Deno, Bun and Node
+  accept it); runtimes that can't take a `webSocket` factory option.
+- **Output is one async iterator** of typed events: the venue's own
+  messages, validated with Guardian (schemas live in `schema/` like any
+  other), plus the core's lifecycle events — `connected` (with
+  `reconnected`), `disconnected`, `gap`, `error`, `invalid` and `unknown`.
+  Each event carries `receivedAt` (taken on arrival, before parsing),
+  `venueTimestamp` where the venue sends one, and `raw` with the exact frame
+  text when the caller opts in with `includeRaw`.
+- **Lowest grain.** A socket never aggregates, samples, throttles, merges or
+  de-duplicates venue messages. Books arrive as the venue's own snapshots
+  plus every delta at full depth; trades as every individual print. A
+  message that fails validation is delivered as `invalid`, an unmodelled
+  one as `unknown` — never dropped. Normalised data keeps every venue field
+  (modelled ones typed and camelCased, the rest passed through).
+- **Gaps are explicit.** A jump in a venue sequence or update id is a `gap`
+  event; the socket never resyncs on its own. Reconnects back off with
+  jitter, re-run auth and the full subscription set, and are reported.
+- **Liveness is checked.** Each socket implements the venue heartbeat (or,
+  where the venue only pings at the protocol level, a cheap request as a
+  probe) and reconnects a connection that goes silent.
+- **Credentials** are the same `auth` object the REST client takes. Where a
+  caller-supplied signer is possible (Kalshi's `auth.signer`), the socket
+  accepts it so key material can stay outside JavaScript.
+- **Tests** run against `fixtures/MockFeedServer.ts`, a real loopback server
+  built on the root `@wss` alias (`@tundralibs/compat/websocket`; Node's
+  server side uses the `ws` dev dependency — the client under test never
+  does). Socket live tests sit at the end of the socket's own test file;
+  public feeds opt in with `LIVE_TEST_SOCKETS`, authenticated ones gate on
+  the connect's `CONNECTOR_<NAME>_*` credentials as usual. Each socket has a
+  `socket: true` entry in `.github/scripts/workers-smoke.mjs`.
+
 ## Imports
 
 - Use the shared root import aliases (`@restler`, `@guardian`, `@asserts`,

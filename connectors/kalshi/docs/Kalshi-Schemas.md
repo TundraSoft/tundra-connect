@@ -45,6 +45,24 @@ routing through float math, the same separation Polymarket keeps between
 its numeric `GammaMarket` display schema and its exact-string order wire
 encoding.
 
+## WebSocket feed
+
+The `KalshiSocket` event payloads (`event.data`, the frame's `msg`).
+Fixed-point/dollar fields drop their suffix and become numbers, as in the
+REST schemas; every other key is camelCased and passed through.
+
+| Schema                                 | Message              | Notes                                                                                          |
+| -------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
+| `KalshiOrderbookSnapshotSchemaObject`  | `orderbook_snapshot` | `yes_dollars_fp`/`no_dollars_fp` pairs → `yes`/`no` `{ price, count }`; a missing side → `[]`. |
+| `KalshiOrderbookDeltaSchemaObject`     | `orderbook_delta`    | `price`, signed `delta`, `side`; `clientOrderId` when your order caused it.                    |
+| `KalshiFeedTradeSchemaObject`          | `trade`              | `yesPrice`, `noPrice`, `count`, `takerSide`.                                                   |
+| `KalshiFeedTickerSchemaObject`         | `ticker`             | `price`, `yesBid`, `yesAsk`, sizes, volume, open interest.                                     |
+| `KalshiFeedFillSchemaObject`           | `fill`               | `isTaker` must be a real boolean.                                                              |
+| `KalshiFeedUserOrderSchemaObject`      | `user_order`         | Counts and costs as numbers; a `null` `created_ts_ms` becomes absent.                          |
+| `KalshiFeedMarketPositionSchemaObject` | `market_position`    | `position` (negative: NO), cost, realized PnL, fees.                                           |
+
+See [Sockets](Kalshi-Sockets.md) for the events that carry them.
+
 ---
 
 [← Back to Kalshi](../README.md)

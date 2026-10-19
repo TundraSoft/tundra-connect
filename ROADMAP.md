@@ -15,10 +15,11 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-30 connects are implemented today:
+31 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
+- **[Binance](connectors/binance/README.md)** — Typed Binance.com spot market-data streams for Deno, Bun, Node.js, browsers and Cloudflare Workers: raw trades, best bid/ask and full-depth order-book diffs over WebSocket, with reconnects and gap detection.
 - **[CloudflareDNS](connectors/cloudflare-dns/README.md)** — Typed Cloudflare DNS client: list, create, update, replace, delete and batch-edit DNS records in a zone, export the zone as BIND, and look up zones by name.
 - **[CloudflareEmail](connectors/cloudflare-email/README.md)** — Typed Cloudflare Email Sending client: send transactional email with attachments, validated locally before the request is made.
 - **[CloudflareSaaS](connectors/cloudflare-saas/README.md)** — Typed Cloudflare for SaaS client: create, list, inspect, update and delete custom hostnames with their TLS and ownership validation state, manage the fallback origin, and read the hostname quota.
@@ -30,12 +31,12 @@ if you'd like to champion one.
 - **[GoogleAnalytics](connectors/google-analytics/README.md)** — Typed Google Analytics 4 Measurement Protocol client: send server-side events and validate them against the debug endpoint, with GA4's event, parameter and user-property limits checked before the request is made.
 - **[GoogleCertificateManager](connectors/google-certificate-manager/README.md)** — Typed Google Cloud Certificate Manager client: create, read, list and delete managed TLS certificates and certificate map entries, poll long-running operations, with service-account auth on Workers, Deno, Bun and Node.
 - **[GoogleWebRisk](connectors/google-web-risk/README.md)** — Typed Google Web Risk client: check a URL against Google's malware, phishing and unwanted-software lists with the Lookup API's uris:search, under a hard per-call deadline.
-- **[Kalshi](connectors/kalshi/README.md)** — Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders.
+- **[Kalshi](connectors/kalshi/README.md)** — Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders — and a signed real-time WebSocket feed for order books, trades, fills and order updates.
 - **[ntfy](connectors/ntfy/README.md)** — Typed ntfy.sh client for publishing push notifications to a topic.
 - **[OpenExchange](connectors/openexchange/README.md)** — Typed Open Exchange Rates client: latest and historical rates, time series, currency conversion, OHLC data and account usage.
 - **[OpenWeatherMap](connectors/openweathermap/README.md)** — Typed OpenWeatherMap client: current weather and 5-day / 3-hour forecasts by city name or coordinates.
 - **[PayPal](connectors/paypal/README.md)** — Typed PayPal client for Orders v2: create, fetch, capture and refund, with automatic OAuth2 tokens, idempotency keys and webhook verification.
-- **[Polymarket](connectors/polymarket/README.md)** — Typed Polymarket client: Gamma market discovery, CLOB trading with secp256k1/EIP-712 order signing, portfolio positions and value, and gasless split/merge/redeem.
+- **[Polymarket](connectors/polymarket/README.md)** — Typed Polymarket client: Gamma market discovery, CLOB trading with secp256k1/EIP-712 order signing, portfolio positions and value, gasless split/merge/redeem, and real-time WebSocket feeds for order books, trades, your orders and reference prices.
 - **[Razorpay](connectors/razorpay/README.md)** — Typed Razorpay client: create and fetch orders; capture, fetch and list payments; create payment links; and verify webhook signatures.
 - **[Resend](connectors/resend/README.md)** — Typed Resend client: send single and batch transactional email with idempotency keys, retrieve delivery status, reschedule or cancel scheduled email, and verify Svix-signed webhooks.
 - **[S3](connectors/s3/README.md)** — Typed S3 client with SigV4 signing for AWS S3, Cloudflare R2, MinIO and DigitalOcean Spaces: object CRUD and listing, plus streamed multipart uploads and downloads.
@@ -54,7 +55,8 @@ if you'd like to champion one.
 
 ### Crypto exchanges
 
-- **Binance** — market data, account/order endpoints
+- **Binance** — REST market data, account/order endpoints and the user-data
+  stream (the spot market-data WebSocket streams have shipped)
 - **Coinbase** — market data, account/order endpoints
 - **Kraken** — market data, account/order endpoints
 - **Bybit** — market data, account/order endpoints
