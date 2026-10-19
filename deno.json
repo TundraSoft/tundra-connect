@@ -30,6 +30,7 @@
     "test": "deno task test:run && deno task test:report",
     "test:run": "deno test --allow-read --allow-write --allow-env --allow-net --parallel --coverage=coverage --junit-path=./test-report.xml",
     "test:report": "deno coverage coverage --lcov --output=coverage/report.lcov",
+    "test:plain-v8": "deno run -A .github/scripts/plain-v8.ts",
     "publish:dry": "deno publish --dry-run",
     "docs:links": "deno run --allow-read --allow-env .github/scripts/doc-links.ts",
     "docs:links:fix": "deno run --allow-read --allow-env --allow-write .github/scripts/doc-links.ts --fix",

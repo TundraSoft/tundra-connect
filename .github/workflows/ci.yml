@@ -109,6 +109,20 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
+  plain-v8:
+    name: Test (plain V8 — no Deno/process/Bun)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies (bun)
+        run: bun install
+      - name: Every connect suite in a bare deno_core isolate
+        run: deno task test:plain-v8
+
   workers:
     name: Workers smoke (workerd)
     runs-on: ubuntu-latest
