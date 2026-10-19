@@ -94,6 +94,10 @@ a jump is a `gap`, and so is a non-zero `dropped` counter.
 | live-data | `PING` every 5s (unanswered) | no price data for 30s while subscribed |
 
 Override with `heartbeatIntervalMs`, `idleTimeoutMs` and `dataTimeoutMs`.
+Every socket also takes `connectTimeoutMs` (abort a handshake that hasn't
+completed, default 15000), `maxBufferedEvents` (unread-event cap; overflow
+is a fatal error, never a silent drop), `clock`, `signal`, `reconnect` and
+`webSocket`.
 `dataTimeoutMs` counts data frames only — set it on a chatty market
 subscription to catch a connection that answers heartbeats but has stopped
 delivering data.
