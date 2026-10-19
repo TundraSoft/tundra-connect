@@ -1,0 +1,10 @@
+{
+  "description": "Kalshi signing vectors. RSA-PSS-SHA256 (salt length 32, MGF1-SHA256) uses a random salt, so signatures are never byte-identical between signers; what must match exactly is the signing string. A signer is correct when its base64 signature over `signingString` verifies with the account's public key. Shared with downstream (e.g. Rust) signer implementations.",
+  "scheme": { "algorithm": "RSA-PSS", "hash": "SHA-256", "saltLength": 32, "encoding": "base64 (standard, padded)" },
+  "requests": [
+    { "timestampMs": 1700000000000, "method": "GET", "path": "/trade-api/v2/portfolio/balance", "signingString": "1700000000000GET/trade-api/v2/portfolio/balance" },
+    { "timestampMs": 1700000000123, "method": "post", "path": "/trade-api/v2/portfolio/orders", "signingString": "1700000000123POST/trade-api/v2/portfolio/orders" },
+    { "timestampMs": 1700000000456, "method": "DELETE", "path": "/trade-api/v2/portfolio/orders/ee587a1c-0000-0000-0000-000000000000", "signingString": "1700000000456DELETE/trade-api/v2/portfolio/orders/ee587a1c-0000-0000-0000-000000000000" },
+    { "timestampMs": 1700000000789, "method": "GET", "path": "/trade-api/ws/v2", "signingString": "1700000000789GET/trade-api/ws/v2", "note": "The WebSocket handshake signs the WS path, not the REST prefix." }
+  ]
+}

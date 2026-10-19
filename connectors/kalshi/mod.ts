@@ -66,6 +66,9 @@ export {
   type SubmitOrderOptions,
 } from './Kalshi.ts';
 
+// Caller-supplied signing (key held outside JavaScript)
+export type { KalshiExternalSigner } from './KalshiAuth.ts';
+
 // Export error handling
 export * from './errors/mod.ts';
 
