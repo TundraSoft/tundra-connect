@@ -3,6 +3,9 @@ import { describe, it } from '@test';
 import { envArgs } from '@utils';
 import { CLOB_API, DATA_API, GAMMA_API, Polymarket } from './Polymarket.ts';
 import { PolymarketError } from './errors/mod.ts';
+import { secp256k1 } from '@noble/curves/secp256k1.js';
+import { hmacSign } from './PolymarketAuth.ts';
+import { PolymarketSigner } from './PolymarketSigner.ts';
 
 // Publicly-known Hardhat/Anvil test key — safe to hardcode; the same key
 // this connect's crypto modules pin their SDK test vectors against.
@@ -1822,4 +1825,141 @@ describe({
       asserts.assertEquals(typeof negRisk, 'boolean');
     });
   },
+});
+
+// ── Caller-supplied signer + HMAC ───────────────────────────────────────────
+
+describe('Polymarket — auth.signer / auth.hmac', () => {
+  const keyBytes = Uint8Array.from(
+    TEST_KEY.slice(2).match(/../g)!.map((h) => parseInt(h, 16)),
+  );
+  const digests: Uint8Array[] = [];
+  const messages: string[] = [];
+  const injected = {
+    address: TEST_ADDR,
+    signDigest: (digest: Uint8Array) => {
+      digests.push(digest);
+      const sig = secp256k1.sign(digest, keyBytes, {
+        prehash: false,
+        format: 'recovered',
+      });
+      return Promise.resolve({
+        r: sig.slice(1, 33),
+        s: sig.slice(33),
+        v: sig[0]!,
+      });
+    },
+  };
+  const hmac = (message: string) => {
+    messages.push(message);
+    return hmacSign(CREDS.secret, message);
+  };
+  const { apiKey, passphrase } = CREDS;
+
+  it('signs orders and L2 requests without the key or the secret', async () => {
+    digests.length = 0;
+    messages.length = 0;
+    const c = new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        signer: injected,
+        funder: PROXY,
+        apiCredentials: { apiKey, passphrase },
+        hmac,
+      },
+    });
+    asserts.assertEquals(c.signerAddress, TEST_ADDR);
+    asserts.assertEquals(c.hasApiCredentials, true);
+    c.setResponseQueue([
+      { body: { version: 2 } },
+      { body: { neg_risk: false } },
+      { body: { status: 'live', orderID: 'o1', success: true } },
+    ]);
+    await c.submitOrder({
+      tokenId: TOKEN,
+      side: 'BUY',
+      price: 0.5,
+      shares: 10,
+      orderType: 'GTC',
+    });
+    const req = c.lastRequest!;
+    const order = (JSON.parse(req.body!) as { order: { signature: string } })
+      .order;
+    asserts.assertEquals(digests.length, 1);
+    // The order carries exactly what the built-in key would have produced.
+    asserts.assertEquals(
+      order.signature,
+      new PolymarketSigner(TEST_KEY).signDigest(digests[0]!),
+    );
+    asserts.assertEquals(messages.length, 1);
+    asserts.assertEquals(
+      req.headers.POLY_SIGNATURE,
+      await hmacSign(CREDS.secret, messages[0]!),
+    );
+    asserts.assertEquals(req.headers.POLY_ADDRESS, TEST_ADDR);
+  });
+
+  it('derives API credentials through the injected signer (L1)', async () => {
+    digests.length = 0;
+    const c = new MockPolymarket({
+      auth: { type: 'CUSTOM', signer: injected },
+    });
+    c.setResponse(CREDS);
+    const creds = await c.deriveApiCredentials();
+    asserts.assertEquals(creds.apiKey, CREDS.apiKey);
+    asserts.assertEquals(digests.length, 1);
+    asserts.assertEquals(
+      c.lastRequest!.headers.POLY_SIGNATURE,
+      new PolymarketSigner(TEST_KEY).signDigest(digests[0]!),
+    );
+  });
+
+  it('wraps a failing signer as SIGNER_FAILED', async () => {
+    const c = new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        signer: {
+          address: TEST_ADDR,
+          signDigest: () => Promise.reject(new Error('hsm offline')),
+        },
+      },
+    });
+    c.setResponse(CREDS);
+    const err = await asserts.assertRejects(
+      () => c.deriveApiCredentials(),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'SIGNER_FAILED');
+    asserts.assertStringIncludes(err.message, 'hsm offline');
+  });
+
+  it('rejects an invalid signer address at construction', () => {
+    const err = asserts.assertThrows(
+      () =>
+        new MockPolymarket({
+          auth: {
+            type: 'CUSTOM',
+            signer: { address: '0x123', signDigest: injected.signDigest },
+          },
+        }),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_SIGNER');
+  });
+
+  it('treats apiCredentials without a secret or hmac as missing', async () => {
+    const c = new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        privateKey: TEST_KEY,
+        apiCredentials: { apiKey, passphrase },
+      },
+    });
+    asserts.assertEquals(c.hasApiCredentials, false);
+    const err = await asserts.assertRejects(
+      () => c.getBalance(),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'NO_API_CREDENTIALS');
+  });
 });

@@ -7,7 +7,7 @@ import {
   keccak256,
   toHex,
 } from './PolymarketEip712.ts';
-import { PolymarketSigner } from './PolymarketSigner.ts';
+import { builtInSigner, PolymarketSigner } from './PolymarketSigner.ts';
 import {
   buildOrder,
   gcd,
@@ -257,23 +257,23 @@ describe('PolymarketOrder — build/sign shape', () => {
     asserts.assertEquals(wire.signature, '0xsig');
   });
 
-  it('v1 and v2 signatures recover to the signer address', () => {
-    const signer = new PolymarketSigner(TEST_KEY);
+  it('v1 and v2 signatures recover to the signer address', async () => {
+    const signer = builtInSigner(new PolymarketSigner(TEST_KEY));
     for (const version of [1, 2] as const) {
       const built = buildOrder(
         params(version, 'BUY', 0.55, 9.0, 1_784_600_000_000),
       );
-      const signature = signOrder(signer, built);
+      const signature = await signOrder(signer, built);
       const digest = orderDigest(built);
       asserts.assertEquals(recoverSignerAddress(digest, signature), TEST_ADDR);
     }
   });
 
-  it('the shared envelope inputs (build+sign) match the hand-verified SDK example end-to-end', () => {
-    const signer = new PolymarketSigner(TEST_KEY);
+  it('the shared envelope inputs (build+sign) match the hand-verified SDK example end-to-end', async () => {
+    const signer = builtInSigner(new PolymarketSigner(TEST_KEY));
     const p = params(2, 'BUY', 0.55, 9.0, 5);
     const built = buildOrder(p);
-    const signature = signOrder(signer, built);
+    const signature = await signOrder(signer, built);
     const wire = orderWireJson(built, signature);
     asserts.assertEquals(wire.side, 'BUY');
     asserts.assertEquals(wire.makerAmount, '4950000');

@@ -33,7 +33,7 @@ import {
   encodeRedeemCall,
   type ProxyTransaction,
 } from './PolymarketAbi.ts';
-import type { PolymarketSigner } from './PolymarketSigner.ts';
+import { type DigestSigner, signMessageWith } from './PolymarketSigner.ts';
 import type { RelayPayload } from './schema/Relayer.ts';
 
 /** Collateral token Polymarket's CTF settles in — pUSD (Polymarket USD), not USDC/USDC.e. */
@@ -243,13 +243,13 @@ export function relayStructHash(
  * (unreachable on a conforming runtime) the local signature self-check
  * fails.
  */
-export function buildProxyMetaTx(
-  signer: PolymarketSigner,
+export async function buildProxyMetaTx(
+  signer: DigestSigner,
   txns: readonly ProxyTransaction[],
   relayPayload: RelayPayload,
   proxyWallet: string,
   metadata = '',
-): ProxyMetaTx {
+): Promise<ProxyMetaTx> {
   const from = signer.address.toLowerCase();
   const to = PROXY_FACTORY.toLowerCase();
   const data = encodeProxyCallData(txns);
@@ -270,7 +270,7 @@ export function buildProxyMetaTx(
     RELAY_HUB,
     relay,
   );
-  const signature = signer.signMessage(digest);
+  const signature = await signMessageWith(signer, digest);
 
   // Local self-check: recover the signer from the EIP-191 digest and refuse
   // to emit an envelope that would bounce at the relay hub.

@@ -1240,3 +1240,70 @@ describe({
     });
   },
 });
+
+// ── Caller-supplied signer ──────────────────────────────────────────────────
+
+describe('Kalshi — auth.signer', () => {
+  it('signs portfolio requests through the injected signer', async () => {
+    const messages: string[] = [];
+    const client = new MockKalshi({
+      auth: {
+        type: 'CUSTOM',
+        accessKey: 'key-id',
+        signer: {
+          sign: (message) => {
+            messages.push(message);
+            return Promise.resolve('c2lnbmF0dXJl');
+          },
+        },
+      },
+    });
+    asserts.assertEquals(client.hasCredentials, true);
+    client.setResponse({ balance: 100, portfolio_value: 100 });
+    await client.getBalance();
+    const req = client.lastRequest!;
+    asserts.assertEquals(
+      req.headers['KALSHI-ACCESS-SIGNATURE'],
+      'c2lnbmF0dXJl',
+    );
+    asserts.assertEquals(req.headers['KALSHI-ACCESS-KEY'], 'key-id');
+    asserts.assertEquals(
+      messages,
+      [`${
+        req.headers['KALSHI-ACCESS-TIMESTAMP']
+      }GET${API_PREFIX}/portfolio/balance`],
+    );
+  });
+
+  it('wraps a failing signer as SIGNER_FAILED', async () => {
+    const client = new MockKalshi({
+      auth: {
+        type: 'CUSTOM',
+        accessKey: 'key-id',
+        signer: { sign: () => Promise.reject(new Error('hsm offline')) },
+      },
+    });
+    client.setResponse({ balance: 1 });
+    const err = await asserts.assertRejects(
+      () => client.getBalance(),
+      KalshiError,
+    );
+    asserts.assertEquals(err.code, 'SIGNER_FAILED');
+    asserts.assertStringIncludes(err.message, 'hsm offline');
+  });
+
+  it('rejects a signer without a sign function', () => {
+    const err = asserts.assertThrows(
+      () =>
+        new MockKalshi({
+          auth: {
+            type: 'CUSTOM',
+            accessKey: 'k',
+            signer: {} as { sign(message: string): Promise<string> },
+          },
+        }),
+      KalshiError,
+    );
+    asserts.assertEquals(err.code, 'CONFIG_INVALID_PRIVATE_KEY');
+  });
+});

@@ -14,7 +14,11 @@ import {
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
 import { type BaseGuardian, type GuardianError } from '@guardian';
-import { API_PREFIX, buildAuthHeaders } from './KalshiAuth.ts';
+import {
+  API_PREFIX,
+  buildAuthHeaders,
+  type KalshiExternalSigner,
+} from './KalshiAuth.ts';
 import { KalshiSigner } from './KalshiSigner.ts';
 import { KalshiError } from './errors/mod.ts';
 import {
@@ -82,15 +86,27 @@ const CANCEL_ALL_PAGE_SIZE = 1000;
  * Polymarket's L1-signs-to-derive-L2-then-signs-with-that flow, there is
  * no derivation step: `accessKey` + `privateKeyPem`, both issued together
  * from the account's API-key settings page, ARE the ready-to-use
- * credential.
+ * credential. Pass `signer` instead of `privateKeyPem` to keep the key
+ * outside JavaScript.
  */
-export type KalshiAuth = {
-  type: 'CUSTOM';
-  /** API key id (a UUID), from Kalshi's account API-key settings. */
-  accessKey: string;
-  /** PKCS#8 PEM (`-----BEGIN PRIVATE KEY-----`) RSA private key, paired with `accessKey`. */
-  privateKeyPem: string;
-};
+export type KalshiAuth =
+  & {
+    type: 'CUSTOM';
+    /** API key id (a UUID), from Kalshi's account API-key settings. */
+    accessKey: string;
+  }
+  & (
+    | {
+      /** PKCS#8 PEM (`-----BEGIN PRIVATE KEY-----`) RSA private key, paired with `accessKey`. */
+      privateKeyPem: string;
+      signer?: never;
+    }
+    | {
+      /** Signs each request string outside JavaScript — see {@link KalshiExternalSigner}. */
+      signer: KalshiExternalSigner;
+      privateKeyPem?: never;
+    }
+  );
 
 /**
  * Options for configuring a {@link Kalshi} client. `baseURL` (inherited
@@ -291,7 +307,7 @@ export class Kalshi extends RESTler<KalshiOptions> {
   /** Vendor identifier for this API client. */
   public readonly vendor: string = 'Kalshi';
 
-  private __signer?: KalshiSigner;
+  private __signer?: KalshiSigner | KalshiExternalSigner;
   private __accessKey?: string;
 
   /**
@@ -311,7 +327,13 @@ export class Kalshi extends RESTler<KalshiOptions> {
     this._responseHandler = (response) => this.__toError(response);
 
     const auth = (options as KalshiOptions).auth;
-    if (auth) {
+    if (auth?.signer) {
+      if (typeof auth.signer.sign !== 'function') {
+        throw new KalshiError('CONFIG_INVALID_PRIVATE_KEY', {});
+      }
+      this.__signer = Kalshi.__guardSigner(auth.signer);
+      this.__accessKey = auth.accessKey;
+    } else if (auth) {
       try {
         this.__signer = new KalshiSigner(auth.privateKeyPem);
       } catch (cause) {
@@ -928,6 +950,29 @@ export class Kalshi extends RESTler<KalshiOptions> {
     if (!this.__signer || !this.__accessKey) {
       throw new KalshiError('CONFIG_MISSING_PRIVATE_KEY');
     }
+  }
+
+  /** Surfaces an injected signer's failure as a {@link KalshiError}. */
+  private static __guardSigner(
+    signer: KalshiExternalSigner,
+  ): KalshiExternalSigner {
+    return {
+      async sign(message) {
+        try {
+          const signature = await signer.sign(message);
+          if (typeof signature !== 'string' || signature.length === 0) {
+            throw new Error('signer returned an empty signature');
+          }
+          return signature;
+        } catch (cause) {
+          throw new KalshiError(
+            'SIGNER_FAILED',
+            { detail: cause instanceof Error ? cause.message : String(cause) },
+            cause instanceof Error ? cause : undefined,
+          );
+        }
+      },
+    };
   }
 
   /** Per-call auth marker read by {@link _authInjector} — opt-in per request, mirrors Polymarket's `__l2Auth`/`__relayerAuth` markers so a public market-data call can never accidentally pick up signed headers. */

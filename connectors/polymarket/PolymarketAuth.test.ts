@@ -6,7 +6,7 @@ import {
   hmacSign,
   toMessage,
 } from './PolymarketAuth.ts';
-import { PolymarketSigner } from './PolymarketSigner.ts';
+import { builtInSigner, PolymarketSigner } from './PolymarketSigner.ts';
 
 // Publicly-known Hardhat/Anvil test key — safe to hardcode; used by Polymarket's
 // own vendored-SDK test vectors (shared with this connect's Rust/TS siblings).
@@ -112,9 +112,9 @@ describe('PolymarketAuth — L2 HMAC (SDK vectors)', () => {
 });
 
 describe('PolymarketAuth — L1 (the SDK vector that pins the whole EIP-712 + ECDSA stack)', () => {
-  it('reproduces the AMOY create-key signature exactly', () => {
-    const signer = new PolymarketSigner(TEST_KEY);
-    const h = buildL1Headers(signer, AMOY, 10_000_000, 23);
+  it('reproduces the AMOY create-key signature exactly', async () => {
+    const signer = builtInSigner(new PolymarketSigner(TEST_KEY));
+    const h = await buildL1Headers(signer, AMOY, 10_000_000, 23);
     asserts.assertEquals(
       h.POLY_ADDRESS,
       '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
@@ -127,8 +127,11 @@ describe('PolymarketAuth — L1 (the SDK vector that pins the whole EIP-712 + EC
     );
   });
 
-  it('defaults nonce to 0', () => {
-    const signer = new PolymarketSigner(TEST_KEY);
-    asserts.assertEquals(buildL1Headers(signer, AMOY, 1).POLY_NONCE, '0');
+  it('defaults nonce to 0', async () => {
+    const signer = builtInSigner(new PolymarketSigner(TEST_KEY));
+    asserts.assertEquals(
+      (await buildL1Headers(signer, AMOY, 1)).POLY_NONCE,
+      '0',
+    );
   });
 });

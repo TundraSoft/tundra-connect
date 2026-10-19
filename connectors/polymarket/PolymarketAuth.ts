@@ -30,7 +30,7 @@ import {
   typedDataDigest,
   uintWord,
 } from './PolymarketEip712.ts';
-import type { PolymarketSigner } from './PolymarketSigner.ts';
+import type { DigestSigner } from './PolymarketSigner.ts';
 import { decodeBase64, encodeBase64 } from '@encoding';
 
 // EIP-712 domain + struct for the L1 "attest control of wallet" signature.
@@ -41,14 +41,27 @@ export const CLOB_AUTH_TYPE =
 export const CLOB_AUTH_MESSAGE =
   'This message attests that I control the given wallet';
 
-/** L2 API credentials, as returned by `/auth/api-key` or `/auth/derive-api-key`. */
-export type L2Credentials = {
-  /** UUID. */
-  apiKey: string;
-  /** URL-safe base64 (with or without padding — both accepted). */
-  secret: string;
-  passphrase: string;
-};
+/**
+ * L2 API credentials for signing one request: the key and passphrase plus
+ * EITHER the secret (as returned by `/auth/api-key` / `/auth/derive-api-key`)
+ * OR an `hmac` function that signs with it elsewhere.
+ */
+export type L2Credentials =
+  & {
+    /** UUID. */
+    apiKey: string;
+    passphrase: string;
+  }
+  & (
+    | {
+      /** URL-safe base64 (with or without padding — both accepted). */
+      secret: string;
+    }
+    | {
+      /** Returns {@link hmacSign}`(secret, message)` computed outside this process. */
+      hmac: (message: string) => Promise<string>;
+    }
+  );
 
 /** The five L2 headers, in the exact names the venue expects. */
 export type L2Headers = {
@@ -166,7 +179,9 @@ export async function buildL2Headers(
     POLY_ADDRESS: checksumAddress(signerAddress),
     POLY_API_KEY: creds.apiKey,
     POLY_PASSPHRASE: creds.passphrase,
-    POLY_SIGNATURE: await hmacSign(creds.secret, message),
+    POLY_SIGNATURE: 'hmac' in creds
+      ? await creds.hmac(message)
+      : await hmacSign(creds.secret, message),
     POLY_TIMESTAMP: String(timestampSec),
   };
 }
@@ -180,12 +195,12 @@ export async function buildL2Headers(
  * (`nonce` is also typed `uint256`, so it is both encoded as a uint word
  * AND rendered as a decimal string on the header).
  */
-export function buildL1Headers(
-  signer: PolymarketSigner,
+export async function buildL1Headers(
+  signer: DigestSigner,
   chainId: number,
   timestampSec: number,
   nonce = 0,
-): L1Headers {
+): Promise<L1Headers> {
   const domainSep = domainSeparator(
     CLOB_AUTH_DOMAIN_NAME,
     CLOB_AUTH_DOMAIN_VERSION,
@@ -197,7 +212,9 @@ export function buildL1Headers(
     uintWord(BigInt(nonce)),
     stringWord(CLOB_AUTH_MESSAGE),
   ]);
-  const signature = signer.signDigest(typedDataDigest(domainSep, structHash));
+  const signature = await signer.signDigest(
+    typedDataDigest(domainSep, structHash),
+  );
   return {
     POLY_ADDRESS: signer.address.toLowerCase(),
     POLY_NONCE: String(nonce),
