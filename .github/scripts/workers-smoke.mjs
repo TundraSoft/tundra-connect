@@ -94,6 +94,7 @@ const SPECS = [
   // run in workerd; `expect` is the first venue event type it must yield.
   { dir: 'polymarket', label: 'market socket', socket: true, make: `new lib.PolymarketMarketSocket({ assetIds: ['1'], webSocket: fake })`, frames: [q({ event_type: 'book', market: '0xm', asset_id: '1', timestamp: '1782753357257', hash: 'h', bids: [{ price: '0.4', size: '10' }], asks: [] })], expect: 'book' },
   { dir: 'kalshi', label: 'signed socket', socket: true, make: `new lib.KalshiSocket({ auth: { accessKey: 'key-id', privateKeyPem: ${q(rsaPem)} }, subscriptions: [{ channel: 'trade' }], webSocket: fake })`, frames: [q({ type: 'trade', sid: 1, seq: 1, msg: { trade_id: 't', market_ticker: 'M', yes_price_dollars: '0.36', no_price_dollars: '0.64', count_fp: '1.00' } })], expect: 'trade', header: 'KALSHI-ACCESS-SIGNATURE' },
+  { dir: 'pyth', label: 'Pyth Pro socket', socket: true, make: `new lib.PythProSocket({ auth: { type: 'BEARER', token: 't' }, endpoints: ['wss://a/v1/stream'], subscriptions: [{ priceFeedIds: [1] }], webSocket: fake })`, frames: [q({ type: 'streamUpdated', subscriptionId: 1, parsed: { timestampUs: '1730986152400000', priceFeeds: [{ priceFeedId: 1, price: '100', exponent: -2 }] } })], expect: 'price', header: 'Authorization' },
   { dir: 'binance', label: 'market socket', socket: true, make: `new lib.BinanceMarketSocket({ streams: { trade: ['BTCUSDT'] }, webSocket: fake })`, frames: [q({ stream: 'btcusdt@trade', data: { e: 'trade', E: 1, s: 'BTCUSDT', t: 1, p: '1.5', q: '2', T: 1, m: false } })], expect: 'trade' },
 ];
 
@@ -125,7 +126,7 @@ export default {
     try {
       const s = ${spec.make};
       for await (const e of s) {
-        if (e.type === 'connected') continue;
+        if (e.type === 'connected' || e.type === 'health') continue;
         out.type = e.type;
         if (e.type === 'error' || e.type === 'invalid') out.message = String(e.error?.message).slice(0, 400);
         break;
