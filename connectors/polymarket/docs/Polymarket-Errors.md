@@ -99,6 +99,27 @@ try {
 }
 ```
 
+## Socket codes
+
+The WebSocket feeds (`./sockets`) report these through `error` and
+`invalid` events rather than by throwing — only a constructor
+(`SOCKET_MISSING_CREDENTIALS`) and `connect()` after `close()`
+(`SOCKET_CLOSED`) throw. A `fatal: true` error event means the socket has
+closed for good.
+
+| Code                         | Meaning                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `SOCKET_MISSING_CREDENTIALS` | `PolymarketUserSocket` was constructed without `auth.apiCredentials`.                                |
+| `SOCKET_AUTH_FAILED`         | PolyBolt refused the credentials (`auth_invalid`/`auth_attempts`, or close 4001). Fatal.             |
+| `SOCKET_VENUE_ERROR`         | A venue error reply (`INVALID OPERATION`, a PolyBolt error ack). Fatal only for PolyBolt close 4008. |
+| `SOCKET_INVALID_MESSAGE`     | A known message type failed schema validation (carried by an `invalid` event with the data).         |
+| `SOCKET_RECONNECT_EXHAUSTED` | `reconnect.maxAttempts` consecutive attempts failed, or `reconnect: false` and the connection ended. |
+| `SOCKET_BUFFER_OVERFLOW`     | More than `maxBufferedEvents` events went unread; the socket closed rather than drop any.            |
+| `SOCKET_UNSUPPORTED_RUNTIME` | No usable global `WebSocket`; pass a `webSocket` factory.                                            |
+| `SOCKET_HANDLER_ERROR`       | An unexpected exception while handling a frame or opening a session; reported, not fatal.            |
+| `SOCKET_IN_USE`              | A second iterator was requested while one is active.                                                 |
+| `SOCKET_CLOSED`              | `connect()` was called on a closed socket.                                                           |
+
 ## Backing off after a 429
 
 A rate-limited request throws `RATE_LIMITED`. Two context values tell you what to

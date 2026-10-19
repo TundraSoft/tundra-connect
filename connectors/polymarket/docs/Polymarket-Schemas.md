@@ -68,6 +68,31 @@ connect. `Polymarket.split()`/`merge()`/`redeem()` wrap a
 other trading/collateral action — see
 [API: OrderResult](Polymarket-API.md#orderresult--one-shape-for-every-action).
 
+## WebSocket feeds
+
+The socket event payloads (`event.data`). Every key is camelCased (unknown
+ones too), decimal and timestamp strings become numbers, and
+`.passthrough()` keeps every field the venue sends.
+
+| Schema                                  | Message                            | Notes                                                                                    |
+| --------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------- |
+| `PolymarketBookSchemaObject`            | market `book`                      | Full-depth `bids`/`asks`; the initial snapshot also carries `tickSize`/`lastTradePrice`. |
+| `PolymarketPriceChangeSchemaObject`     | market `price_change`              | `priceChanges[]`; accepts the `changes` variant. `size` is the level's new size.         |
+| `PolymarketTickSizeChangeSchemaObject`  | market `tick_size_change`          |                                                                                          |
+| `PolymarketLastTradePriceSchemaObject`  | market `last_trade_price`          |                                                                                          |
+| `PolymarketBestBidAskSchemaObject`      | market `best_bid_ask`              |                                                                                          |
+| `PolymarketNewMarketSchemaObject`       | market `new_market`                | Many extra fields (description, tags, fees) pass through.                                |
+| `PolymarketMarketResolvedSchemaObject`  | market `market_resolved`           |                                                                                          |
+| `PolymarketUserOrderSchemaObject`       | user `order`                       | `type` is `PLACEMENT`/`UPDATE`/`CANCELLATION`.                                           |
+| `PolymarketUserTradeSchemaObject`       | user `trade`                       | A `null` `transaction_hash` becomes absent; `makerOrders` rows are camelCased.           |
+| `PolymarketPriceEnvelopeSchemaObject`   | PolyBolt envelope                  | `seq`/`ts`/`dropped` must be real integers.                                              |
+| `PolymarketPriceUpdateSchemaObject`     | PolyBolt live price                | `fullAccuracyValue` keeps the exact decimal string.                                      |
+| `PolymarketPriceSnapshotSchemaObject`   | PolyBolt snapshot batch            |                                                                                          |
+| `PolymarketPriceBestBidAskSchemaObject` | PolyBolt `price.polymarket`        |                                                                                          |
+| `PolymarketLiveDataPriceSchemaObject`   | legacy `crypto_prices(_chainlink)` | `payload.fullAccuracyValue` stays a string (an E18 integer on Chainlink).                |
+
+See [Sockets](Polymarket-Sockets.md) for the events that carry them.
+
 All CLOB schemas that rename a snake_case wire field to camelCase
 (`minimum_tick_size` → `minimumTickSize`, `neg_risk` → `negRisk`, `orderID`
 → `orderId`, `not_canceled` → `notCanceled`) do so because these are small,
