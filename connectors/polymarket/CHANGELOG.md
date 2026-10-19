@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/TundraSoft/tundra-connect/compare/polymarket-v0.3.0...polymarket-v0.3.1) (2026-10-19)
+
+
+### Documentation
+
+* **polymarket:** list getOrder and prepareOrder/submitPrepared in the overview, and every socket option ([45c6d9f](https://github.com/TundraSoft/tundra-connect/commit/45c6d9f4c9f62464bf19b2a0cdc3b66bb05408b1))
+
 ## [0.3.0](https://github.com/TundraSoft/tundra-connect/compare/polymarket-v0.2.0...polymarket-v0.3.0) (2026-10-19)
 
 

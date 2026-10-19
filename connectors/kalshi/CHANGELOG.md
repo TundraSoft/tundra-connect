@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/TundraSoft/tundra-connect/compare/kalshi-v0.3.0...kalshi-v0.3.1) (2026-10-19)
+
+
+### Documentation
+
+* **kalshi:** compare order identity, key custody and real-time feeds with Polymarket ([905099e](https://github.com/TundraSoft/tundra-connect/commit/905099eaece29434fd45382dd52acb900aa4ef43))
+
 ## [0.3.0](https://github.com/TundraSoft/tundra-connect/compare/kalshi-v0.2.0...kalshi-v0.3.0) (2026-10-19)
 
 
