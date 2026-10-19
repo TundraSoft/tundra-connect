@@ -17,7 +17,25 @@
  * @module
  */
 
-import type { KalshiSigner } from './KalshiSigner.ts';
+import { KalshiSigner } from './KalshiSigner.ts';
+
+/**
+ * Signs Kalshi's request string with the account's key held outside
+ * JavaScript (a native signer, an HSM): given the exact signing string
+ * (see {@link signingString}), return the standard-base64 RSA-PSS-SHA256
+ * signature (salt length 32). Same shape `KalshiSocket`'s `auth.signer`
+ * takes.
+ *
+ * @example
+ * ```ts ignore
+ * const signer: KalshiExternalSigner = {
+ *   sign: (message) => rustSigner.signPss(message), // -> base64
+ * };
+ * ```
+ */
+export type KalshiExternalSigner = {
+  sign(message: string): Promise<string>;
+};
 
 /**
  * `/trade-api/v2` — the prefix every Kalshi v2 path carries. This
@@ -72,7 +90,7 @@ export type KalshiAuthHeaders = {
  * string RESTler routes with, not a separately-prefixed copy.
  */
 export async function buildAuthHeaders(
-  signer: KalshiSigner,
+  signer: KalshiSigner | KalshiExternalSigner,
   accessKey: string,
   timestampMs: number,
   method: string,
@@ -81,9 +99,9 @@ export async function buildAuthHeaders(
   const message = signingString(timestampMs, method, path);
   return {
     'KALSHI-ACCESS-KEY': accessKey,
-    'KALSHI-ACCESS-SIGNATURE': await signer.sign(
-      new TextEncoder().encode(message),
-    ),
+    'KALSHI-ACCESS-SIGNATURE': signer instanceof KalshiSigner
+      ? await signer.sign(new TextEncoder().encode(message))
+      : await signer.sign(message),
     'KALSHI-ACCESS-TIMESTAMP': String(timestampMs),
   };
 }

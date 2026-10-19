@@ -20,7 +20,18 @@ const client = new Kalshi({
 ```
 
 `auth` is entirely optional — omit it for market-data-only usage. When
-present, both `auth.accessKey` and `auth.privateKeyPem` are required.
+present, `auth.accessKey` is required, plus `auth.privateKeyPem` or
+`auth.signer`.
+
+`auth.signer` keeps the key outside JavaScript: `{ sign(message) }`
+receives the exact signing string (`{timestampMs}{METHOD}{path}`) and
+returns the standard-base64 RSA-PSS-SHA256 signature (salt length 32). A
+signer that rejects or returns nothing surfaces as `SIGNER_FAILED`. It is
+the same shape `KalshiSocket` takes. PSS signatures are randomized, so they
+never match the built-in signer's byte for byte; the shared vectors in
+[fixtures/signing-vectors.json](../fixtures/signing-vectors.json) pin the
+signing strings, and a correct signer's output verifies with the account's
+public key.
 `privateKeyPem`'s STRUCTURE (BEGIN/END markers, valid base64) is validated
 at construction — a malformed PEM throws `CONFIG_INVALID_PRIVATE_KEY`
 immediately. The full cryptographic validity of the key can only be

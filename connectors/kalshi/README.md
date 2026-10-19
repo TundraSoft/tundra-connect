@@ -80,6 +80,12 @@ force:
 
 ### Key custody
 
+Pass `auth.signer` instead of `auth.privateKeyPem` to keep the key outside
+JavaScript — it receives each signing string and returns the RSA-PSS
+signature; see
+[API → Configuration](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-API#configuration).
+With the PEM:
+
 `submitOrder()`/`submitOrders()`/`amendOrder()`/`cancelOrder()`/
 `cancelOrders()`, and every `/portfolio/*` read, all sign for real: this client
 holds the account's RSA private key in memory for the lifetime of the

@@ -14,7 +14,16 @@ import {
   typedDataDigest,
   uintWord,
 } from './PolymarketEip712.ts';
-import { PolymarketSigner } from './PolymarketSigner.ts';
+import {
+  builtInSigner,
+  externalSigner,
+  normalizeSignature,
+  type PolymarketExternalSigner,
+  PolymarketSigner,
+  signMessageWith,
+} from './PolymarketSigner.ts';
+import { buildL1Headers, buildL2Headers, hmacSign } from './PolymarketAuth.ts';
+import vectors from './fixtures/signing-vectors.json' with { type: 'json' };
 
 /** Recovers the signer address from a 65-byte `r‖s‖v` signature over `digest` — mirrors PolymarketOrder.test.ts's helper. */
 function recoverSignerAddress(
@@ -114,6 +123,185 @@ describe('PolymarketSigner', () => {
     asserts.assertEquals(
       recoverSignerAddress(eip191Digest(message), signature),
       TEST_ADDR,
+    );
+  });
+});
+
+// ── Injected signers vs. the shared vectors ─────────────────────────────────
+
+describe('PolymarketSigner — injected signers reproduce the shared vectors', () => {
+  const key = fromHex(vectors.key.privateKey.slice(2));
+  const N = secp256k1.Point.CURVE().n;
+
+  /** A stand-in for an out-of-process signer, returning `format`. */
+  const injected = (
+    format: 'rsv-hex' | 'rsv-bigint' | 'bytes' | 'high-s' | 'v01',
+    signingKey = key,
+  ): PolymarketExternalSigner => ({
+    address: vectors.key.address.toLowerCase(),
+    signDigest: (digest) => {
+      const sig = secp256k1.sign(digest, signingKey, {
+        prehash: false,
+        format: 'recovered',
+      });
+      const recovery = sig[0]!;
+      const r = sig.slice(1, 33);
+      const s = sig.slice(33, 65);
+      const big = (b: Uint8Array) => BigInt(`0x${toHex(b)}`);
+      switch (format) {
+        case 'rsv-hex':
+          return Promise.resolve({
+            r: `0x${toHex(r)}`,
+            s: `0x${toHex(s)}`,
+            v: 27 + recovery,
+          });
+        case 'rsv-bigint':
+          return Promise.resolve({ r: big(r), s: big(s), v: 27 + recovery });
+        case 'v01':
+          return Promise.resolve({ r, s, v: recovery });
+        case 'high-s':
+          return Promise.resolve({ r, s: N - big(s), v: 27 + (recovery ^ 1) });
+        case 'bytes': {
+          const out = new Uint8Array(65);
+          out.set(r, 0);
+          out.set(s, 32);
+          out[64] = 27 + recovery;
+          return Promise.resolve(out);
+        }
+      }
+    },
+  });
+
+  const formats = ['rsv-hex', 'rsv-bigint', 'bytes', 'high-s', 'v01'] as const;
+
+  it('the built-in signer reproduces every vector', async () => {
+    const signer = builtInSigner(new PolymarketSigner(vectors.key.privateKey));
+    asserts.assertEquals(signer.address, vectors.key.address);
+    for (const order of vectors.orders) {
+      asserts.assertEquals(
+        await signer.signDigest(fromHex(order.digest.slice(2))),
+        order.signature,
+      );
+    }
+    asserts.assertEquals(
+      await signer.signDigest(fromHex(vectors.eip191.digest.slice(2))),
+      vectors.eip191.signature,
+    );
+  });
+
+  for (const format of formats) {
+    it(`an injected signer returning ${format} gives identical signatures`, async () => {
+      const signer = externalSigner(injected(format));
+      asserts.assertEquals(signer.address, vectors.key.address); // checksummed
+      for (const order of vectors.orders) {
+        asserts.assertEquals(
+          await signer.signDigest(fromHex(order.digest.slice(2))),
+          order.signature,
+        );
+      }
+      asserts.assertEquals(
+        (await buildL1Headers(
+          signer,
+          vectors.l1.chainId,
+          vectors.l1.timestampSec,
+          vectors.l1.nonce,
+        ))
+          .POLY_SIGNATURE,
+        vectors.l1.headers.POLY_SIGNATURE,
+      );
+      asserts.assertEquals(
+        await signMessageWith(signer, fromHex(vectors.eip191.message.slice(2))),
+        vectors.eip191.signature,
+      );
+    });
+  }
+
+  it('an injected hmac gives the same L2 signature as the secret', async () => {
+    const creds = { apiKey: 'k', passphrase: 'p' };
+    const fromSecret = await buildL2Headers(
+      vectors.key.address,
+      { ...creds, secret: vectors.hmac.secret },
+      1_000_000,
+      'POST',
+      '/order',
+      '{"hash":"0x123"}',
+    );
+    const seen: string[] = [];
+    const fromHmac = await buildL2Headers(
+      vectors.key.address,
+      {
+        ...creds,
+        hmac: (message) => {
+          seen.push(message);
+          return hmacSign(vectors.hmac.secret, message);
+        },
+      },
+      1_000_000,
+      'POST',
+      '/order',
+      '{"hash":"0x123"}',
+    );
+    asserts.assertEquals(seen, [vectors.hmac.message]);
+    asserts.assertEquals(fromHmac.POLY_SIGNATURE, vectors.hmac.signature);
+    asserts.assertEquals(fromSecret.POLY_SIGNATURE, vectors.hmac.signature);
+  });
+
+  it('refuses a signature from a different key', async () => {
+    const other = fromHex(
+      '59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
+    );
+    const signer = externalSigner(injected('bytes', other));
+    await asserts.assertRejects(
+      () => signer.signDigest(fromHex(vectors.orders[0]!.digest.slice(2))),
+      Error,
+      'recovers to',
+    );
+  });
+
+  it('refuses a signer that hashes the digest again', async () => {
+    const signer = externalSigner({
+      address: vectors.key.address,
+      signDigest: (digest) =>
+        Promise.resolve(
+          secp256k1.sign(digest, key, { format: 'recovered' }), // prehash: true (default)
+        ).then((sig) => ({
+          r: sig.slice(1, 33),
+          s: sig.slice(33),
+          v: sig[0]!,
+        })),
+    });
+    await asserts.assertRejects(
+      () => signer.signDigest(fromHex(vectors.orders[0]!.digest.slice(2))),
+      Error,
+      'recovers to',
+    );
+  });
+
+  it('rejects malformed signatures and addresses', async () => {
+    asserts.assertThrows(() =>
+      externalSigner({
+        address: 'nope',
+        signDigest: () => Promise.resolve(new Uint8Array(65)),
+      })
+    );
+    const signer = externalSigner({
+      address: vectors.key.address,
+      signDigest: () => Promise.resolve(new Uint8Array(64)),
+    });
+    await asserts.assertRejects(
+      () => signer.signDigest(new Uint8Array(32)),
+      Error,
+      '65 bytes',
+    );
+    asserts.assertThrows(
+      () => normalizeSignature({ r: 1n, s: 1n, v: 29 }),
+      Error,
+      'invalid v',
+    );
+    asserts.assertThrows(
+      () => normalizeSignature({ r: 0n, s: 1n, v: 27 }),
+      Error,
+      'out of range',
     );
   });
 });

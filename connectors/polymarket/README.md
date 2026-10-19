@@ -57,6 +57,12 @@ though the Data API reads default to `auth.funder` when no `user` is given).
 
 ### Key custody
 
+To keep the wallet key and the API secret out of JavaScript entirely, pass
+`auth.signer` (signs the digests this client builds) and `auth.hmac` (signs
+L2 requests) instead of `auth.privateKey` and `apiCredentials.secret` — see
+[API → Keeping keys out of JavaScript](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-API#keeping-keys-out-of-javascript).
+With the raw key:
+
 `submitOrder()` and `deriveApiCredentials()` sign for real: this client
 holds your wallet's raw private key in memory for the lifetime of the
 instance and produces genuine secp256k1 ECDSA signatures over EIP-712 typed

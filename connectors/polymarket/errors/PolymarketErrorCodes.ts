@@ -20,9 +20,12 @@ export const PolymarketErrorCodes = {
     'Polymarket service is currently unavailable (HTTP ${status}).',
 
   CONFIG_MISSING_PRIVATE_KEY:
-    'Polymarket CLOB trading methods require `auth.privateKey` — construct the client with `auth` set, or use only the Gamma (public market data) methods.',
+    'Polymarket CLOB trading methods require `auth.privateKey` or `auth.signer` — construct the client with `auth` set, or use only the Gamma (public market data) methods.',
   CONFIG_INVALID_PRIVATE_KEY:
     'Polymarket `auth.privateKey` is not a valid secp256k1 private key.',
+  CONFIG_INVALID_SIGNER: 'Polymarket `auth.signer` is unusable: ${detail}',
+  SIGNER_FAILED:
+    'The injected Polymarket signer failed or returned an unusable signature: ${detail}',
   CONFIG_INVALID_FUNDER:
     'Polymarket `auth.funder` is not a valid address: ${funder}',
   NO_API_CREDENTIALS:
