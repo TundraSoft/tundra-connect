@@ -137,6 +137,41 @@ account-wide dedupe key without forcing you to invent one. A genuine
 venue rejection (any non-2xx) also throws `ORDER_REJECTED`, with the
 vendor's detail message.
 
+#### Idempotency: generate `clientOrderId` yourself
+
+To know an order's identity before sending it, generate the
+`clientOrderId` (a UUID4) yourself and record it first. Kalshi dedupes it
+account-wide: resubmitting an id it has already seen is refused with HTTP
+409 — `ORDER_REJECTED` with `getContextValue('duplicate') === true` — and
+never places a second order. So retrying after an unknown outcome (a
+timeout, a crash between send and response) is safe: either the first
+attempt landed and the retry is refused as a duplicate, or it didn't and
+the retry places it. Find the original with `getOrders()` (each order
+carries its `clientOrderId`). The 409 is Kalshi's documented response;
+the gated demo live test (`LIVE_TEST_ALLOW_ORDERS`) confirms it.
+
+```ts
+const clientOrderId = crypto.randomUUID();
+await journal.record(clientOrderId); // identity, before sending
+await client.submitOrder({
+  ticker: 'KXBTCD-25DEC31-T100000',
+  side: 'BUY',
+  price: 0.42,
+  count: 3,
+  orderType: 'GTC',
+  clientOrderId,
+});
+```
+
+#### Reconciling after a restart
+
+| Need                        | Call                                                                                                     |
+| --------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Orders and their identity   | `getOrders({ status, minTs, cursor })` — every order (resting, executed, canceled) with `clientOrderId`. |
+| Fills since a point in time | `getFills({ minTs, cursor })` — `orderId`, `tradeId`, `marketTicker`; join to orders on `orderId`.       |
+| Positions                   | `getPositions({ cursor })`.                                                                              |
+| Cash                        | `getBalance()`.                                                                                          |
+
 ### `submitOrders()` — bulk, no fixed per-request cap
 
 ```ts

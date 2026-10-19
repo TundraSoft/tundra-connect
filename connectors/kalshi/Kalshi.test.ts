@@ -726,6 +726,7 @@ describe('Kalshi — error mapping', () => {
       asserts.assert(err instanceof KalshiError);
       asserts.assertEquals(err.code, 'ORDER_REJECTED');
       asserts.assertStringIncludes(err.message, 'order already exists');
+      asserts.assertEquals(err.getContextValue('duplicate'), true);
     }
   });
 
@@ -1306,4 +1307,69 @@ describe('Kalshi — auth.signer', () => {
     );
     asserts.assertEquals(err.code, 'CONFIG_INVALID_PRIVATE_KEY');
   });
+});
+
+// ── Live: duplicate client_order_id (demo only; places an order) ─────────────
+// Needs the demo credentials above plus LIVE_TEST_ALLOW_ORDERS, and refuses
+// to run against production. Rests one 1-contract post-only YES bid at
+// $0.01, resubmits it with the SAME client_order_id to record how Kalshi
+// treats a duplicate, then cancels it in `finally`.
+const orderTestsEnabled = liveTestsEnabled &&
+  !!env.get('LIVE_TEST_ALLOW_ORDERS') &&
+  (env.get('CONNECTOR_KALSHI_BASE_URL') || DEMO_API).includes('demo');
+
+describe({
+  name: 'Kalshi — live duplicate client_order_id (demo)',
+  ignore: !orderTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('a resubmitted clientOrderId is refused as a duplicate, never placed twice', async () => {
+      const client = new Kalshi({
+        baseURL: env.get('CONNECTOR_KALSHI_BASE_URL') || DEMO_API,
+        auth: {
+          type: 'CUSTOM',
+          accessKey: credentials.accessKey!,
+          privateKeyPem: credentials.privateKeyPem!.replace(/\\n/g, '\n'),
+        },
+      });
+      const { markets } = await client.getMarkets({
+        status: 'open',
+        limit: 50,
+      });
+      const market = markets.find((m) => (m.yesAsk ?? 1) > 0.05);
+      asserts.assert(market, 'no open demo market');
+      const clientOrderId = crypto.randomUUID();
+      const order = {
+        ticker: market.ticker,
+        side: 'BUY' as const,
+        price: 0.01,
+        count: 1,
+        orderType: 'GTC' as const,
+        postOnly: true,
+        clientOrderId,
+      };
+      let orderId: string | undefined;
+      try {
+        const first = await client.submitOrder(order);
+        orderId = first.id;
+        const err = await asserts.assertRejects(
+          () => client.submitOrder(order),
+          KalshiError,
+        );
+        asserts.assertEquals(err.code, 'ORDER_REJECTED');
+        asserts.assertEquals(err.getContextValue('duplicate'), true);
+        const { orders } = await client.getOrders({
+          ticker: market.ticker,
+          status: 'resting',
+        });
+        asserts.assertEquals(
+          orders.filter((o) => o.clientOrderId === clientOrderId).length,
+          1,
+        );
+      } finally {
+        if (orderId) await client.cancelOrder(orderId).catch(() => {});
+      }
+    });
+  },
 });

@@ -139,10 +139,14 @@ export type SubmitOrderOptions = {
   /** Rests as maker-only, never matches immediately. Only valid for GTC. @default false */
   postOnly?: boolean;
   /**
-   * Idempotency id, deduped account-wide by Kalshi (a reused id 409s).
-   * Auto-generated via `crypto.randomUUID()` when omitted — every order
-   * this connect places gets a real dedupe key, without forcing callers
-   * to invent one themselves.
+   * Idempotency id, deduped account-wide by Kalshi: a resubmission with an
+   * id already used is refused with HTTP 409 — surfaced as
+   * `ORDER_REJECTED` with `getContextValue('duplicate') === true` — and
+   * never places a second order, so retrying after an unknown outcome
+   * (a timeout, a crash) is safe. Look the original up with
+   * {@link Kalshi.getOrders}. Generate it yourself and record it before
+   * sending when the order's identity must be known up front;
+   * auto-generated via `crypto.randomUUID()` when omitted.
    */
   clientOrderId?: string;
   /** `TAKER_AT_CROSS` cancels the incoming order on self-trade; `MAKER` cancels the resting order instead. @default 'TAKER_AT_CROSS' */
@@ -1119,6 +1123,8 @@ export class Kalshi extends RESTler<KalshiOptions> {
       // UNKNOWN_ERROR) so a caller handling that code for the idempotency
       // retry case it exists for actually catches this.
       throw new KalshiError('ORDER_REJECTED', {
+        status,
+        duplicate: true,
         detail: Kalshi.__errorDetail(response.body),
       });
     }
