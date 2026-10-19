@@ -56,11 +56,15 @@ describe('Fill schema', () => {
   it('parses a fill', () => {
     const fill = FillSchemaObject.parse({
       fill_id: 'f1',
+      trade_id: 't1',
       order_id: 'o1',
+      market_ticker: 'FED-23DEC-T3.00',
       count_fp: '1.00',
       is_taker: true,
     });
     asserts.assertEquals(fill.fillId, 'f1');
+    asserts.assertEquals(fill.tradeId, 't1');
+    asserts.assertEquals(fill.marketTicker, 'FED-23DEC-T3.00');
     asserts.assert(fill.isTaker);
   });
 
