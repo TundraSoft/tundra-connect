@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/TundraSoft/tundra-connect/compare/kalshi-v0.2.0...kalshi-v0.3.0) (2026-10-19)
+
+
+### Features
+
+* **kalshi:** accept a caller-supplied signer for REST requests ([0359c4a](https://github.com/TundraSoft/tundra-connect/commit/0359c4aeedd9a9a8c38e2c4515a4732bbf1923e2))
+* **kalshi:** add a signed WebSocket feed as a ./sockets export ([68b6638](https://github.com/TundraSoft/tundra-connect/commit/68b6638c67eed535d44032d2d0da3c53220471fc))
+* **kalshi:** flag a reused client_order_id as a duplicate ([b56c759](https://github.com/TundraSoft/tundra-connect/commit/b56c7598fbfd3d88d71350b39f015c78c42108d7))
+
+
+### Bug Fixes
+
+* **kalshi:** type trade_id and market_ticker on fills ([a0f0fda](https://github.com/TundraSoft/tundra-connect/commit/a0f0fda27384b4536948594aae78d331e382f8a0))
+
 ## [0.2.0](https://github.com/TundraSoft/tundra-connect/compare/kalshi-v0.1.1...kalshi-v0.2.0) (2026-10-04)
 
 
