@@ -24,14 +24,54 @@ const clob = new Polymarket({
 ```
 
 `auth` is entirely optional — omit it for Gamma-only usage. When present,
-`auth.privateKey` is required (32 bytes of hex, with or without `0x`); every
-other field is optional. The client throws `PolymarketError`
+`auth.privateKey` (32 bytes of hex, with or without `0x`) or `auth.signer`
+(see below) is required; every other field is optional. The client throws `PolymarketError`
 (`CONFIG_INVALID_PRIVATE_KEY` / `CONFIG_INVALID_FUNDER`) at construction if
 either is malformed. `baseURL` (inherited from every connect's standard
 option) defaults to the Gamma API host and can be overridden for testing;
 `clobBaseURL` does the same for the CLOB host — the two are independent
 because this connect talks to two different vendor hosts, unlike every
 other connect in this repo.
+
+### Keeping keys out of JavaScript
+
+Two alternatives keep the secrets in your own process (a native module, an
+HSM, a remote signer) while this client still builds every digest and
+request:
+
+- **`auth.signer`** instead of `auth.privateKey` — `{ address,
+  signDigest(digest) }`. It receives each final 32-byte EIP-712 (orders,
+  L1 credential derivation) or EIP-191 (Relayer) digest — already hashed,
+  sign it as-is — and returns the secp256k1 signature as `{ r, s, v }`
+  (`r`/`s` as bytes, `0x` hex or bigint; `v` 0/1 or 27/28) or 65 bytes
+  `r ‖ s ‖ v`. The client normalizes it to low-`s`, checks that it
+  recovers to `address`, and throws `SIGNER_FAILED` otherwise (or when the
+  signer rejects). A malformed `address` throws `CONFIG_INVALID_SIGNER`.
+- **`auth.hmac`** instead of `apiCredentials.secret` — `(message) =>
+  Promise<string>` returning URL-safe base64 (with padding) of
+  `HMAC-SHA256(base64url-decode(secret), message)`. Pass `apiCredentials`
+  with just `apiKey` and `passphrase`. Every REST request signs through it.
+  The WebSocket user channel and PolyBolt authenticate by sending the raw
+  secret, so they still need `secret`.
+
+```ts ignore
+const client = new Polymarket({
+  auth: {
+    type: 'CUSTOM',
+    signer: { address: '0xYourEoa', signDigest: (d) => native.sign(d) },
+    funder: '0xYourProxyWallet',
+    apiCredentials: { apiKey: '...', passphrase: '...' },
+    hmac: (message) => native.hmac(message),
+  },
+});
+```
+
+Signatures from an injected signer are byte-identical to the built-in
+key's (secp256k1 signing here is RFC 6979 deterministic). The shared test
+vectors in
+[fixtures/signing-vectors.json](../fixtures/signing-vectors.json) pin
+orders (V1, V2, neg-risk), L1 headers, an EIP-191 digest and an L2 HMAC —
+reproduce them to prove an out-of-process signer.
 
 Read `client.signerAddress` (the checksummed wallet EOA, once `auth` is
 set) and `client.hasApiCredentials` (`true` once L2 credentials exist,

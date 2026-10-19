@@ -22,7 +22,7 @@ import {
   typedDataDigest,
   uintWord,
 } from './PolymarketEip712.ts';
-import type { PolymarketSigner } from './PolymarketSigner.ts';
+import type { DigestSigner } from './PolymarketSigner.ts';
 
 export const POLYGON_CHAIN_ID = 137;
 export const EXCHANGE_DOMAIN_NAME = 'Polymarket CTF Exchange';
@@ -285,9 +285,9 @@ export function orderDigest(built: BuiltOrder): Uint8Array {
 
 /** Signs a built order; returns the 65-byte `r‖s‖v` hex signature. */
 export function signOrder(
-  signer: PolymarketSigner,
+  signer: DigestSigner,
   built: BuiltOrder,
-): `0x${string}` {
+): Promise<`0x${string}`> {
   return signer.signDigest(orderDigest(built));
 }
 

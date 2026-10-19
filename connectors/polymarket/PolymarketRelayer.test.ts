@@ -2,7 +2,7 @@ import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { fromHex, toHex } from './PolymarketEip712.ts';
 import { selector } from './PolymarketAbi.ts';
-import { PolymarketSigner } from './PolymarketSigner.ts';
+import { builtInSigner, PolymarketSigner } from './PolymarketSigner.ts';
 import {
   buildMergeTx,
   buildProxyMetaTx,
@@ -143,10 +143,10 @@ describe('PolymarketRelayer — proxy meta-tx envelope', () => {
     nonce: '7',
   };
 
-  it('builds the envelope shape with a self-checked signature', () => {
-    const signer = new PolymarketSigner(TEST_KEY);
+  it('builds the envelope shape with a self-checked signature', async () => {
+    const signer = builtInSigner(new PolymarketSigner(TEST_KEY));
     const tx = buildSplitTx(CID, 2.0, false);
-    const env = buildProxyMetaTx(signer, [tx], payload, PROXY_WALLET, '');
+    const env = await buildProxyMetaTx(signer, [tx], payload, PROXY_WALLET, '');
     asserts.assertEquals(env.type, 'PROXY');
     asserts.assertEquals(env.nonce, '7');
     asserts.assertEquals(env.from, signer.address.toLowerCase()); // proxy path: lowercase
@@ -158,10 +158,10 @@ describe('PolymarketRelayer — proxy meta-tx envelope', () => {
     );
   });
 
-  it('signatureParams JSON field order is gasPrice, gasLimit, relayerFee, relayHub, relay', () => {
-    const signer = new PolymarketSigner(TEST_KEY);
+  it('signatureParams JSON field order is gasPrice, gasLimit, relayerFee, relayHub, relay', async () => {
+    const signer = builtInSigner(new PolymarketSigner(TEST_KEY));
     const tx = buildSplitTx(CID, 2.0, false);
-    const env = buildProxyMetaTx(signer, [tx], payload, PROXY_WALLET, '');
+    const env = await buildProxyMetaTx(signer, [tx], payload, PROXY_WALLET, '');
     const json = JSON.stringify(env.signatureParams);
     const order = [
       '"gasPrice"',
@@ -176,10 +176,10 @@ describe('PolymarketRelayer — proxy meta-tx envelope', () => {
     }
   });
 
-  it('rejects a non-numeric relay nonce', () => {
-    const signer = new PolymarketSigner(TEST_KEY);
+  it('rejects a non-numeric relay nonce', async () => {
+    const signer = builtInSigner(new PolymarketSigner(TEST_KEY));
     const tx = buildSplitTx(CID, 1.0, false);
-    asserts.assertThrows(() =>
+    await asserts.assertRejects(() =>
       buildProxyMetaTx(signer, [tx], {
         address: payload.address,
         nonce: 'not-a-number',
@@ -187,11 +187,11 @@ describe('PolymarketRelayer — proxy meta-tx envelope', () => {
     );
   });
 
-  it('wraps multiple inner transactions in one proxy call', () => {
-    const signer = new PolymarketSigner(TEST_KEY);
+  it('wraps multiple inner transactions in one proxy call', async () => {
+    const signer = builtInSigner(new PolymarketSigner(TEST_KEY));
     const split = buildSplitTx(CID, 1.0, false);
     const redeem = buildRedeemTx(CID, false);
-    const env = buildProxyMetaTx(
+    const env = await buildProxyMetaTx(
       signer,
       [split, redeem],
       payload,

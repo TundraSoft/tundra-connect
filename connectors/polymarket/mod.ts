@@ -92,10 +92,17 @@ export {
   type OrderResult,
   Polymarket,
   type PolymarketAuth,
+  type PolymarketAuthCommon,
   type PolymarketOptions,
   RELAYER_API,
   type SubmitOrderOptions,
 } from './Polymarket.ts';
+
+// Caller-supplied signing (keys held outside JavaScript)
+export type {
+  PolymarketExternalSigner,
+  PolymarketRawSignature,
+} from './PolymarketSigner.ts';
 
 // Export error handling
 export * from './errors/mod.ts';

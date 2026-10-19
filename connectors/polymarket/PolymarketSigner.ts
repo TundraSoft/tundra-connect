@@ -113,3 +113,158 @@ export class PolymarketSigner {
     return this.signDigest(eip191Digest(message));
   }
 }
+
+// ── Caller-supplied signers ────────────────────────────────────────────────
+
+/**
+ * A secp256k1 signature as an injected signer may return it: `{ r, s, v }`
+ * (`r`/`s` as 32-byte arrays, `0x` hex or bigints; `v` as 0/1 or 27/28), or
+ * 65 bytes `r ‖ s ‖ v`.
+ */
+export type PolymarketRawSignature =
+  | {
+    r: Uint8Array | string | bigint;
+    s: Uint8Array | string | bigint;
+    v: number;
+  }
+  | Uint8Array;
+
+/**
+ * Signs for the wallet at `address` without the private key ever entering
+ * JavaScript — a native module, an HSM, a remote signer. It receives the
+ * final 32-byte digest (EIP-712 or EIP-191, already hashed — sign it as-is,
+ * never hash again) and returns the raw secp256k1 signature. Digest
+ * construction stays in this connect.
+ *
+ * @example
+ * ```ts ignore
+ * const signer: PolymarketExternalSigner = {
+ *   address: '0xYourEoa',
+ *   signDigest: (digest) => rustSigner.sign(digest), // -> { r, s, v } or 65 bytes
+ * };
+ * ```
+ */
+export type PolymarketExternalSigner = {
+  /** The signing EOA. Every signature is checked to recover to it. */
+  address: string;
+  signDigest(digest: Uint8Array): Promise<PolymarketRawSignature>;
+};
+
+/**
+ * The async signer every signing path in this connect uses — the built-in
+ * key ({@link PolymarketSigner}) and an injected
+ * {@link PolymarketExternalSigner} both become one of these.
+ *
+ * @internal
+ */
+export type DigestSigner = {
+  readonly address: Address;
+  signDigest(digest: Uint8Array): Promise<`0x${string}`>;
+};
+
+const CURVE_N = secp256k1.Point.CURVE().n;
+
+function toBigInt(value: Uint8Array | string | bigint): bigint {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'string') {
+    const hex = value.startsWith('0x') ? value.slice(2) : value;
+    if (!/^[0-9a-fA-F]{1,64}$/.test(hex)) throw new Error('not 32-byte hex');
+    return BigInt(`0x${hex}`);
+  }
+  if (value.length !== 32) throw new Error('not 32 bytes');
+  return BigInt(`0x${toHex(value)}`);
+}
+
+const word = (value: bigint): string => value.toString(16).padStart(64, '0');
+
+/**
+ * Normalizes an injected signature to the `0x` 65-byte `r‖s‖v` form with
+ * low `s` and `v ∈ {27, 28}` — the form {@link PolymarketSigner} emits and
+ * the exchange contracts accept.
+ *
+ * @internal
+ */
+export function normalizeSignature(raw: PolymarketRawSignature): {
+  r: bigint;
+  s: bigint;
+  recovery: number;
+} {
+  let r: bigint;
+  let s: bigint;
+  let v: number;
+  if (raw instanceof Uint8Array) {
+    if (raw.length !== 65) throw new Error('expected 65 bytes r ‖ s ‖ v');
+    r = toBigInt(raw.slice(0, 32));
+    s = toBigInt(raw.slice(32, 64));
+    v = raw[64]!;
+  } else {
+    r = toBigInt(raw.r);
+    s = toBigInt(raw.s);
+    v = raw.v;
+  }
+  let recovery = v >= 27 ? v - 27 : v;
+  if (recovery !== 0 && recovery !== 1) throw new Error(`invalid v: ${v}`);
+  if (r <= 0n || r >= CURVE_N || s <= 0n || s >= CURVE_N) {
+    throw new Error('r or s out of range');
+  }
+  if (s > CURVE_N / 2n) {
+    s = CURVE_N - s; // canonical low-s; flips the recovery bit
+    recovery ^= 1;
+  }
+  return { r, s, recovery };
+}
+
+/** Wraps the built-in key signer in the async {@link DigestSigner} shape. @internal */
+export function builtInSigner(signer: PolymarketSigner): DigestSigner {
+  return {
+    address: signer.address,
+    signDigest: (digest) => Promise.resolve(signer.signDigest(digest)),
+  };
+}
+
+/**
+ * Wraps a caller-supplied signer: checksums its address up front, then for
+ * every digest normalizes the returned signature and refuses one that does
+ * not recover to that address (a wrong key, a double-hashed digest).
+ *
+ * @throws {Error} When `external.address` is not a valid address.
+ * @internal
+ */
+export function externalSigner(
+  external: PolymarketExternalSigner,
+): DigestSigner {
+  const address = checksumAddress(external.address);
+  return {
+    address,
+    async signDigest(digest) {
+      if (digest.length !== 32) {
+        throw new Error('digest must be exactly 32 bytes');
+      }
+      const { r, s, recovery } = normalizeSignature(
+        await external.signDigest(digest),
+      );
+      const recovered = secp256k1.Signature
+        .fromBytes(fromHex(word(r) + word(s)), 'compact')
+        .addRecoveryBit(recovery)
+        .recoverPublicKey(digest)
+        .toBytes(false);
+      const recoveredAddress = checksumAddress(
+        toHex(keccak256(recovered.slice(1)).slice(12)),
+      );
+      if (recoveredAddress !== address) {
+        throw new Error(
+          `signature recovers to ${recoveredAddress}, not the signer address ${address}`,
+        );
+      }
+      return `0x${word(r)}${word(s)}${(27 + recovery).toString(16)}`;
+    },
+  };
+}
+
+/** EIP-191 `personal_sign` over `message` with any {@link DigestSigner}. @internal */
+export function signMessageWith(
+  signer: DigestSigner,
+  message: Uint8Array,
+): Promise<`0x${string}`> {
+  return signer.signDigest(eip191Digest(message));
+}

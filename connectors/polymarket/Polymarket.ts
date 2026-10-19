@@ -20,7 +20,13 @@ import {
   buildL2Headers,
   type L2Credentials,
 } from './PolymarketAuth.ts';
-import { PolymarketSigner } from './PolymarketSigner.ts';
+import {
+  builtInSigner,
+  type DigestSigner,
+  externalSigner,
+  type PolymarketExternalSigner,
+  PolymarketSigner,
+} from './PolymarketSigner.ts';
 import {
   buildOrder,
   type BuildOrderParams,
@@ -93,14 +99,38 @@ const FOK_NO_MATCH_MARKER = "order couldn't be fully filled";
  * that module's KEY CUSTODY note). Omit `auth` entirely for Gamma-only
  * (public market data) usage — no wallet is needed for that half of the
  * API.
+ *
+ * The wallet is EITHER `privateKey` OR `signer` — a
+ * {@link PolymarketExternalSigner} that signs the 32-byte digests this
+ * client builds, so the key never enters JavaScript. Likewise the L2 HMAC
+ * can come from `apiCredentials.secret` or from `hmac`.
  */
-export type PolymarketAuth = {
+export type PolymarketAuth =
+  & PolymarketAuthCommon
+  & (
+    | {
+      /**
+       * Wallet EOA private key — 32 bytes of hex, with or without a `0x`
+       * prefix. Required (or `signer`) for every CLOB trading method.
+       */
+      privateKey: string;
+      signer?: never;
+    }
+    | {
+      /**
+       * Signs for the wallet outside JavaScript: receives each final EIP-712
+       * / EIP-191 digest and returns the secp256k1 signature (`{ r, s, v }`
+       * or 65 bytes). Every signature is checked to recover to
+       * `signer.address` before it is used.
+       */
+      signer: PolymarketExternalSigner;
+      privateKey?: never;
+    }
+  );
+
+/** The {@link PolymarketAuth} fields shared by both wallet modes. */
+export type PolymarketAuthCommon = {
   type: 'CUSTOM';
-  /**
-   * Wallet EOA private key — 32 bytes of hex, with or without a `0x`
-   * prefix. Required for every CLOB trading method.
-   */
-  privateKey: string;
   /**
    * The proxy/funding wallet that holds USDC and appears as `maker` on
    * every signed order — NEVER the signer EOA itself. Required for order
@@ -112,8 +142,21 @@ export type PolymarketAuth = {
   signatureType?: number;
   /** @default {@link POLYGON_CHAIN_ID} */
   chainId?: number;
-  /** Already-derived L2 API credentials, if you have them — skips the one-time {@link Polymarket.deriveApiCredentials} call. */
-  apiCredentials?: ClobApiCredentials;
+  /**
+   * Already-derived L2 API credentials, if you have them — skips the
+   * one-time {@link Polymarket.deriveApiCredentials} call. `secret` may be
+   * omitted when `hmac` is given.
+   */
+  apiCredentials?: Omit<ClobApiCredentials, 'secret'> & { secret?: string };
+  /**
+   * Computes the L2 request signature without the API secret entering
+   * JavaScript: given the message, returns URL-safe base64 (with padding)
+   * of `HMAC-SHA256(base64url-decode(secret), message)` — exactly what
+   * `hmacSign` in `PolymarketAuth.ts` returns. Used instead of
+   * `apiCredentials.secret` for every REST request. (The WebSocket user
+   * channel and PolyBolt send the raw secret, so they still need it.)
+   */
+  hmac?: (message: string) => Promise<string>;
   /**
    * Relayer API credentials — a SEPARATE credential from `apiCredentials`
    * (the CLOB's L2 key), obtained independently from Polymarket. Both
@@ -372,9 +415,10 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   private readonly __dataBaseURL: string;
   private readonly __chainId: number;
   private readonly __signatureType: number;
-  private __signer?: PolymarketSigner;
+  private __signer?: DigestSigner;
   private __funder?: `0x${string}`;
-  private __apiCreds?: ClobApiCredentials;
+  private __apiCreds?: Omit<ClobApiCredentials, 'secret'> & { secret?: string };
+  private __hmac?: (message: string) => Promise<string>;
   private __relayerApiKey?: string;
   private __relayerApiKeyAddress?: string;
 
@@ -403,15 +447,28 @@ export class Polymarket extends RESTler<PolymarketOptions> {
 
     const auth = options.auth;
     if (auth) {
-      try {
-        this.__signer = new PolymarketSigner(auth.privateKey);
-      } catch (cause) {
-        throw new PolymarketError(
-          'CONFIG_INVALID_PRIVATE_KEY',
-          {},
-          cause instanceof Error ? cause : undefined,
-        );
+      if (auth.signer) {
+        try {
+          this.__signer = Polymarket.__guardSigner(externalSigner(auth.signer));
+        } catch (cause) {
+          throw new PolymarketError(
+            'CONFIG_INVALID_SIGNER',
+            { detail: cause instanceof Error ? cause.message : String(cause) },
+            cause instanceof Error ? cause : undefined,
+          );
+        }
+      } else {
+        try {
+          this.__signer = builtInSigner(new PolymarketSigner(auth.privateKey));
+        } catch (cause) {
+          throw new PolymarketError(
+            'CONFIG_INVALID_PRIVATE_KEY',
+            {},
+            cause instanceof Error ? cause : undefined,
+          );
+        }
       }
+      this.__hmac = auth.hmac;
       if (auth.funder !== undefined) {
         try {
           this.__funder = checksumAddress(auth.funder);
@@ -441,7 +498,8 @@ export class Polymarket extends RESTler<PolymarketOptions> {
 
   /** `true` once L2 API credentials are available (constructed-with, or derived via {@link deriveApiCredentials}). */
   get hasApiCredentials(): boolean {
-    return this.__apiCreds !== undefined;
+    return this.__apiCreds !== undefined &&
+      (this.__apiCreds.secret !== undefined || this.__hmac !== undefined);
   }
 
   /** `true` once Relayer credentials are configured — required for {@link split}/{@link merge}/{@link redeem}. */
@@ -644,10 +702,18 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * not configured at construction.
    */
   public async deriveApiCredentials(nonce = 0): Promise<ClobApiCredentials> {
-    if (this.__apiCreds) return this.__apiCreds;
+    if (this.hasApiCredentials) {
+      // With `auth.hmac` the secret was never given to this client.
+      return { secret: '', ...this.__apiCreds! };
+    }
     const signer = this.__requireSigner();
     const timestampSec = Math.floor(Date.now() / 1000);
-    const headers = buildL1Headers(signer, this.__chainId, timestampSec, nonce);
+    const headers = await buildL1Headers(
+      signer,
+      this.__chainId,
+      timestampSec,
+      nonce,
+    );
 
     try {
       const created = await this.__requestAndValidate(
@@ -945,7 +1011,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     ): Promise<
       { response: RESTlerResponse<unknown>; parsed: ClobPostOrderResponse }
     > => {
-      const payload = this.__buildOrderPayload(
+      const payload = await this.__buildOrderPayload(
         signer,
         funder,
         protocolVersion,
@@ -1314,7 +1380,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
 
   /** Per-call auth marker read by {@link _authInjector} — the actual signer/credentials live on instance state, not in this object. */
   private __l2Auth(
-    signer: PolymarketSigner,
+    signer: DigestSigner,
     creds: L2Credentials,
   ): RESTlerAuth {
     return {
@@ -1330,9 +1396,27 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    *
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when no `auth` was given.
    */
-  private __requireSigner(): PolymarketSigner {
+  private __requireSigner(): DigestSigner {
     if (!this.__signer) throw new PolymarketError('CONFIG_MISSING_PRIVATE_KEY');
     return this.__signer;
+  }
+
+  /** Surfaces an injected signer's failure as a {@link PolymarketError}. */
+  private static __guardSigner(signer: DigestSigner): DigestSigner {
+    return {
+      address: signer.address,
+      async signDigest(digest) {
+        try {
+          return await signer.signDigest(digest);
+        } catch (cause) {
+          throw new PolymarketError(
+            'SIGNER_FAILED',
+            { detail: cause instanceof Error ? cause.message : String(cause) },
+            cause instanceof Error ? cause : undefined,
+          );
+        }
+      },
+    };
   }
 
   /**
@@ -1341,9 +1425,21 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    *
    * @throws {PolymarketError} `NO_API_CREDENTIALS` when neither has happened.
    */
-  private __requireApiCreds(): ClobApiCredentials {
-    if (!this.__apiCreds) throw new PolymarketError('NO_API_CREDENTIALS');
-    return this.__apiCreds;
+  private __requireApiCreds(): L2Credentials {
+    const creds = this.__apiCreds;
+    if (creds && this.__hmac) {
+      return {
+        apiKey: creds.apiKey,
+        passphrase: creds.passphrase,
+        hmac: this.__hmac,
+      };
+    }
+    if (!creds?.secret) throw new PolymarketError('NO_API_CREDENTIALS');
+    return {
+      apiKey: creds.apiKey,
+      passphrase: creds.passphrase,
+      secret: creds.secret,
+    };
   }
 
   /**
@@ -1419,7 +1515,12 @@ export class Polymarket extends RESTler<PolymarketOptions> {
       RelayPayloadSchemaObject,
     );
 
-    const envelope = buildProxyMetaTx(signer, [tx], relayPayload, funder);
+    const envelope = await buildProxyMetaTx(
+      signer,
+      [tx],
+      relayPayload,
+      funder,
+    );
 
     // Errors here flow through the same connect-wide __toError mapping as
     // every Gamma/CLOB call (INVALID_REQUEST/AUTH_FAILED/RATE_LIMITED/
@@ -1566,14 +1667,14 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * Builds one order's signed wire payload — the shared step between
    * {@link submitOrder} and {@link submitOrders}.
    */
-  private __buildOrderPayload(
-    signer: PolymarketSigner,
+  private async __buildOrderPayload(
+    signer: DigestSigner,
     funder: `0x${string}`,
     version: ProtocolVersion,
     negRisk: boolean,
     input: BulkOrderInput,
     owner: string,
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
     const params: BuildOrderParams = {
       version,
       negRisk,
@@ -1588,7 +1689,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
       expirationTime: input.expirationTime,
     };
     const built = buildOrder(params);
-    const signature = signOrder(signer, built);
+    const signature = await signOrder(signer, built);
     const payload: Record<string, unknown> = {
       order: orderWireJson(built, signature),
       orderType: input.orderType,
@@ -1619,8 +1720,8 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * chunk's) are never discarded by one chunk's failure.
    */
   private async __submitOrderChunk(
-    signer: PolymarketSigner,
-    creds: ClobApiCredentials,
+    signer: DigestSigner,
+    creds: L2Credentials,
     funder: `0x${string}`,
     version: ProtocolVersion,
     chunk: readonly BulkOrderInput[],
@@ -1633,15 +1734,17 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     ): Promise<
       { response: RESTlerResponse<unknown>; parsed: ClobPostOrderResponse[] }
     > => {
-      const payload = postChunk.map((order, i) =>
-        this.__buildOrderPayload(
-          signer,
-          funder,
-          protocolVersion,
-          postNegRisks[i]!,
-          order,
-          creds.apiKey,
-        )
+      const payload = await Promise.all(
+        postChunk.map((order, i) =>
+          this.__buildOrderPayload(
+            signer,
+            funder,
+            protocolVersion,
+            postNegRisks[i]!,
+            order,
+            creds.apiKey,
+          )
+        ),
       );
       return await this.__requestOrderResponse<ClobPostOrderResponse[]>(
         // `RESTlerContentTypePayload`'s type doesn't model a JSON ARRAY body
