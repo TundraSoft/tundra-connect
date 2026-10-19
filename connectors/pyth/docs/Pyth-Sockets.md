@@ -6,21 +6,24 @@ and the package root.
 
 ## Options
 
-| Option           | Default              | Meaning                                                                                              |
-| ---------------- | -------------------- | ---------------------------------------------------------------------------------------------------- |
-| `auth`           | required             | `{ type: 'BEARER', token }` — the access token from your Pyth Pro distributor.                       |
-| `endpoints`      | `PYTH_PRO_ENDPOINTS` | The three documented `wss://pyth-lazer-{0,1,2}.dourolabs.app/v1/stream` endpoints.                   |
-| `authTransport`  | `'subprotocol'`      | `'subprotocol'` (`pyth-lazer-auth, <token>`, every runtime) or `'header'` (`Authorization: Bearer`). |
-| `channel`        | `'real_time'`        | Default channel: `real_time`, `fixed_rate@50ms`, `fixed_rate@200ms`, `fixed_rate@1000ms`.            |
-| `subscriptions`  | none                 | Subscriptions to open from the start.                                                                |
-| `emitDuplicates` | `false`              | Emit every endpoint's copy of an update, not just the first.                                         |
-| `dedupeWindowMs` | `60000`              | How long an update's identity is remembered for merging.                                             |
-| `includeRaw`     | `false`              | Attach the exact frame text as `raw`.                                                                |
-| `clock`          | `Date.now`           | Source of `receivedAt`, read on arrival before parsing.                                              |
-| `reconnect`      | 1s → 30s             | Per-endpoint `{ initialDelayMs, maxDelayMs, maxAttempts, healthyAfterMs }`, or `false`.              |
-| `dataTimeoutMs`  | `5000`               | Reconnect an endpoint whose subscribed stream sends nothing for this long.                           |
-| `signal`         | none                 | Aborting it closes every endpoint.                                                                   |
-| `webSocket`      | global               | A `(url, { headers })` factory; it receives `Authorization: Bearer <token>` to apply itself.         |
+| Option              | Default              | Meaning                                                                                                |
+| ------------------- | -------------------- | ------------------------------------------------------------------------------------------------------ |
+| `auth`              | required             | `{ type: 'BEARER', token }` — the access token from your Pyth Pro distributor.                         |
+| `endpoints`         | `PYTH_PRO_ENDPOINTS` | The three documented `wss://pyth-lazer-{0,1,2}.dourolabs.app/v1/stream` endpoints.                     |
+| `authTransport`     | `'subprotocol'`      | `'subprotocol'` (`pyth-lazer-auth, <token>`, every runtime) or `'header'` (`Authorization: Bearer`).   |
+| `channel`           | `'real_time'`        | Default channel: `real_time`, `fixed_rate@50ms`, `fixed_rate@200ms`, `fixed_rate@1000ms`.              |
+| `subscriptions`     | none                 | Subscriptions to open from the start.                                                                  |
+| `emitDuplicates`    | `false`              | Emit every endpoint's copy of an update, not just the first.                                           |
+| `dedupeWindowMs`    | `60000`              | How long an update's identity is remembered for merging.                                               |
+| `includeRaw`        | `false`              | Attach the exact frame text as `raw`.                                                                  |
+| `clock`             | `Date.now`           | Source of `receivedAt`, read on arrival before parsing.                                                |
+| `reconnect`         | 1s → 30s             | Per-endpoint `{ initialDelayMs, maxDelayMs, maxAttempts, healthyAfterMs }`, or `false`.                |
+| `dataTimeoutMs`     | `5000`               | Reconnect an endpoint whose subscribed stream sends nothing for this long.                             |
+| `connectTimeoutMs`  | `15000`              | Abort an endpoint's handshake that hasn't completed in this long (then retry with backoff).            |
+| `idleTimeoutMs`     | off                  | Also reconnect an endpoint when no frame at all arrives for this long.                                 |
+| `maxBufferedEvents` | unlimited            | Per-endpoint unread-event cap; overflowing it is a fatal error for that endpoint, never a silent drop. |
+| `signal`            | none                 | Aborting it closes every endpoint.                                                                     |
+| `webSocket`         | global               | A `(url, { headers })` factory; it receives `Authorization: Bearer <token>` to apply itself.           |
 
 ## Subscriptions
 

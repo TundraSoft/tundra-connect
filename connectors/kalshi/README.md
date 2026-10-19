@@ -42,18 +42,21 @@ with a deliberately similar shape — the same `price`/`OrderSide`/
 `OrderResult` conventions, and a shared method vocabulary across market
 data, portfolio reads, and order management:
 
-| Capability          | Kalshi                             | Polymarket                                 |
-| ------------------- | ---------------------------------- | ------------------------------------------ |
-| Market data         | `getMarkets()`, `getOrderbook()`   | `getMarkets()`, `getOrderbook()`           |
-| Balance             | `getBalance()`                     | `getBalance({ tokenId? })`                 |
-| Positions           | `getPositions()`                   | `getPositions()` (Data API)                |
-| Orders on the venue | `getOrders()`, `getOrder()`        | `getOpenOrders()`                          |
-| Executions          | `getFills()`                       | `getFills()`                               |
-| Place               | `submitOrder()`, `submitOrders()`  | `submitOrder()`, `submitOrders()`          |
-| Cancel              | `cancelOrder()`, `cancelOrders()`  | `cancelOrder()`, `cancelOrders()`          |
-| Cancel everything   | `cancelAllOrders()` (client sweep) | `cancelAllOrders()` (`DELETE /cancel-all`) |
-| Cancel by market    | — (no vendor endpoint)             | `cancelMarketOrders()`                     |
-| Amend               | `amendOrder()`                     | — (CLOB has no amend; cancel + resubmit)   |
+| Capability           | Kalshi                              | Polymarket                                 |
+| -------------------- | ----------------------------------- | ------------------------------------------ |
+| Market data          | `getMarkets()`, `getOrderbook()`    | `getMarkets()`, `getOrderbook()`           |
+| Balance              | `getBalance()`                      | `getBalance({ tokenId? })`                 |
+| Positions            | `getPositions()`                    | `getPositions()` (Data API)                |
+| Orders on the venue  | `getOrders()`, `getOrder()`         | `getOpenOrders()`, `getOrder()`            |
+| Executions           | `getFills()`                        | `getFills()`                               |
+| Place                | `submitOrder()`, `submitOrders()`   | `submitOrder()`, `submitOrders()`          |
+| Cancel               | `cancelOrder()`, `cancelOrders()`   | `cancelOrder()`, `cancelOrders()`          |
+| Cancel everything    | `cancelAllOrders()` (client sweep)  | `cancelAllOrders()` (`DELETE /cancel-all`) |
+| Cancel by market     | — (no vendor endpoint)              | `cancelMarketOrders()`                     |
+| Amend                | `amendOrder()`                      | — (CLOB has no amend; cancel + resubmit)   |
+| Identity before send | your `clientOrderId` (409 on reuse) | `prepareOrder()` → `orderHash`             |
+| Key outside JS       | `auth.signer`                       | `auth.signer` + `auth.hmac`                |
+| Real-time feed       | `KalshiSocket` (`./sockets`)        | four sockets (`./sockets`)                 |
 
 Beyond that the vendors differ enough that full parity isn't honest to
 force:

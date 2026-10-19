@@ -22,8 +22,11 @@ One `Polymarket` client covers both APIs, matching how a Gamma market's
   `getNegRisk()`/`getOrderbook()` (public), `deriveApiCredentials()`
   (one-time L1-signed onboarding), and L2 HMAC-authenticated
   `getBalance()` (USDC collateral, or one outcome token's shares),
-  `getOpenOrders()`/`getFills()` (cursor-paginated), `submitOrder()`/
-  `submitOrders()` (single/bulk, up to 15 per request, auto-chunked),
+  `getOpenOrders()`/`getFills()` (cursor-paginated), `getOrder()` (one
+  order by hash, in any state), `submitOrder()`/`submitOrders()`
+  (single/bulk, up to 15 per request, auto-chunked),
+  `prepareOrder()`/`submitPrepared()` (sign first, so the order's hash is
+  known before it is sent; never re-signed),
   `cancelOrder()`/`cancelOrders()`/`cancelMarketOrders()`/
   `cancelAllOrders()`.
 - **Data API** (`data-api.polymarket.com`) — `getPositions()` and

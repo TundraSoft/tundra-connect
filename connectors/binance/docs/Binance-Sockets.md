@@ -24,6 +24,7 @@ for await (const event of socket) console.log(event.type);
 | `includeRaw`          | `false`         | Attach the exact frame text to every event as `raw`.                                      |
 | `clock`               | `Date.now`      | Source of `receivedAt`, read on arrival before parsing.                                   |
 | `reconnect`           | 1s → 30s        | `{ initialDelayMs, maxDelayMs, maxAttempts, healthyAfterMs }`, or `false`.                |
+| `connectTimeoutMs`    | `15000`         | Abort a handshake that hasn't completed in this long (then retry with backoff).           |
 | `heartbeatIntervalMs` | `20000`         | How often `LIST_SUBSCRIPTIONS` is sent as a liveness probe.                               |
 | `idleTimeoutMs`       | `60000`         | Reconnect when no frame at all arrives for this long.                                     |
 | `dataTimeoutMs`       | off             | Reconnect when no market data arrives for this long while subscribed.                     |
