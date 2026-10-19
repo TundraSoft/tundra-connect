@@ -91,3 +91,22 @@ export {
   type TradesPage,
   TradesPageSchemaObject,
 } from './Trade.ts';
+
+// WebSocket feed payloads (`./sockets`).
+export {
+  type KalshiBookLevel,
+  type KalshiFeedFill,
+  KalshiFeedFillSchemaObject,
+  type KalshiFeedMarketPosition,
+  KalshiFeedMarketPositionSchemaObject,
+  type KalshiFeedTicker,
+  KalshiFeedTickerSchemaObject,
+  type KalshiFeedTrade,
+  KalshiFeedTradeSchemaObject,
+  type KalshiFeedUserOrder,
+  KalshiFeedUserOrderSchemaObject,
+  type KalshiOrderbookDelta,
+  KalshiOrderbookDeltaSchemaObject,
+  type KalshiOrderbookSnapshot,
+  KalshiOrderbookSnapshotSchemaObject,
+} from './Feed.ts';

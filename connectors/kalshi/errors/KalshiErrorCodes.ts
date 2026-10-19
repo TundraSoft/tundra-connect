@@ -29,6 +29,23 @@ export const KalshiErrorCodes = {
     'The Kalshi API did not answer within the ${timeoutSeconds}s timeout.',
   NETWORK_ERROR:
     'The request to Kalshi failed before a response (DNS, TLS or connection failure).',
+
+  SOCKET_UNSUPPORTED_RUNTIME:
+    'The ${feed} socket could not create a WebSocket: ${detail}. Pass a `webSocket` factory on runtimes whose WebSocket cannot send the signed handshake headers (browsers, Cloudflare Workers).',
+  SOCKET_RECONNECT_EXHAUSTED:
+    'The ${feed} socket gave up after ${attempts} reconnect attempts (last: ${reason}).',
+  SOCKET_BUFFER_OVERFLOW:
+    'The ${feed} socket buffered more than ${maxBufferedEvents} unread events and closed rather than drop any.',
+  SOCKET_IN_USE:
+    'The ${feed} socket already has an active iterator; only one consumer may read it.',
+  SOCKET_CLOSED: 'The ${feed} socket is closed.',
+  SOCKET_HANDLER_ERROR: 'The ${feed} socket failed while ${during}: ${detail}',
+  SOCKET_INVALID_MESSAGE:
+    'A ${feed} `${venueType}` message did not match the expected schema.',
+  SOCKET_VENUE_ERROR:
+    'Kalshi reported an error on the ${feed} socket: ${detail}',
+  SOCKET_MISSING_CREDENTIALS:
+    'The ${feed} socket needs `auth.accessKey` plus `auth.privateKeyPem` or `auth.signer` — every Kalshi WebSocket connection is signed, even for public channels.',
 } as const;
 
 /** Valid Kalshi error code. */

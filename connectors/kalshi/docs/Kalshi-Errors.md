@@ -78,6 +78,26 @@ try {
 }
 ```
 
+## Socket codes
+
+`KalshiSocket` reports these through `error` and `invalid` events rather
+than by throwing — only its constructor (`SOCKET_MISSING_CREDENTIALS`,
+`CONFIG_INVALID_PRIVATE_KEY`) and `connect()` after `close()`
+(`SOCKET_CLOSED`) throw. A `fatal: true` error event means the socket has
+closed for good.
+
+| Code                         | Meaning                                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `SOCKET_MISSING_CREDENTIALS` | `auth` lacks `accessKey`, or both `privateKeyPem` and `signer`.                                         |
+| `SOCKET_VENUE_ERROR`         | A Kalshi `error` frame; `venueCode` is Kalshi's numeric code (e.g. 8 unknown channel, 27 rate limit).   |
+| `SOCKET_INVALID_MESSAGE`     | A known message type failed schema validation (carried by an `invalid` event with the data).            |
+| `SOCKET_RECONNECT_EXHAUSTED` | `reconnect.maxAttempts` consecutive attempts failed, or `reconnect: false` and the connection ended.    |
+| `SOCKET_BUFFER_OVERFLOW`     | More than `maxBufferedEvents` events went unread; the socket closed rather than drop any.               |
+| `SOCKET_UNSUPPORTED_RUNTIME` | No usable global `WebSocket`; pass a `webSocket` factory that can send the signed headers.              |
+| `SOCKET_HANDLER_ERROR`       | An unexpected exception while signing, handling a frame or opening a session; fatal only while signing. |
+| `SOCKET_IN_USE`              | A second iterator was requested while one is active.                                                    |
+| `SOCKET_CLOSED`              | `connect()` was called on a closed socket.                                                              |
+
 ## Backing off after a 429
 
 A rate-limited request throws `RATE_LIMITED`. Two context values tell you what to
