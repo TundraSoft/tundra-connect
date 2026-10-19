@@ -4,7 +4,8 @@ Typed client for [Kalshi](https://kalshi.com)'s CFTC-regulated event-contract
 (prediction market) REST API, `/trade-api/v2`, for Deno, Bun, Node.js and
 Cloudflare Workers. Public market data needs no key. RSA-PSS-signed trading
 covers balance, positions, fills and orders, and placing, amending and
-cancelling orders.
+cancelling orders. A signed **WebSocket feed** streams order-book snapshots
+and deltas, trades, tickers, fills and order updates in real time.
 
 [![JSR](https://jsr.io/badges/@tundraconnect/kalshi)](https://jsr.io/@tundraconnect/kalshi)
 [![JSR Score](https://jsr.io/badges/@tundraconnect/kalshi/score)](https://jsr.io/@tundraconnect/kalshi)
@@ -25,6 +26,14 @@ One `Kalshi` client covers both halves of the API:
 
 Construct with `auth.accessKey` + `auth.privateKeyPem` to trade; omit
 `auth` entirely for market-data-only, credential-free usage.
+
+The **WebSocket feed** (`KalshiSocket`, from
+`@tundraconnect/kalshi/sockets` — importable without the REST client) takes
+the same `auth` (or an injected `signer`) and yields every order-book
+snapshot and delta, trade, ticker, fill, order update and position change
+as Guardian-validated events, with automatic reconnects and explicit
+reconnect/sequence-gap events — see
+[Sockets](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-Sockets).
 
 ### Compared to this repo's Polymarket connect
 
@@ -83,10 +92,6 @@ returned, or included in a thrown error. Review `KalshiSigner.ts`/
 
 ### Out of scope (for now)
 
-- **The authenticated WebSocket feed** (`/trade-api/ws/v2` — fills, order
-  updates, position changes) is a different integration shape than this
-  repo's REST-only connects; whether/how to add one is an open decision,
-  not yet built.
 - **Order Groups**, **Multivariate Event Collections**, **Structured
   Targets**, and the **FIX** protocol are advanced/institutional surfaces
   outside this connect's REST-trading scope.
@@ -123,6 +128,7 @@ reassign the protected `_fetch`.
 | [API](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-API)         | Client configuration and endpoint methods  |
 | [Errors](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-Errors)   | Error codes and diagnostic metadata        |
 | [Schemas](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-Schemas) | Public Guardian schemas and inferred types |
+| [Sockets](https://github.com/TundraSoft/tundra-connect/wiki/Kalshi-Sockets) | Real-time WebSocket feed                   |
 
 ## Upstream
 

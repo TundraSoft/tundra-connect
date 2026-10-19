@@ -1,0 +1,33 @@
+{
+  "name": "@tundraconnect/binance",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Typed Binance.com spot market-data streams for Deno, Bun, Node.js, browsers and Cloudflare Workers: raw trades, best bid/ask and full-depth order-book diffs over WebSocket, with reconnects and gap detection.",
+  "keywords": [
+    "binance",
+    "crypto",
+    "market-data",
+    "websocket",
+    "trades",
+    "order-book",
+    "spot",
+    "typescript",
+    "deno",
+    "bun",
+    "nodejs",
+    "cloudflare-workers",
+    "tundraconnect"
+  ],
+  "exports": {
+    ".": "./mod.ts",
+    "./sockets": "./socket/mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@tundralibs/utils": "npm:@jsr/tundralibs__utils@^1.3.1"
+  }
+}

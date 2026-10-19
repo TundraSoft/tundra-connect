@@ -76,3 +76,42 @@ export {
   type RelayPayload,
   RelayPayloadSchemaObject,
 } from './Relayer.ts';
+
+// WebSocket feeds (`./sockets`).
+export {
+  type PolymarketBestBidAsk,
+  PolymarketBestBidAskSchemaObject,
+  type PolymarketBook,
+  type PolymarketBookLevel,
+  PolymarketBookSchemaObject,
+  type PolymarketLastTradePrice,
+  PolymarketLastTradePriceSchemaObject,
+  type PolymarketMarketResolved,
+  PolymarketMarketResolvedSchemaObject,
+  type PolymarketNewMarket,
+  PolymarketNewMarketSchemaObject,
+  type PolymarketPriceChange,
+  type PolymarketPriceChangeEntry,
+  PolymarketPriceChangeSchemaObject,
+  type PolymarketTickSizeChange,
+  PolymarketTickSizeChangeSchemaObject,
+} from './MarketChannel.ts';
+export {
+  type PolymarketUserOrder,
+  PolymarketUserOrderSchemaObject,
+  type PolymarketUserTrade,
+  PolymarketUserTradeSchemaObject,
+} from './UserChannel.ts';
+export {
+  type PolymarketLiveDataPrice,
+  PolymarketLiveDataPriceSchemaObject,
+  type PolymarketPriceBestBidAsk,
+  PolymarketPriceBestBidAskSchemaObject,
+  type PolymarketPriceEnvelope,
+  PolymarketPriceEnvelopeSchemaObject,
+  type PolymarketPricePoint,
+  type PolymarketPriceSnapshot,
+  PolymarketPriceSnapshotSchemaObject,
+  type PolymarketPriceUpdate,
+  PolymarketPriceUpdateSchemaObject,
+} from './LiveData.ts';

@@ -1,6 +1,7 @@
 {
   "algolia": "Algolia",
   "azure-blob": "AzureBlob",
+  "binance": "Binance",
   "cloudflare-dns": "CloudflareDNS",
   "cloudflare-email": "CloudflareEmail",
   "cloudflare-saas": "CloudflareSaaS",

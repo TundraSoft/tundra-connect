@@ -44,6 +44,8 @@ jobs:
       - run: deno task test
         env:
           LIVE_TEST_ALLOW_VISIBLE_EFFECTS: ${{ github.event.inputs.allow_visible_effects == 'true' && 'true' || '' }}
+          # Public WebSocket feeds need no secret; always exercise them here.
+          LIVE_TEST_SOCKETS: 'true'
           CONNECTOR_COINGECKO_API_KEY: ${{ secrets.CONNECTOR_COINGECKO_API_KEY }}
           CONNECTOR_OPENEXCHANGE_APP_ID: ${{ secrets.CONNECTOR_OPENEXCHANGE_APP_ID }}
           CONNECTOR_OPENWEATHERMAP_API_KEY: ${{ secrets.CONNECTOR_OPENWEATHERMAP_API_KEY }}
@@ -81,6 +83,9 @@ jobs:
           CONNECTOR_TWILIO_FROM_NUMBER: ${{ secrets.CONNECTOR_TWILIO_FROM_NUMBER }}
           CONNECTOR_TWILIO_TO_NUMBER: ${{ secrets.CONNECTOR_TWILIO_TO_NUMBER }}
           CONNECTOR_POLYMARKET_PRIVATE_KEY: ${{ secrets.CONNECTOR_POLYMARKET_PRIVATE_KEY }}
+          CONNECTOR_POLYMARKET_API_KEY: ${{ secrets.CONNECTOR_POLYMARKET_API_KEY }}
+          CONNECTOR_POLYMARKET_API_SECRET: ${{ secrets.CONNECTOR_POLYMARKET_API_SECRET }}
+          CONNECTOR_POLYMARKET_API_PASSPHRASE: ${{ secrets.CONNECTOR_POLYMARKET_API_PASSPHRASE }}
           CONNECTOR_KALSHI_ACCESS_KEY: ${{ secrets.CONNECTOR_KALSHI_ACCESS_KEY }}
           CONNECTOR_KALSHI_PRIVATE_KEY_PEM: ${{ secrets.CONNECTOR_KALSHI_PRIVATE_KEY_PEM }}
           CONNECTOR_KALSHI_BASE_URL: ${{ secrets.CONNECTOR_KALSHI_BASE_URL }}

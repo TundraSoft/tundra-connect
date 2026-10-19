@@ -12,6 +12,7 @@ body:
       options:
         - Algolia
         - AzureBlob
+        - Binance
         - CloudflareDNS
         - CloudflareEmail
         - CloudflareSaaS

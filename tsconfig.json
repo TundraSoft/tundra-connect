@@ -26,6 +26,9 @@
       "@test": [
         "./node_modules/@tundralibs/compat/test.ts"
       ],
+      "@wss": [
+        "./node_modules/@tundralibs/compat/websocket/mod.ts"
+      ],
       "@restler": [
         "./node_modules/@tundralibs/restler/mod.ts"
       ],

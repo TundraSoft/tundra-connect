@@ -70,6 +70,18 @@
         }
       ]
     },
+    "connectors/binance": {
+      "release-type": "node",
+      "component": "binance",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/cloudflare-dns": {
       "release-type": "node",
       "component": "cloudflare-dns",
