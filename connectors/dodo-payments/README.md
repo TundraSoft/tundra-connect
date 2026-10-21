@@ -5,8 +5,8 @@ Node.js and Cloudflare Workers. Dodo Payments is a merchant-of-record platform
 for digital products, and this client covers its checkout path end to end:
 initialize a payment, verify it actually completed, read a customer's history,
 create, change, pause or cancel subscriptions, refund a payment in full or in
-part, manage the product catalogue and discount codes, open the customer
-portal, and verify Standard Webhooks signatures.
+part, manage the product catalogue, add-ons and discount codes, open the
+customer portal, and verify Standard Webhooks signatures.
 
 [![JSR](https://jsr.io/badges/@tundraconnect/dodo-payments)](https://jsr.io/@tundraconnect/dodo-payments)
 [![JSR Score](https://jsr.io/badges/@tundraconnect/dodo-payments/score)](https://jsr.io/@tundraconnect/dodo-payments)
@@ -25,6 +25,7 @@ catalogue actually need, not the vendor's full ~147-endpoint API.
 | Refunds       | `createRefund`, `getRefund`, `listRefunds`, `listAllRefunds`                                                                                                                                                                         |
 | Subscriptions | `createSubscription`, `getSubscription`, `listSubscriptions`, `listAllSubscriptions`, `changePlan`, `cancelScheduledPlanChange`, `pauseSubscription`, `resumeSubscription`, `cancelSubscription`, `undoScheduledCancellation`        |
 | Products      | `createProduct`, `getProduct`, `listProducts`, `listAllProducts`, `findProductsByMetadata`, `updateProduct`, `archiveProduct`, `unarchiveProduct`                                                                                    |
+| Add-ons       | `createAddon`, `listAddons`, `updateAddon`                                                                                                                                                                                           |
 | Discounts     | `createDiscount`, `getDiscount`, `getDiscountByCode`, `listDiscounts`, `listAllDiscounts`, `updateDiscount`, `deleteDiscount`, `addDiscountCustomers`, `listDiscountCustomers`, `listAllDiscountCustomers`, `removeDiscountCustomer` |
 | Customers     | `getCustomer`, `createCustomerPortalSession`                                                                                                                                                                                         |
 | Webhooks      | `verifyWebhook`                                                                                                                                                                                                                      |
@@ -323,7 +324,44 @@ To change a price without moving existing subscribers, create a new
 product and `archiveProduct` the old one; `unarchiveProduct` puts a product
 back on sale.
 
-### 7. Create discount codes
+### 7. Sell add-ons
+
+An add-on is a per-unit extra on a subscription, such as a seat or a block
+of storage, billed on the subscription's own cycle. Make it once, list it on
+the subscription product, then pass it with a quantity when the customer
+subscribes.
+
+```ts continued
+const seat = await client.createAddon({
+  name: 'Extra seat',
+  price: 500, // $5.00 a seat each cycle
+  currency: 'USD',
+  tax_category: 'saas',
+});
+await client.updateProduct('prd_monthly', { addons: [seat.id] });
+
+const sub = await client.createSubscription({
+  product_id: 'prd_monthly',
+  quantity: 1,
+  customer: { email: 'buyer@example.com', name: 'Ada' },
+  billing: { country: 'US' },
+  addons: [{ addon_id: seat.id, quantity: 3 }],
+  payment_link: true,
+});
+
+// Later: five seats. The list REPLACES the add-ons; [] removes them all.
+await client.changePlan(sub.subscription_id, {
+  product_id: 'prd_monthly',
+  quantity: 1,
+  proration_billing_mode: 'prorated_immediately',
+  addons: [{ addon_id: seat.id, quantity: 5 }],
+});
+```
+
+Dodo has no route to fetch or delete one add-on: find yours with
+`listAddons`, and change one with `updateAddon`.
+
+### 8. Create discount codes
 
 A percentage `amount` is in basis points: `2000` is 20%. A flat code sets
 its deduction per currency in `currency_options`.
@@ -356,7 +394,7 @@ rather than silently dropped. See
 for flat codes, updates, the allow list, and applying a code to an existing
 subscription.
 
-### 8. Refund a payment
+### 9. Refund a payment
 
 Without `items` the whole payment is refunded. To refund part of it, name
 the payment's lines by product (or add-on) id, each with the amount to give

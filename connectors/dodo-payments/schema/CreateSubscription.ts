@@ -1,5 +1,9 @@
 import { type BaseGuardian, Guardian } from '@guardian';
 import {
+  type AddonCartItemSchema,
+  AddonCartItemSchemaObject,
+} from './Addon.ts';
+import {
   BillingAddressRequestSchemaObject,
   CustomerDetailsSchemaObject,
   CustomerRequestSchemaObject,
@@ -11,6 +15,11 @@ export type CreateSubscriptionRequestSchema = {
   quantity: number;
   customer: import('./Common.ts').CustomerRequestSchema;
   billing: import('./Common.ts').BillingAddressSchema;
+  /**
+   * Add-ons to attach, each with its quantity. List each one on the
+   * product's `addons` first; it is billed on the subscription's cycle.
+   */
+  addons?: AddonCartItemSchema[] | null;
   /** `true` asks Dodo for a hosted checkout link in `payment_link`. */
   payment_link?: boolean | null;
   return_url?: string | null;
@@ -60,6 +69,7 @@ export const CreateSubscriptionRequestSchemaObject: BaseGuardian<
   ),
   customer: CustomerRequestSchemaObject,
   billing: BillingAddressRequestSchemaObject,
+  addons: Guardian.array(AddonCartItemSchemaObject).nullable().optional(),
   payment_link: Guardian.boolean().strict().nullable().optional(),
   return_url: Guardian.string().nullable().optional(),
   metadata: Guardian.record(Guardian.string()).optional(),
@@ -102,6 +112,8 @@ export type CreateSubscriptionResponseSchema = {
   expires_on?: string | null;
   discount_ids?: string[] | null;
   trial_amount?: number | null;
+  /** The add-ons attached, each with its quantity. */
+  addons?: { addon_id: string; quantity: number }[];
 };
 
 /**
@@ -141,6 +153,12 @@ export const CreateSubscriptionResponseSchemaObject: BaseGuardian<
   expires_on: Guardian.string().nullable().optional(),
   discount_ids: Guardian.array(Guardian.string()).nullable().optional(),
   trial_amount: Guardian.number().nullable().optional(),
+  addons: Guardian.array(
+    Guardian.object({
+      addon_id: Guardian.string(),
+      quantity: Guardian.number(),
+    }).passthrough(),
+  ).optional(),
 }).passthrough().describe({
   title: 'Create subscription response',
   description: 'Result of POST /subscriptions.',

@@ -1443,6 +1443,215 @@ const DISCOUNT = {
   subscription_cycles: 1,
 };
 
+describe('DodoPayments — add-ons', () => {
+  const ADDON = {
+    id: 'adn_1',
+    business_id: 'biz_1',
+    name: 'Extra seat',
+    tax_category: 'saas',
+    price: 500,
+    currency: 'USD',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    description: null,
+    image: null,
+  };
+
+  it('POSTs a new add-on to /addons and returns the record', async () => {
+    const c = client(ADDON);
+    const addon = await c.createAddon({
+      name: 'Extra seat',
+      price: 500,
+      currency: 'USD',
+      tax_category: 'saas',
+      description: 'One more person on the plan.',
+    });
+    asserts.assertEquals(c.request!.method, 'POST');
+    asserts.assertEquals(new URL(c.request!.url).pathname, '/addons');
+    asserts.assertEquals(JSON.parse(c.request!.body!), {
+      name: 'Extra seat',
+      price: 500,
+      currency: 'USD',
+      tax_category: 'saas',
+      description: 'One more person on the plan.',
+    });
+    asserts.assertEquals(addon.id, 'adn_1');
+    asserts.assertEquals(addon.price, 500);
+  });
+
+  it('rejects an invalid add-on before sending', async () => {
+    const cases = [
+      { name: 'Seat', price: 4.5, currency: 'USD', tax_category: 'saas' },
+      { name: 'Seat', price: 500, currency: 'usd', tax_category: 'saas' },
+      { name: 'Seat', price: 500, currency: 'USD', tax_category: 'food' },
+      {
+        name: 'Seat',
+        price: 500,
+        currency: 'USD',
+        tax_category: 'saas',
+        seats: 1,
+      },
+      { price: 500, currency: 'USD', tax_category: 'saas' },
+    ];
+    for (const addon of cases) {
+      const c = client(ADDON);
+      const err = await asserts.assertRejects(
+        () => c.createAddon(addon as never),
+        DodoPaymentsError,
+      );
+      asserts.assertEquals(
+        err.code,
+        'REQUEST_VALIDATION_ERROR',
+        JSON.stringify(addon),
+      );
+      asserts.assertEquals(c.request, undefined);
+    }
+  });
+
+  it('lists add-ons with page_number and page_size, returning the items', async () => {
+    const c = client({ items: [ADDON, { ...ADDON, id: 'adn_2' }] });
+    const addons = await c.listAddons({ pageNumber: 2, pageSize: 100 });
+    const url = new URL(c.request!.url);
+    asserts.assertEquals(c.request!.method, 'GET');
+    asserts.assertEquals(url.pathname, '/addons');
+    asserts.assertEquals(url.searchParams.get('page_number'), '2');
+    asserts.assertEquals(url.searchParams.get('page_size'), '100');
+    asserts.assertEquals(addons.map((a) => a.id), ['adn_1', 'adn_2']);
+  });
+
+  it('lists with no query string by default, and reads an empty page', async () => {
+    const c = client({});
+    asserts.assertEquals(await c.listAddons(), []);
+    asserts.assertEquals(new URL(c.request!.url).search, '');
+  });
+
+  it('reports a malformed add-on in a page as RESPONSE_ERROR', async () => {
+    const c = client({ items: [{ id: 'adn_1' }] });
+    const err = await asserts.assertRejects(
+      () => c.listAddons(),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'RESPONSE_ERROR');
+  });
+
+  it('PATCHes an update to /addons/{id}, url-encoded, keeping image_id: null', async () => {
+    const c = client({ ...ADDON, name: 'Seat' });
+    const addon = await c.updateAddon('adn/1', {
+      name: 'Seat',
+      image_id: null,
+    });
+    asserts.assertEquals(c.request!.method, 'PATCH');
+    asserts.assert(c.request!.url.endsWith('/addons/adn%2F1'));
+    asserts.assertEquals(JSON.parse(c.request!.body!), {
+      name: 'Seat',
+      image_id: null,
+    });
+    asserts.assertEquals(addon.name, 'Seat');
+  });
+
+  it('rejects a blank id or an invalid update without sending', async () => {
+    const calls = [
+      (c: MockDodo) => c.updateAddon(' ', { name: 'x' }),
+      (c: MockDodo) => c.updateAddon('adn_1', {}),
+      (c: MockDodo) => c.updateAddon('adn_1', { name: 'x'.repeat(101) }),
+      (c: MockDodo) => c.updateAddon('adn_1', { image_id: 'not-a-uuid' }),
+      (c: MockDodo) => c.updateAddon('adn_1', { price: '500' } as never),
+    ];
+    for (const call of calls) {
+      const c = client(ADDON);
+      const err = await asserts.assertRejects(() => call(c), DodoPaymentsError);
+      asserts.assertEquals(err.code, 'REQUEST_VALIDATION_ERROR');
+      asserts.assertEquals(c.request, undefined);
+    }
+  });
+
+  it('maps an unknown add-on (404) to NOT_FOUND', async () => {
+    const c = client({ code: 'NotFound', message: 'no such addon' }, 404);
+    const err = await asserts.assertRejects(
+      () => c.updateAddon('adn_x', { name: 'x' }),
+      DodoPaymentsError,
+    );
+    asserts.assertEquals(err.code, 'NOT_FOUND');
+  });
+
+  it('sends add-ons with a new subscription and reads them back', async () => {
+    const c = client({
+      subscription_id: 'sub_1',
+      payment_id: 'pay_1',
+      customer: CUSTOMER,
+      recurring_pre_tax_amount: 2500,
+      payment_method_required: false,
+      metadata: {},
+      addons: [{ addon_id: 'adn_1', quantity: 3 }],
+    });
+    const sub = await c.createSubscription({
+      ...validSubscription,
+      addons: [
+        { addon_id: 'adn_1', quantity: 3 },
+        { addon_id: 'adn_2', quantity: 0 },
+      ],
+    });
+    asserts.assertEquals(JSON.parse(c.request!.body!).addons, [
+      { addon_id: 'adn_1', quantity: 3 },
+      { addon_id: 'adn_2', quantity: 0 },
+    ]);
+    asserts.assertEquals(sub.addons, [{ addon_id: 'adn_1', quantity: 3 }]);
+  });
+
+  it('rejects a bad add-on line on a new subscription before sending', async () => {
+    const lines = [
+      [{ addon_id: '', quantity: 1 }],
+      [{ addon_id: 'adn_1', quantity: -1 }],
+      [{ addon_id: 'adn_1', quantity: 1.5 }],
+      [{ addon_id: 'adn_1', quantity: '2' }],
+      [{ addon_id: 'adn_1', quantity: 1, price: 5 }],
+    ];
+    for (const addons of lines) {
+      const c = client({});
+      const err = await asserts.assertRejects(
+        () => c.createSubscription({ ...validSubscription, addons } as never),
+        DodoPaymentsError,
+      );
+      asserts.assertEquals(
+        err.code,
+        'REQUEST_VALIDATION_ERROR',
+        JSON.stringify(addons),
+      );
+      asserts.assertEquals(c.request, undefined);
+    }
+  });
+
+  it('types the add-ons on a fetched subscription', async () => {
+    const c = client({
+      ...SUBSCRIPTION,
+      addons: [{ addon_id: 'adn_1', quantity: 2 }],
+    });
+    const sub = await c.getSubscription('sub_1');
+    asserts.assertEquals(sub.addons?.[0]?.quantity, 2);
+  });
+
+  it('replaces add-ons on a plan change, [] clearing them', async () => {
+    const c = new MockDodo({ auth: AUTH });
+    c.setEmptyResponse(200);
+    await c.changePlan('sub_1', {
+      product_id: 'pdt_pro',
+      quantity: 1,
+      proration_billing_mode: 'prorated_immediately',
+      addons: [{ addon_id: 'adn_1', quantity: 5 }],
+    });
+    asserts.assertEquals(JSON.parse(c.request!.body!).addons, [
+      { addon_id: 'adn_1', quantity: 5 },
+    ]);
+    await c.changePlan('sub_1', {
+      product_id: 'pdt_pro',
+      quantity: 1,
+      proration_billing_mode: 'prorated_immediately',
+      addons: [],
+    });
+    asserts.assertEquals(JSON.parse(c.request!.body!).addons, []);
+  });
+});
+
 describe('DodoPayments — discounts', () => {
   it('POSTs a new discount to /discounts and returns the record', async () => {
     const c = client(DISCOUNT);

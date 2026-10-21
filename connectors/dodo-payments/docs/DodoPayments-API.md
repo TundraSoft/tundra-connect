@@ -346,6 +346,11 @@ detailed[0]?.error_message; // 'The card was declined.'
 `POST /subscriptions`. Required: `product_id`, `quantity`, `customer`,
 `billing`.
 
+`addons` attaches [add-ons](#add-ons), each `{ addon_id, quantity }` with a
+whole-number quantity of 0 or more. Each must be listed on the product's
+`addons` first; it is billed on the subscription's cycle. The created
+subscription, and every `SubscriptionSchema`, carries `addons` back.
+
 A created subscription is **not yet active**. When
 `payment_method_required` is `true`, the customer must still complete
 checkout at `payment_link`; the subscription sits in `pending` until then.
@@ -423,7 +428,7 @@ await client.changePlan('sub_1', {
 | `effective_at`             | `'immediately'` (default) or `'next_billing_date'`.                                                                      |
 | `on_payment_failure`       | `'prevent_change'` keeps the old plan until payment succeeds; `'apply_change'` (Dodo's default) switches anyway.         |
 | `collect_via_payment_link` | Charge through a hosted checkout instead of the saved card. Needs an immediate change and `prevent_change`.              |
-| `addons`                   | Addons for the new plan. An empty list removes existing ones.                                                            |
+| `addons`                   | REPLACES the subscription's add-ons: list every one to keep, with its quantity; `[]` removes them all.                   |
 | `discount_codes`           | Replaces the subscription's discounts; `[]` removes them. See [Discounts](#applying-a-code-to-an-existing-subscription). |
 
 | `proration_billing_mode` | Billing                                                                                   |
@@ -440,6 +445,11 @@ and `payment.succeeded` or `payment.failed` webhooks.
 
 A second change while one is still pending fails with `CONFLICT` (vendor
 code `PendingPlanChangeExists`).
+
+To change only add-on quantities, change plan to the same `product_id` and
+`quantity` with the new `addons` list. Dodo does not say whether leaving
+`addons` out keeps the current ones, so send the full list on every change
+of a subscription that has add-ons.
 
 ### `cancelScheduledPlanChange(subscriptionId)`
 
@@ -526,6 +536,43 @@ product and archive the old one instead of updating `price`.
 `DELETE /products/{id}` takes a product off sale; Dodo calls this archiving.
 `POST /products/{id}/unarchive` puts it back, and fails with `CONFLICT` for
 a product that is not archived.
+
+## Add-ons
+
+An add-on is a per-unit extra sold with a subscription — a seat, a block of
+storage — priced in minor units and billed on the subscription's cycle. List
+its `id` on the subscription product's `addons` (`createProduct` /
+`updateProduct`), pass it to `createSubscription`, and change quantities
+with `changePlan`. See [Flows](DodoPayments-Flows.md#selling-add-ons).
+
+### `createAddon(addon)`
+
+`POST /addons` &rarr; `AddonSchema`. Required: `name`, `price` (an integer in
+minor units), `currency` (uppercase ISO 4217), `tax_category`; optional
+`description` (at most 1000 characters, nullable).
+
+```ts
+const seat = await client.createAddon({
+  name: 'Extra seat',
+  price: 500,
+  currency: 'USD',
+  tax_category: 'saas',
+});
+```
+
+### `listAddons(options?)`
+
+`GET /addons?page_number=&page_size=` &rarr; the page's `AddonSchema[]`.
+`pageSize` is Dodo's: 10 by default, at most 100. Dodo documents no route
+to fetch or delete one add-on, so this is how a sync finds what it made.
+
+### `updateAddon(addonId, update)`
+
+`PATCH /addons/{id}` &rarr; the updated `AddonSchema`. Every field is
+optional and nullable: `name` (at most 100 characters), `price`,
+`currency`, `tax_category`, `description` (at most 1000), `image_id` (a
+UUID; `null` removes the image). An update that changes nothing is rejected
+locally; `NOT_FOUND` for an unknown add-on.
 
 ## Discounts
 

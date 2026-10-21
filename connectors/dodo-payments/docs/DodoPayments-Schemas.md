@@ -60,6 +60,11 @@ import {
 | `DiscountTypeSchemaObject`                  | Discount type enum.                          |
 | `DiscountCustomerEligibilitySchemaObject`   | Customer eligibility enum.                   |
 | `SubscriptionDiscountSchemaObject`          | A discount applied to a subscription.        |
+| `CreateAddonRequestSchemaObject`            | `POST /addons` body.                         |
+| `UpdateAddonRequestSchemaObject`            | `PATCH /addons/{id}` body.                   |
+| `AddonSchemaObject`                         | An add-on record.                            |
+| `AddonListSchemaObject`                     | A `GET /addons` page.                        |
+| `AddonCartItemSchemaObject`                 | One `{ addon_id, quantity }` add-on line.    |
 | `TaxCategorySchemaObject`                   | Product tax category enum.                   |
 | `IntentStatusSchemaObject`                  | Payment status enum.                         |
 | `SubscriptionStatusSchemaObject`            | Subscription status enum.                    |
@@ -202,8 +207,10 @@ neither form and is rejected: pass the id alone for an existing customer.
 
 `PaymentSchema` and `SubscriptionSchema` both use `.passthrough()`. Dodo's
 payment object carries settlement, dispute, refund and discount families,
-and its subscription object carries addons, meters and credit
-entitlements — all outside this connect's scope and all actively growing.
+and its subscription object carries meters and credit entitlements — all
+outside this connect's scope and all actively growing. A subscription's
+`addons` (`{ addon_id, quantity }[]`) is typed; an add-on record likewise
+passes unknown fields through.
 
 A closed shape would turn any additive vendor change into a
 `RESPONSE_ERROR` on a status check for a payment that already succeeded —
