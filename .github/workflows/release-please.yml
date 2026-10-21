@@ -30,6 +30,7 @@ on:
           - connectors/binance
           - connectors/cloudflare-dns
           - connectors/cloudflare-email
+          - connectors/cloudflare-kv
           - connectors/cloudflare-saas
           - connectors/cloudflare-turnstile
           - connectors/coingecko

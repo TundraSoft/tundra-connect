@@ -4,6 +4,7 @@
   "connectors/binance": "0.1.1",
   "connectors/cloudflare-dns": "0.1.0",
   "connectors/cloudflare-email": "0.3.0",
+  "connectors/cloudflare-kv": "0.0.0",
   "connectors/cloudflare-saas": "0.1.0",
   "connectors/cloudflare-turnstile": "0.1.1",
   "connectors/coingecko": "0.2.0",

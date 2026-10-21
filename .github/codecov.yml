@@ -33,6 +33,10 @@ component_management:
         name: cloudflare-email
         paths:
           - connectors/cloudflare-email/**
+      - component_id: cloudflare-kv
+        name: cloudflare-kv
+        paths:
+          - connectors/cloudflare-kv/**
       - component_id: cloudflare-saas
         name: cloudflare-saas
         paths:

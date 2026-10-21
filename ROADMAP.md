@@ -15,13 +15,14 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-32 connects are implemented today:
+33 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
 - **[Binance](connectors/binance/README.md)** — Typed Binance.com spot market-data streams for Deno, Bun, Node.js, browsers and Cloudflare Workers: raw trades, best bid/ask and full-depth order-book diffs over WebSocket, with reconnects and gap detection.
 - **[CloudflareDNS](connectors/cloudflare-dns/README.md)** — Typed Cloudflare DNS client: list, create, update, replace, delete and batch-edit DNS records in a zone, export the zone as BIND, and look up zones by name.
 - **[CloudflareEmail](connectors/cloudflare-email/README.md)** — Typed Cloudflare Email Sending client: send transactional email with attachments, validated locally before the request is made.
+- **[CloudflareKV](connectors/cloudflare-kv/README.md)** — Typed Cloudflare Workers KV REST client for Deno, Bun, Node.js and Cloudflare Workers: namespaces, keys, values with metadata and expiry, and auto-split bulk writes, deletes and reads, with limit checks and retries.
 - **[CloudflareSaaS](connectors/cloudflare-saas/README.md)** — Typed Cloudflare for SaaS client: create, list, inspect, update and delete custom hostnames with their TLS and ownership validation state, manage the fallback origin, and read the hostname quota.
 - **[CloudflareTurnstile](connectors/cloudflare-turnstile/README.md)** — Typed Cloudflare Turnstile client: verify a widget token server-side with siteverify, with hostname and action checks, a hard per-call deadline, and failed challenges as answers instead of errors.
 - **[CoinGecko](connectors/coingecko/README.md)** — Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.
