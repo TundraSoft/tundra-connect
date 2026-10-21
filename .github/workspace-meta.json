@@ -4,6 +4,7 @@
   "binance": "Binance",
   "cloudflare-dns": "CloudflareDNS",
   "cloudflare-email": "CloudflareEmail",
+  "cloudflare-kv": "CloudflareKV",
   "cloudflare-saas": "CloudflareSaaS",
   "cloudflare-turnstile": "CloudflareTurnstile",
   "coingecko": "CoinGecko",

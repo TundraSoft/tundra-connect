@@ -15,6 +15,7 @@ body:
         - Binance
         - CloudflareDNS
         - CloudflareEmail
+        - CloudflareKV
         - CloudflareSaaS
         - CloudflareTurnstile
         - CoinGecko

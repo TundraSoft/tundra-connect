@@ -27,6 +27,9 @@ documentation:
 'connector: cloudflare-email':
   - changed-files:
       - any-glob-to-any-file: connectors/cloudflare-email/**
+'connector: cloudflare-kv':
+  - changed-files:
+      - any-glob-to-any-file: connectors/cloudflare-kv/**
 'connector: cloudflare-saas':
   - changed-files:
       - any-glob-to-any-file: connectors/cloudflare-saas/**

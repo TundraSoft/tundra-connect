@@ -106,6 +106,18 @@
         }
       ]
     },
+    "connectors/cloudflare-kv": {
+      "release-type": "node",
+      "component": "cloudflare-kv",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/cloudflare-saas": {
       "release-type": "node",
       "component": "cloudflare-saas",

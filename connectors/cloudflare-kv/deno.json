@@ -1,0 +1,13 @@
+{
+  "name": "@tundraconnect/cloudflare-kv",
+  "version": "0.0.0",
+  "description": "Typed Cloudflare Workers KV REST client for Deno, Bun, Node.js and Cloudflare Workers: namespaces, keys, values with metadata and expiry, and auto-split bulk writes, deletes and reads, with limit checks and retries.",
+  "exports": {
+    ".": "./mod.ts",
+    "./schemas": "./schema/mod.ts",
+    "./errors": "./errors/mod.ts"
+  },
+  "imports": {
+    "@utils": "jsr:@tundralibs/utils@^1.5.0"
+  }
+}
