@@ -139,12 +139,17 @@ export type SubscriptionSchema = {
   discounts?: SubscriptionDiscountSchema[] | null;
   tax_id?: string | null;
   trial_amount?: number | null;
+  /**
+   * The add-ons attached, each with its quantity. Dodo answers it on every
+   * subscription; typed optional so an older body still reads.
+   */
+  addons?: { addon_id: string; quantity: number }[];
 };
 
 /**
  * Schema for a subscription record.
  *
- * Unknown fields pass through — Dodo hangs addons, meters, credit
+ * Unknown fields pass through — Dodo hangs meters, credit
  * entitlements and scheduled plan changes off this object, all outside
  * this connect's scope and all liable to grow.
  *
@@ -213,6 +218,12 @@ export const SubscriptionSchemaObject: BaseGuardian<SubscriptionSchema> =
       .optional(),
     tax_id: Guardian.string().nullable().optional(),
     trial_amount: Guardian.number().nullable().optional(),
+    addons: Guardian.array(
+      Guardian.object({
+        addon_id: Guardian.string(),
+        quantity: Guardian.number(),
+      }).passthrough(),
+    ).optional(),
   }).passthrough().describe({
     title: 'Subscription',
     description: 'A subscription record.',

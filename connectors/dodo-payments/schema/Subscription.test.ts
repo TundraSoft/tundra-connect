@@ -131,7 +131,7 @@ describe('DodoPayments.schema.Subscription', () => {
     );
   });
 
-  it('keeps additive vendor fields such as addons and meters', () => {
+  it('keeps additive vendor fields such as meters', () => {
     const [error, sub] = SubscriptionSchemaObject.safeParse({
       ...SUB,
       addons: [],
@@ -139,7 +139,30 @@ describe('DodoPayments.schema.Subscription', () => {
       scheduled_change: null,
     });
     asserts.assertEquals(error, null);
-    asserts.assertEquals((sub as Record<string, unknown>).addons, []);
+    asserts.assertEquals(sub?.addons, []);
+    asserts.assertEquals((sub as Record<string, unknown>).meters, []);
+  });
+
+  it('types the add-ons, unknown fields on a line passing through', () => {
+    const [error, sub] = SubscriptionSchemaObject.safeParse({
+      ...SUB,
+      addons: [{ addon_id: 'adn_1', quantity: 2, label: 'seat' }],
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(sub?.addons?.[0]?.addon_id, 'adn_1');
+    asserts.assertEquals(sub?.addons?.[0]?.quantity, 2);
+    asserts.assertEquals(
+      (sub?.addons?.[0] as Record<string, unknown>).label,
+      'seat',
+    );
+    // Still optional, so an older body without it reads.
+    asserts.assertEquals(SubscriptionSchemaObject.safeParse(SUB)[0], null);
+    asserts.assertExists(
+      SubscriptionSchemaObject.safeParse({
+        ...SUB,
+        addons: [{ quantity: 1 }],
+      })[0],
+    );
   });
 
   it('rejects an undocumented status', () => {

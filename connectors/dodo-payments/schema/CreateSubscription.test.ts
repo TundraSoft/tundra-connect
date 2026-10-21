@@ -107,6 +107,48 @@ describe('DodoPayments.schema.CreateSubscriptionRequest', () => {
       })[0],
     );
   });
+
+  it('accepts add-ons with quantities, zero included, or null', () => {
+    const [error, body] = CreateSubscriptionRequestSchemaObject.safeParse({
+      ...base,
+      addons: [
+        { addon_id: 'adn_seat', quantity: 3 },
+        { addon_id: 'adn_storage', quantity: 0 },
+      ],
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(body?.addons?.length, 2);
+    asserts.assertEquals(
+      CreateSubscriptionRequestSchemaObject.safeParse({
+        ...base,
+        addons: null,
+      })[
+        0
+      ],
+      null,
+    );
+  });
+
+  it('rejects a blank add-on id, a bad quantity or an unknown field', () => {
+    for (
+      const line of [
+        { addon_id: '', quantity: 1 },
+        { addon_id: 'adn_1', quantity: -1 },
+        { addon_id: 'adn_1', quantity: 2.5 },
+        { addon_id: 'adn_1', quantity: '2' },
+        { addon_id: 'adn_1', quantity: 1, price: 500 },
+        { quantity: 1 },
+      ]
+    ) {
+      asserts.assertExists(
+        CreateSubscriptionRequestSchemaObject.safeParse({
+          ...base,
+          addons: [line],
+        })[0],
+        JSON.stringify(line),
+      );
+    }
+  });
 });
 
 describe('DodoPayments.schema.CreateSubscriptionResponse', () => {
@@ -137,6 +179,15 @@ describe('DodoPayments.schema.CreateSubscriptionResponse', () => {
     });
     asserts.assertEquals(error, null);
     asserts.assertEquals(body?.payment_method_required, false);
+  });
+
+  it('reads the add-ons attached', () => {
+    const [error, body] = CreateSubscriptionResponseSchemaObject.safeParse({
+      ...created,
+      addons: [{ addon_id: 'adn_seat', quantity: 3 }],
+    });
+    asserts.assertEquals(error, null);
+    asserts.assertEquals(body?.addons, [{ addon_id: 'adn_seat', quantity: 3 }]);
   });
 
   it('rejects a response missing the first payment id', () => {

@@ -246,6 +246,51 @@ To let customers change plans, update cards and download invoices
 themselves, send them a portal link from
 `createCustomerPortalSession(customerId)`.
 
+## Selling add-ons
+
+An add-on is a per-unit extra on a subscription — a seat, more storage —
+billed on the subscription's own cycle, next to its plan.
+
+```ts
+// 1. Make the add-on once.
+const seat = await dodo.createAddon({
+  name: 'Extra seat',
+  price: 500, // $5.00 a seat each cycle
+  currency: 'USD',
+  tax_category: 'saas',
+});
+
+// 2. Offer it on the plan: list it on the product's `addons`.
+await dodo.updateProduct('prd_team_monthly', { addons: [seat.id] });
+
+// 3. Sell it with the subscription.
+const sub = await dodo.createSubscription({
+  product_id: 'prd_team_monthly',
+  quantity: 1,
+  customer: { email: 'buyer@example.com', name: 'Ada' },
+  billing: { country: 'US' },
+  addons: [{ addon_id: seat.id, quantity: 3 }],
+  payment_link: true,
+});
+
+// 4. Change quantities with changePlan, same product and plan quantity.
+await dodo.changePlan(sub.subscription_id, {
+  product_id: 'prd_team_monthly',
+  quantity: 1,
+  proration_billing_mode: 'prorated_immediately',
+  addons: [{ addon_id: seat.id, quantity: 5 }],
+});
+```
+
+- The `addons` list on `changePlan` **replaces** the subscription's add-ons.
+  List every add-on to keep, with its quantity; `[]` removes them all.
+- `proration_billing_mode` decides how a mid-cycle change is billed, as for
+  any plan change; afterwards each add-on renews with the subscription.
+- Read what a subscription carries from `getSubscription(id).addons`.
+- Dodo has no get-one or delete route for add-ons: store each add-on's `id`
+  against your own code, or find it again with `listAddons`, and change it
+  with `updateAddon`.
+
 ## Syncing a product catalogue
 
 Keep plans and packs in your own database and push them to Dodo, keyed by

@@ -17,10 +17,15 @@ import { constantTimeEqual } from '@crypt';
 import type { BaseGuardian, GuardianError } from '@guardian';
 import { DodoPaymentsError } from './errors/mod.ts';
 import {
+  AddonListSchemaObject,
+  type AddonSchema,
+  AddonSchemaObject,
   type ChangePlanRequestSchema,
   ChangePlanRequestSchemaObject,
   type ChangePlanResponseSchema,
   ChangePlanResponseSchemaObject,
+  type CreateAddonRequestSchema,
+  CreateAddonRequestSchemaObject,
   type CreateDiscountRequestSchema,
   CreateDiscountRequestSchemaObject,
   type CreatePaymentRequestSchema,
@@ -63,6 +68,8 @@ import {
   SubscriptionListSchemaObject,
   type SubscriptionSchema,
   SubscriptionSchemaObject,
+  type UpdateAddonRequestSchema,
+  UpdateAddonRequestSchemaObject,
   type UpdateDiscountRequestSchema,
   UpdateDiscountRequestSchemaObject,
   type UpdateProductRequestSchema,
@@ -213,6 +220,14 @@ export type FindProductsByMetadataOptions =
     /** Page cap for each pass. @default DEFAULT_MAX_PAGES */
     maxPages?: number;
   };
+
+/** Paging for {@link DodoPayments.listAddons}. */
+export type ListAddonsOptions = {
+  /** Page number, as Dodo counts them. */
+  pageNumber?: number;
+  /** Dodo's default is 10; at most 100. */
+  pageSize?: number;
+};
 
 /** Filters for {@link DodoPayments.listDiscounts}. */
 export type ListDiscountsOptions = {
@@ -1089,6 +1104,133 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
     });
   }
 
+  // ── Add-ons ─────────────────────────────────────────────────────────────
+
+  /**
+   * Create an add-on — `POST /addons`.
+   *
+   * An add-on is an extra a customer buys with a subscription, such as a
+   * seat or a block of storage, priced per unit and billed on the parent
+   * subscription's cycle. To sell it, list its `id` on the subscription
+   * product's `addons` ({@link createProduct} or {@link updateProduct}),
+   * then pass it with a quantity to {@link createSubscription}; change the
+   * quantities later with {@link changePlan}.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` when `addon`
+   * fails local validation, including an unknown field; `INVALID_REQUEST`
+   * when Dodo rejects it; plus the usual vendor codes and
+   * `RESPONSE_ERROR`.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const seat = await client.createAddon({
+   *   name: 'Extra seat',
+   *   price: 500, // $5.00 a seat each cycle
+   *   currency: 'USD',
+   *   tax_category: 'saas',
+   * });
+   * console.log(seat.id);
+   * ```
+   */
+  public async createAddon(
+    addon: CreateAddonRequestSchema,
+  ): Promise<AddonSchema> {
+    const payload = DodoPayments.__validate(
+      CreateAddonRequestSchemaObject,
+      addon,
+    );
+    return await this.__requestAndValidate(
+      {
+        path: '/addons',
+        method: 'POST',
+        contentType: 'JSON',
+        payload: payload as unknown as Record<string, unknown>,
+      },
+      AddonSchemaObject,
+    );
+  }
+
+  /**
+   * List add-ons — `GET /addons`. Dodo documents no route to fetch or
+   * delete one add-on, so this is how a sync finds what it made.
+   *
+   * @returns One page of add-on records.
+   *
+   * @throws {DodoPaymentsError} `AUTH_FAILED`, `FORBIDDEN`, `INVALID_REQUEST`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE` or `UNKNOWN_ERROR` from the vendor; `RESPONSE_ERROR` when the page fails validation.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const addons = await client.listAddons({ pageSize: 100 });
+   * const seat = addons.find((addon) => addon.name === 'Extra seat');
+   * ```
+   */
+  public async listAddons(
+    options: ListAddonsOptions = {},
+  ): Promise<AddonSchema[]> {
+    const query: Record<string, string> = {};
+    if (options.pageNumber !== undefined) {
+      query.page_number = String(options.pageNumber);
+    }
+    if (options.pageSize !== undefined) {
+      query.page_size = String(options.pageSize);
+    }
+    const page = await this.__requestAndValidate(
+      { path: '/addons', method: 'GET', query },
+      AddonListSchemaObject,
+    );
+    return page.items;
+  }
+
+  /**
+   * Update an add-on — `PATCH /addons/{id}`. A partial update: omitted
+   * fields are left as they are, and `image_id: null` removes the image.
+   *
+   * A changed price is what the add-on costs from then on; Dodo does not
+   * say whether subscriptions already carrying it are billed the old or
+   * the new price.
+   *
+   * @returns The updated add-on.
+   *
+   * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` for a blank
+   * `addonId` or an update that fails local validation (including one
+   * that changes nothing); `NOT_FOUND` for an unknown add-on;
+   * `INVALID_REQUEST` when Dodo rejects it; plus the usual vendor codes
+   * and `RESPONSE_ERROR`.
+   * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
+   * no response arrives in time or the request fails before one.
+   *
+   * @example
+   * ```typescript
+   * const seat = await client.updateAddon('adn_1', {
+   *   name: 'Extra seat',
+   *   description: 'One more person on the plan.',
+   * });
+   * ```
+   */
+  public async updateAddon(
+    addonId: string,
+    update: UpdateAddonRequestSchema,
+  ): Promise<AddonSchema> {
+    DodoPayments.__requireId(addonId, 'addonId');
+    const payload = DodoPayments.__validate(
+      UpdateAddonRequestSchemaObject,
+      update,
+    );
+    return await this.__requestAndValidate(
+      {
+        path: `/addons/${encodeURIComponent(addonId)}`,
+        method: 'PATCH',
+        contentType: 'JSON',
+        payload: payload as unknown as Record<string, unknown>,
+      },
+      AddonSchemaObject,
+    );
+  }
+
   // ── Discounts ───────────────────────────────────────────────────────────
 
   /**
@@ -1514,6 +1656,10 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * complete checkout at `payment_link`, and the subscription sits in
    * `pending` until they do.
    *
+   * `addons` attaches add-ons ({@link createAddon}) with their quantities.
+   * List each one on the product's `addons` first; it is billed on the
+   * subscription's cycle.
+   *
    * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` when `request`
    * fails local validation, plus the usual vendor codes.
    * @throws {DodoPaymentsError} `TIMEOUT` or `NETWORK_ERROR` (both transient) when
@@ -1526,6 +1672,7 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    *   quantity: 1,
    *   customer: { email: 'buyer@example.com', name: 'Ada' },
    *   billing: { country: 'US' },
+   *   addons: [{ addon_id: 'adn_seat', quantity: 3 }],
    *   payment_link: true,
    * });
    * if (sub.payment_method_required) redirect(sub.payment_link!);
@@ -1785,6 +1932,11 @@ export class DodoPayments extends RESTler<DodoPaymentsOptions> {
    * {@link cancelScheduledPlanChange} withdraws a scheduled change. The
    * outcome arrives as `subscription.plan_changed` and `payment.succeeded`
    * or `payment.failed` webhooks.
+   *
+   * `addons` REPLACES the subscription's add-ons: list every add-on to
+   * keep, with its quantity, and `[]` removes them all. To change only an
+   * add-on's quantity, change plan to the same product and quantity with
+   * the new `addons` list.
    *
    * @throws {DodoPaymentsError} `REQUEST_VALIDATION_ERROR` when `request`
    * fails local validation; `CONFLICT` while another plan change is still

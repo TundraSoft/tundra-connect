@@ -83,7 +83,14 @@ export type ChangePlanRequestSchema = {
   collect_via_payment_link?: boolean;
   /** Replace an already scheduled plan change with this one. */
   cancel_scheduled_change_plan?: boolean;
-  /** Addons for the new plan. An empty list removes existing addons. */
+  /**
+   * The add-ons the subscription carries after the change, each with its
+   * quantity. The list REPLACES the subscription's add-ons: list every
+   * add-on to keep, with its new quantity, and `[]` removes them all.
+   * Dodo's note reads "leaving this empty would remove any existing
+   * addons" and does not say whether omitting the field keeps them, so
+   * send the full list on every change of a subscription with add-ons.
+   */
   addons?: { addon_id: string; quantity: number }[] | null;
   /**
    * Up to 20 discount codes, applied in order, that REPLACE the

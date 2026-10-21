@@ -19,6 +19,18 @@
  */
 
 export {
+  type AddonCartItemSchema,
+  AddonCartItemSchemaObject,
+  type AddonListSchema,
+  AddonListSchemaObject,
+  type AddonSchema,
+  AddonSchemaObject,
+  type CreateAddonRequestSchema,
+  CreateAddonRequestSchemaObject,
+  type UpdateAddonRequestSchema,
+  UpdateAddonRequestSchemaObject,
+} from './Addon.ts';
+export {
   BillingAddressRequestSchemaObject,
   type BillingAddressSchema,
   BillingAddressSchemaObject,
