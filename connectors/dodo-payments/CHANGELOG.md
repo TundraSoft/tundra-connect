@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.6.0...dodo-payments-v0.7.0) (2026-10-21)
+
+
+### Features
+
+* **dodo-payments:** add add-on support ([7051dee](https://github.com/TundraSoft/tundra-connect/commit/7051dee6783108e750a18776873928f4ba147582))
+* **dodo-payments:** add add-on support ([8d803f4](https://github.com/TundraSoft/tundra-connect/commit/8d803f42b5ec76d4d26e5e6f7d4a341343635ff5))
+
 ## [0.6.0](https://github.com/TundraSoft/tundra-connect/compare/dodo-payments-v0.5.0...dodo-payments-v0.6.0) (2026-10-08)
 
 
