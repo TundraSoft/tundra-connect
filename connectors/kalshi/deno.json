@@ -9,6 +9,6 @@
     "./sockets": "./socket/mod.ts"
   },
   "imports": {
-    "@utils": "jsr:@tundralibs/utils@^1.5.0"
+    "@utils": "jsr:@tundralibs/utils@^1.6.0"
   }
 }
