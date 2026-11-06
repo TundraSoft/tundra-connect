@@ -29,7 +29,8 @@ failures surface as one typed error class per vendor.
   Pyth Pro
 - **Search, data and operations:** Algolia, Upstash Redis, Sentry,
   OpenWeatherMap
-- **Weather:** Open-Meteo (forecasts per model, ensembles, archived model runs)
+- **Weather:** Open-Meteo (forecasts per model, ensembles, archived model
+  runs), aviationweather.gov METAR, SPECI and TAF reports
 - **URL safety:** Google Web Risk, URLhaus (abuse.ch)
 - **Analytics:** Google Analytics 4 server-side events (Measurement Protocol)
 - **Cloudflare platform:** DNS records and zones, Workers KV from outside a
@@ -49,6 +50,7 @@ CI-verified).
 ## 📦 Connects
 
 - **[Algolia](./connectors/algolia/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/algolia)](https://jsr.io/@tundraconnect/algolia) — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
+- **[AviationWeather](./connectors/aviationweather/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/aviationweather)](https://jsr.io/@tundraconnect/aviationweather) — Typed aviationweather.gov Data API client for Deno, Bun, Node.js and Cloudflare Workers: METAR and SPECI observations, TAFs and the bulk METAR cache, with raw report text and the exact remark T-group temperatures.
 - **[AzureBlob](./connectors/azure-blob/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/azure-blob)](https://jsr.io/@tundraconnect/azure-blob) — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
 - **[Binance](./connectors/binance/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/binance)](https://jsr.io/@tundraconnect/binance) — Typed Binance.com spot market-data streams for Deno, Bun, Node.js, browsers and Cloudflare Workers: raw trades, best bid/ask and full-depth order-book diffs over WebSocket, with reconnects and gap detection.
 - **[CloudflareDNS](./connectors/cloudflare-dns/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/cloudflare-dns)](https://jsr.io/@tundraconnect/cloudflare-dns) — Typed Cloudflare DNS client: list, create, update, replace, delete and batch-edit DNS records in a zone, export the zone as BIND, and look up zones by name.

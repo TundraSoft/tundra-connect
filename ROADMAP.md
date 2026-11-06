@@ -15,9 +15,10 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-34 connects are implemented today:
+35 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
+- **[AviationWeather](connectors/aviationweather/README.md)** — Typed aviationweather.gov Data API client for Deno, Bun, Node.js and Cloudflare Workers: METAR and SPECI observations, TAFs and the bulk METAR cache, with raw report text and the exact remark T-group temperatures.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
 - **[Binance](connectors/binance/README.md)** — Typed Binance.com spot market-data streams for Deno, Bun, Node.js, browsers and Cloudflare Workers: raw trades, best bid/ask and full-depth order-book diffs over WebSocket, with reconnects and gap detection.
 - **[CloudflareDNS](connectors/cloudflare-dns/README.md)** — Typed Cloudflare DNS client: list, create, update, replace, delete and batch-edit DNS records in a zone, export the zone as BIND, and look up zones by name.
