@@ -250,6 +250,18 @@
         }
       ]
     },
+    "connectors/open-meteo": {
+      "release-type": "node",
+      "component": "open-meteo",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/openexchange": {
       "release-type": "node",
       "component": "openexchange",

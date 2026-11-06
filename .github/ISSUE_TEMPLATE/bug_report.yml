@@ -27,6 +27,7 @@ body:
         - GoogleWebRisk
         - Kalshi
         - ntfy
+        - OpenMeteo
         - OpenExchange
         - OpenWeatherMap
         - PayPal
