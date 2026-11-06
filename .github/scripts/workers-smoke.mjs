@@ -93,6 +93,7 @@ const SPECS = [
   { dir: 'open-meteo', error: 'OpenMeteoError', label: 'paid host', make: `new lib.OpenMeteo({ auth: { type: 'CUSTOM', apiKey: 'test-key' } })`, call: `c.ensemble({ latitude: 40.78, longitude: -73.97, hourly: ['temperature_2m'], models: ['gfs_seamless'] })` },
   { dir: 'aviationweather', error: 'AviationWeatherError', make: `new lib.AviationWeather({})`, call: `c.getMetars({ ids: ['KNYC', 'KLGA'], hours: 3 })` },
   { dir: 'aviationweather', error: 'AviationWeatherError', label: 'gzipped METAR cache', make: `new lib.AviationWeather({})`, call: `c.getMetarCache({ stations: ['KNYC'] })` },
+  { dir: 'eia', error: 'EIAError', make: `new lib.EIA({ auth: { type: 'CUSTOM', apiKey: 'test-key' } })`, call: `c.getSpotPrices({ start: '2026-10-01' })` },
   // WebSocket feeds (`./sockets`): driven through a fake WebSocket factory,
   // since the smoke test has no network. Proves the socket core, the
   // venue's handshake (Kalshi's RSA-PSS signature) and Guardian parsing all

@@ -37,6 +37,7 @@ on:
           - connectors/coingecko
           - connectors/discord
           - connectors/dodo-payments
+          - connectors/eia
           - connectors/gcs
           - connectors/google-analytics
           - connectors/google-certificate-manager
