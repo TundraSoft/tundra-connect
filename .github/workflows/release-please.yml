@@ -35,6 +35,7 @@ on:
           - connectors/cloudflare-saas
           - connectors/cloudflare-turnstile
           - connectors/coingecko
+          - connectors/deribit
           - connectors/discord
           - connectors/dodo-payments
           - connectors/eia
