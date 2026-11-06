@@ -63,6 +63,9 @@ documentation:
 'connector: ntfy':
   - changed-files:
       - any-glob-to-any-file: connectors/ntfy/**
+'connector: open-meteo':
+  - changed-files:
+      - any-glob-to-any-file: connectors/open-meteo/**
 'connector: openexchange':
   - changed-files:
       - any-glob-to-any-file: connectors/openexchange/**

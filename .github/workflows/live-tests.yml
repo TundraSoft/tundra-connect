@@ -46,6 +46,8 @@ jobs:
           LIVE_TEST_ALLOW_VISIBLE_EFFECTS: ${{ github.event.inputs.allow_visible_effects == 'true' && 'true' || '' }}
           # Public WebSocket feeds need no secret; always exercise them here.
           LIVE_TEST_SOCKETS: 'true'
+          # Keyless public REST APIs; always exercise them here too.
+          LIVE_TEST_PUBLIC: 'true'
           CONNECTOR_COINGECKO_API_KEY: ${{ secrets.CONNECTOR_COINGECKO_API_KEY }}
           CONNECTOR_OPENEXCHANGE_APP_ID: ${{ secrets.CONNECTOR_OPENEXCHANGE_APP_ID }}
           CONNECTOR_OPENWEATHERMAP_API_KEY: ${{ secrets.CONNECTOR_OPENWEATHERMAP_API_KEY }}
@@ -104,6 +106,7 @@ jobs:
           CONNECTOR_CLOUDFLARE_SAAS_TEST_HOSTNAME: ${{ secrets.CONNECTOR_CLOUDFLARE_SAAS_TEST_HOSTNAME }}
           CONNECTOR_CLOUDFLARE_TURNSTILE_SECRET_KEY: ${{ secrets.CONNECTOR_CLOUDFLARE_TURNSTILE_SECRET_KEY }}
           CONNECTOR_URLHAUS_AUTH_KEY: ${{ secrets.CONNECTOR_URLHAUS_AUTH_KEY }}
+          CONNECTOR_OPEN_METEO_API_KEY: ${{ secrets.CONNECTOR_OPEN_METEO_API_KEY }}
           CONNECTOR_DODO_PAYMENTS_API_KEY: ${{ secrets.CONNECTOR_DODO_PAYMENTS_API_KEY }}
           CONNECTOR_RESEND_API_KEY: ${{ secrets.CONNECTOR_RESEND_API_KEY }}
           CONNECTOR_GOOGLE_WEB_RISK_API_KEY: ${{ secrets.CONNECTOR_GOOGLE_WEB_RISK_API_KEY }}

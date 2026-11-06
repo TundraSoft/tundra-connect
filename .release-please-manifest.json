@@ -16,6 +16,7 @@
   "connectors/google-web-risk": "0.2.0",
   "connectors/kalshi": "0.3.1",
   "connectors/ntfy": "0.2.0",
+  "connectors/open-meteo": "0.0.0",
   "connectors/openexchange": "0.3.0",
   "connectors/openweathermap": "0.2.0",
   "connectors/paypal": "0.2.0",
