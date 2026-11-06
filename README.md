@@ -26,7 +26,7 @@ failures surface as one typed error class per vendor.
   voice, SendGrid and Cloudflare email, ntfy push
 - **Market data and prediction markets:** CoinGecko, Open Exchange Rates,
   Kalshi, Polymarket, Binance (real-time WebSocket feeds for all three),
-  Pyth Pro
+  Pyth Pro, Deribit options, DVOL and order books (REST and WebSocket)
 - **Search, data and operations:** Algolia, Upstash Redis, Sentry,
   OpenWeatherMap
 - **URL safety:** Google Web Risk, URLhaus (abuse.ch)
@@ -56,6 +56,7 @@ CI-verified).
 - **[CloudflareSaaS](./connectors/cloudflare-saas/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/cloudflare-saas)](https://jsr.io/@tundraconnect/cloudflare-saas) — Typed Cloudflare for SaaS client: create, list, inspect, update and delete custom hostnames with their TLS and ownership validation state, manage the fallback origin, and read the hostname quota.
 - **[CloudflareTurnstile](./connectors/cloudflare-turnstile/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/cloudflare-turnstile)](https://jsr.io/@tundraconnect/cloudflare-turnstile) — Typed Cloudflare Turnstile client: verify a widget token server-side with siteverify, with hostname and action checks, a hard per-call deadline, and failed challenges as answers instead of errors.
 - **[CoinGecko](./connectors/coingecko/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/coingecko)](https://jsr.io/@tundraconnect/coingecko) — Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.
+- **[Deribit](./connectors/deribit/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/deribit)](https://jsr.io/@tundraconnect/deribit) — Typed Deribit API client for Deno, Bun, Node.js, browsers and Cloudflare Workers: option-chain discovery, book summaries and historical trades over REST, plus a JSON-RPC WebSocket feed of trades, order books with change_id gap detection, tickers with mark IV and greeks, DVOL, price indices and option mark prices.
 - **[Discord](./connectors/discord/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/discord)](https://jsr.io/@tundraconnect/discord) — Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.
 - **[DodoPayments](./connectors/dodo-payments/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/dodo-payments)](https://jsr.io/@tundraconnect/dodo-payments) — Typed Dodo Payments client: create, verify and refund payments, manage subscriptions and plan changes, sync products and discount codes, open the customer portal, and verify Standard Webhooks signatures.
 - **[GCS](./connectors/gcs/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/gcs)](https://jsr.io/@tundraconnect/gcs) — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.
