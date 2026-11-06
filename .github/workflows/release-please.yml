@@ -26,6 +26,7 @@ on:
         options:
           # workspace:publish-paths:start
           - connectors/algolia
+          - connectors/aviationweather
           - connectors/azure-blob
           - connectors/binance
           - connectors/cloudflare-dns

@@ -15,6 +15,9 @@ documentation:
 'connector: algolia':
   - changed-files:
       - any-glob-to-any-file: connectors/algolia/**
+'connector: aviationweather':
+  - changed-files:
+      - any-glob-to-any-file: connectors/aviationweather/**
 'connector: azure-blob':
   - changed-files:
       - any-glob-to-any-file: connectors/azure-blob/**

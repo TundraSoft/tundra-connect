@@ -90,6 +90,8 @@ const SPECS = [
   { dir: 'twilio', error: 'TwilioError', make: `new lib.Twilio({ accountSid: 'AC' + '1'.repeat(32), authToken: 'token' })`, call: `c.getCall('CA' + '0'.repeat(32))` },
   { dir: 'upstash-redis', error: 'UpstashRedisError', make: `new lib.UpstashRedis({ auth: { type: 'BEARER', token: 'test-token', prefix: 'Bearer' }, baseURL: 'https://us1-merry-cat-32748.upstash.io' })`, call: `c.get('foo')` },
   { dir: 'urlhaus', error: 'URLhausError', make: `new lib.URLhaus({ auth: { type: 'CUSTOM', authKey: 'test-auth-key' }, timeout: 1.5 })`, call: `c.lookupUrl({ url: 'http://example.com/x.exe' })` },
+  { dir: 'aviationweather', error: 'AviationWeatherError', make: `new lib.AviationWeather({})`, call: `c.getMetars({ ids: ['KNYC', 'KLGA'], hours: 3 })` },
+  { dir: 'aviationweather', error: 'AviationWeatherError', label: 'gzipped METAR cache', make: `new lib.AviationWeather({})`, call: `c.getMetarCache({ stations: ['KNYC'] })` },
   // WebSocket feeds (`./sockets`): driven through a fake WebSocket factory,
   // since the smoke test has no network. Proves the socket core, the
   // venue's handshake (Kalshi's RSA-PSS signature) and Guardian parsing all

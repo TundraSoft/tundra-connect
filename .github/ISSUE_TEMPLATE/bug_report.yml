@@ -11,6 +11,7 @@ body:
       description: Which connect is this bug related to?
       options:
         - Algolia
+        - AviationWeather
         - AzureBlob
         - Binance
         - CloudflareDNS
