@@ -1,42 +1,13 @@
 import { describe, it } from '@test';
 import { assert, assertEquals } from '@asserts';
 import {
-  PolymarketLiveDataPriceSchemaObject,
   PolymarketPriceBestBidAskSchemaObject,
   PolymarketPriceEnvelopeSchemaObject,
   PolymarketPriceSnapshotSchemaObject,
   PolymarketPriceUpdateSchemaObject,
-} from './LiveData.ts';
+} from './PriceChannel.ts';
 
-describe('LiveData schemas', () => {
-  it('legacy price: keeps the exact value as a string', () => {
-    const [error, price] = PolymarketLiveDataPriceSchemaObject.safeParse({
-      connection_id: 'c',
-      payload: {
-        full_accuracy_value: '79669147000000000',
-        symbol: 'doge/usd',
-        timestamp: 1792414377000,
-        value: 0.079669147,
-      },
-      timestamp: 1792414378326,
-      topic: 'crypto_prices_chainlink',
-      type: 'update',
-    });
-    assertEquals(error, null);
-    assertEquals(price?.payload.fullAccuracyValue, '79669147000000000');
-    assertEquals(price?.connectionId, 'c');
-  });
-
-  it('legacy price: requires a payload symbol', () => {
-    const [error] = PolymarketLiveDataPriceSchemaObject.safeParse({
-      payload: { timestamp: 1, value: 1 },
-      timestamp: 1,
-      topic: 'crypto_prices',
-      type: 'update',
-    });
-    assert(error);
-  });
-
+describe('PriceChannel schemas', () => {
   it('PolyBolt update, snapshot and best bid/ask', () => {
     const [e1, update] = PolymarketPriceUpdateSchemaObject.safeParse({
       symbol: 'aapl',
@@ -67,6 +38,53 @@ describe('LiveData schemas', () => {
     });
     assertEquals(e3, null);
     assertEquals(top?.bestAsk, 0.5);
+  });
+
+  it('equity market_status on updates and snapshots; unknown values rejected', () => {
+    const [e1, update] = PolymarketPriceUpdateSchemaObject.safeParse({
+      symbol: 'aapl',
+      value: 262.71,
+      full_accuracy_value: '262.71',
+      timestamp: 1792526399800,
+      received_at: 1792526401200,
+      is_carried_forward: true,
+      source: 'pyth',
+      market_status: 'closed',
+    });
+    assertEquals(e1, null);
+    assertEquals(update?.marketStatus, 'closed');
+    assertEquals(update?.isCarriedForward, true);
+    const [e2, snap] = PolymarketPriceSnapshotSchemaObject.safeParse({
+      symbol: 'usdbrl',
+      source: 'pyth',
+      market_status: 'closed',
+      data: [{ value: 5.4, full_accuracy_value: '5.4012', timestamp: 1 }],
+    });
+    assertEquals(e2, null);
+    assertEquals(snap?.marketStatus, 'closed');
+    const [e3] = PolymarketPriceUpdateSchemaObject.safeParse({
+      symbol: 'aapl',
+      value: 1,
+      full_accuracy_value: '1',
+      timestamp: 1,
+      source: 'pyth',
+      market_status: 'halted',
+    });
+    assert(e3);
+  });
+
+  it('TWAP point keeps the full-precision value and its window', () => {
+    const [error, twap] = PolymarketPriceUpdateSchemaObject.safeParse({
+      symbol: 'btcusd',
+      value: 64120.7,
+      full_accuracy_value: '64120.700000000000000001',
+      timestamp: 1788973002000,
+      window_seconds: 60,
+      source: 'chainlink',
+    });
+    assertEquals(error, null);
+    assertEquals(twap?.fullAccuracyValue, '64120.700000000000000001');
+    assertEquals(twap?.windowSeconds, 60);
   });
 
   it('envelope: integers must be numbers, not strings', () => {

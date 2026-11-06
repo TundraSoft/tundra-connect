@@ -101,8 +101,12 @@ credential separate from the CLOB's L2 `apiCredentials`, required only for
 | `cancelOrders()`         | `DELETE /orders`                                                | L2 (HMAC)                             | `{ canceled, notCanceled }`                                  |
 | `cancelMarketOrders()`   | `DELETE /cancel-market-orders`                                  | L2 (HMAC)                             | `{ canceled, notCanceled }`                                  |
 | `cancelAllOrders()`      | `DELETE /cancel-all`                                            | L2 (HMAC)                             | `{ canceled, notCanceled }`                                  |
-| `getPositions()`         | `GET /positions` (Data API)                                     | none                                  | `DataPosition[]` with mark-to-market and PnL                 |
-| `getPortfolioValue()`    | `GET /value` (Data API)                                         | none                                  | Total position value in USDC                                 |
+| `getPositions()`         | `GET /v2/positions` (Data API)                                  | none                                  | `{ data: DataPosition[], pagination }` with basis and PnL    |
+| `getPortfolioValue()`    | `GET /v2/value` (Data API)                                      | none                                  | Total position value in USDC                                 |
+| `getActivity()`          | `GET /v2/activity` (Data API)                                   | none                                  | `{ data: DataActivity[], pagination }`                       |
+| `getTrades()`            | `GET /v2/trades` (Data API)                                     | none                                  | `{ data: DataTrade[], pagination }`                          |
+| `getTokens()`            | `GET /v2/tokens` (Data API)                                     | none                                  | `DataToken[]` — condition, outcome, settlement per token     |
+| `getResolutions()`       | `GET /v2/resolutions` (Data API)                                | none                                  | `DataResolution[]` — lifecycle and settlement estimate       |
 | `split()`                | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                                |
 | `merge()`                | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                                |
 | `redeem()`               | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                                |
@@ -207,6 +211,27 @@ throws `ORDER_REJECTED` with the vendor's detail message. A FAK/FOK
 "no match" is never thrown — it's a normal, expected outcome reported via
 `result.noMatch`.
 
+On a match the response carries `tradeIds` (Polymarket stopped returning
+inline `transactionsHashes` for FAK/FOK matches on 2026-07-24; poll the
+trades by id if you need the settlement hashes). Crypto markets apply a
+**150 ms taker delay** (since 2026-09-04): a marketable order can come back
+with `status: 'delayed'` and match after that delay. This client does not
+wait, poll or retry for it — `filled` is `false` on a delayed result; the
+user socket or `getOrder(orderHash)` reports the outcome.
+
+#### Round trips on the order path
+
+`submitOrder()`/`prepareOrder()`/`submitPrepared()` never fetch or walk the
+book, look up a price or wait before sending. The only lookups are the two
+values an order must be signed for, each fetched once and cached for the
+instance: the protocol version (`GET /version`, once per client) and a
+token's neg-risk flag (`GET /neg-risk`, once per token). Pass `version` and
+`negRisk` yourself — both are on the Gamma market (`negRisk`) and stable —
+to make even the first order a single request. Fees are applied by the
+venue at match time and are never part of the signed order, so no fee
+lookup is needed either; `estimateFees()` computes them locally from the
+market's `feeSchedule`.
+
 ### `prepareOrder()` / `submitPrepared()` — identity before sending
 
 Polymarket has no client order id: an order's identity is the EIP-712 hash
@@ -301,7 +326,7 @@ await client.cancelMarketOrders({ market: conditionId, assetId: tokenId });
 await client.cancelAllOrders();
 ```
 
-### Portfolio: `getBalance()` / `getOpenOrders()` / `getFills()` / `getPositions()` / `getPortfolioValue()`
+### Portfolio: `getBalance()` / `getOpenOrders()` / `getFills()` / Data API v2
 
 Three sources feed the portfolio view, and they differ in auth and units:
 
@@ -311,8 +336,21 @@ Three sources feed the portfolio view, and they differ in auth and units:
 | `getOrder(id)`        | CLOB `/data/order`  | L2   | One order by id (its `orderHash`) in any state — resting, matched or cancelled. Throws `NOT_FOUND` for an id the account never placed.                                                                           |
 | `getOpenOrders()`     | CLOB `/data/orders` | L2   | Cursor-paginated; filter by `market`, `assetId` or `id`. `expiration === 0` means GTC.                                                                                                                           |
 | `getFills()`          | CLOB `/data/trades` | L2   | Cursor-paginated; filter by `market`, `assetId`, `makerAddress`, `before`/`after` (Unix seconds). `traderSide` says whether you took or made.                                                                    |
-| `getPositions()`      | Data API            | none | Keyed by wallet — defaults to `auth.funder`, pass `user` for any wallet. Offset-paginated (`limit`/`offset`); `redeemable`/`mergeable` filters.                                                                  |
-| `getPortfolioValue()` | Data API            | none | Total mark-to-market value in USDC (`0` for an empty wallet). Equity = this + `getBalance().balance`.                                                                                                            |
+| `getPositions()`      | Data API v2         | none | Keyed by wallet — defaults to `auth.funder`, pass `user` for any wallet (or `user: null` + one `condition` for a market's holders). `status` selects `OPEN`/`REDEEMABLE`/`REDEEMABLE_LOST`/`MERGEABLE`/`CLOSED`. |
+| `getPortfolioValue()` | Data API v2         | none | Total value in USDC (`0` for an empty wallet): holdings marked to market plus unresolved combos at cost. Equity = this + `getBalance().balance`.                                                                 |
+| `getActivity()`       | Data API v2         | none | The wallet's trades, splits, merges, redeems (one row per outcome), rewards and rebates; filter by `type`, `condition`, `side`, `start`/`end`.                                                                   |
+| `getTrades()`         | Data API v2         | none | The public fill feed by wallet, market or event (no `auth.funder` default); taker side only unless `takerOnly: false`.                                                                                           |
+| `getTokens()`         | Data API v2         | none | Up to 50 token ids, or every token of up to 10 conditions: condition, module, outcome, opposite token, `resolved`/`finalPrice`.                                                                                  |
+| `getResolutions()`    | Data API v2         | none | By `questionId`, `condition` or `eventId`: status, disputes, payouts and `expectedSettlementTime` + `settlementTimeBasis` (an estimate, never a deadline).                                                       |
+
+Every paginated Data API read returns `{ data, pagination }`: follow
+`pagination.nextCursor` until it is `null`, sending it as `cursor` with the
+same `user`/`condition` anchor (and re-sending `title` and `start`/`end`,
+which the cursor does not carry). There is no `offset` — v2 rejects it.
+Rows are camelCased from the vendor's snake_case and keep every unmodelled
+field. Sizes are shares, `…Usdc` fields are USD; `entryCostUsdc` is the
+fee-exclusive basis and `entryFeesUsdc` the buy fees on top
+(`totalCostUsdc` = both).
 
 ```ts
 // Reconcile on restart.
@@ -332,18 +370,30 @@ do {
 } while (cursor);
 
 // What's held, and what it's worth.
-const positions = await client.getPositions();
+const { data: positions } = await client.getPositions();
 const value = await client.getPortfolioValue();
 const cash = (await client.getBalance()).balance;
 console.log(positions.length, 'positions worth', value, '+', cash, 'USDC cash');
 
-// Anything to redeem?
-for (const p of await client.getPositions({ redeemable: true })) {
-  await client.redeem({
-    conditionId: p.conditionId,
-    negRisk: p.negativeRisk ?? false,
+// Anything to redeem? (Page through with the cursor.)
+let next: string | undefined;
+do {
+  const page = await client.getPositions({
+    status: 'REDEEMABLE',
+    cursor: next,
   });
-}
+  for (const p of page.data) {
+    await client.redeem({
+      conditionId: p.conditionId,
+      negRisk: p.negativeRisk,
+    });
+  }
+  next = page.pagination.nextCursor ?? undefined;
+} while (next);
+
+// When will an open market settle?
+const [resolution] = await client.getResolutions({ condition: conditionId });
+console.log(resolution?.status, resolution?.expectedSettlementTime);
 ```
 
 #### Reconciling after a restart
@@ -353,7 +403,7 @@ for (const p of await client.getPositions({ redeemable: true })) {
 | An order recorded before it was sent | `getOrder(orderHash)` — its status and `sizeMatched`, whatever happened to it. `NOT_FOUND` means it never reached the venue.          |
 | Every open order                     | `getOpenOrders()`, paging with `cursor`. Each `id` is the order hash.                                                                 |
 | Fills since a point in time          | `getFills({ after: unixSeconds })`, paging with `cursor`. `takerOrderId` and `makerOrders[].order_id` link each fill to order hashes. |
-| Positions                            | `getPositions()`, paging with `limit`/`offset`.                                                                                       |
+| Positions                            | `getPositions()`, paging with `pagination.nextCursor`.                                                                                |
 | Cash                                 | `getBalance()` (USDC) and `getBalance({ tokenId })` (shares of one outcome).                                                          |
 
 The Data API is public and reads any wallet — it is the same data the
@@ -369,6 +419,30 @@ const book = await client.getOrderbook(tokenId);
 const bestBid = book.bids.at(-1)?.price;
 const bestAsk = book.asks.at(-1)?.price;
 ```
+
+### `estimateFees()` — fees from the market's own schedule
+
+```ts
+import { estimateFees } from '@tundraconnect/polymarket';
+
+const market = await client.getMarketBySlug('btc-updown-5m-1794090000');
+if (market) {
+  const { takerFee, makerFee, makerRebate } = estimateFees(market, {
+    price: 0.5,
+    shares: 100,
+  });
+  // crypto (rate 0.07, takerOnly, rebateRate 0.2): 1.75, 0, 0.35
+}
+```
+
+Polymarket's fee is `shares × rate × (p × (1 − p))^exponent` (every live
+schedule has `exponent: 1`), rounded to 5 decimals, read from
+`market.feeSchedule` — rates differ by category and change, so the helper
+never assumes one. A market without a schedule, or with
+`feesEnabled: false`, costs nothing. With `takerOnly` the maker pays
+nothing and earns `rebateRate` of the taker fee (paid daily from a pool, so
+per fill it is an estimate). A BUY's fee is extra collateral spent; a
+SELL's is deducted from proceeds.
 
 ### `OrderResult` — one shape for every action
 

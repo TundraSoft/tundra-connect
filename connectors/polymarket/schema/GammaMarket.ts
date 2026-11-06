@@ -53,45 +53,86 @@ function normalizeGammaMarket(raw: unknown): unknown {
   return obj;
 }
 
-/** Per-market fee schedule — only present when the market has fees enabled. */
+/**
+ * Per-market fee schedule — present when the market has fees enabled. The
+ * only source a fee calculation may use (Polymarket, 2026-03-31): rates
+ * differ by category and change over time, so never hard-code one.
+ */
 export type FeeSchedule = {
-  /** Base fee rate. */
+  /** Fee rate `feeRate` in `fee = shares × feeRate × (p × (1 − p))^exponent` (e.g. `0.07` on crypto). */
   rate: number;
-  /**
-   * Documented on the wire but not part of Polymarket's actual fee
-   * formula (`rate × (1 − price)`) — kept for completeness, unused for
-   * fee calculation.
-   */
+  /** Exponent applied to the price component `p × (1 − p)`; `1` on every live market. */
   exponent: number;
-  /** Maker rebate share (0..1); absent means no rebate. Only paid when `takerOnly` is not `true`. */
-  rebateRate?: number;
-  /** When `true`, only takers pay fees (makers pay zero, may earn a rebate); absent means `false`. */
-  takerOnly?: boolean;
+  /** Fraction of taker fees returned to resting makers (e.g. `0.2` = 20%); absent or `null` means none. */
+  rebateRate?: number | null;
+  /** `true`: only takers pay, makers pay nothing (and earn the rebate). Absent or `null` reads as `false`. */
+  takerOnly?: boolean | null;
 };
 
 /**
  * Schema for a market's fee schedule.
  *
- * Polymarket's documented fee formula (https://docs.polymarket.com/trading/fees):
- * `fee_dollars = size × rate × p × (1 − p)`, i.e. fee as a percentage of
- * trade value is `rate × (1 − p)` — symmetric, peaking at `p = 0.5`.
- *
  * @example
  * ```typescript
  * import { FeeScheduleSchemaObject } from '@tundraconnect/polymarket/schemas';
  *
- * const [error, fees] = FeeScheduleSchemaObject.safeParse({ rate: 0.07, exponent: 1 });
+ * const [error, fees] = FeeScheduleSchemaObject.safeParse({
+ *   rate: 0.07, exponent: 1, takerOnly: true, rebateRate: 0.2,
+ * });
  * ```
  */
 export const FeeScheduleSchemaObject: BaseGuardian<FeeSchedule> = Guardian
   .object({
     rate: Guardian.number(),
     exponent: Guardian.number(),
-    rebateRate: Guardian.number().optional(),
-    takerOnly: Guardian.boolean().optional(),
-  }).describe({
+    rebateRate: Guardian.number().nullable().optional(),
+    takerOnly: Guardian.boolean().strict().nullable().optional(),
+  }).passthrough().describe({
     title: 'Fee schedule',
-    description: 'Per-market taker/maker fee configuration.',
+    description: 'Per-market taker fee curve and maker rebate share.',
+  });
+
+/**
+ * A crypto up/down market's settlement configuration: which asset, which
+ * window, and whether the open and settlement prices come from a TWAP.
+ * Live markets read `twapEnabled: true, twapLookbackSeconds: 60` — they
+ * settle on PolyBolt's `price.crypto.twap` stream (Chainlink).
+ */
+export type CryptoMarketConfig = {
+  /** e.g. `btc-5m-twap-60`. */
+  id?: string;
+  /** Lower-case asset, e.g. `btc` (PolyBolt symbol `btcusd`). */
+  asset: string;
+  /** Market window, e.g. `5m`, `15m`, `4h`. */
+  duration: string;
+  twapEnabled: boolean;
+  /** Averaging window of the settlement TWAP, seconds. */
+  twapLookbackSeconds: number;
+};
+
+/**
+ * Schema for a Gamma market's `cryptoMarketConfig`.
+ *
+ * @example
+ * ```typescript
+ * import { CryptoMarketConfigSchemaObject } from '@tundraconnect/polymarket/schemas';
+ *
+ * const [error, config] = CryptoMarketConfigSchemaObject.safeParse({
+ *   id: 'btc-5m-twap-60', asset: 'btc', duration: '5m', twapEnabled: true, twapLookbackSeconds: 60,
+ * });
+ * ```
+ */
+export const CryptoMarketConfigSchemaObject: BaseGuardian<CryptoMarketConfig> =
+  Guardian.object({
+    id: Guardian.string().optional(),
+    asset: Guardian.string(),
+    duration: Guardian.string(),
+    twapEnabled: Guardian.boolean().strict(),
+    twapLookbackSeconds: Guardian.number(),
+  }).passthrough().describe({
+    title: 'Crypto market config',
+    description:
+      'Asset, window and TWAP settlement settings of a crypto up/down market.',
   });
 
 /**
@@ -110,8 +151,8 @@ export type GammaMarket = {
   /** ISO-8601. Kept as-is so callers can format per their own locale. */
   startDate?: string;
   endDate?: string;
-  /** Actual trading-window start — distinct from `startDate`, which can be the listing date for a recurring/rolling market. */
-  eventStartTime?: string;
+  /** Actual trading-window start, ISO-8601 — distinct from `startDate`, which can be the listing date for a recurring/rolling market. */
+  eventStartTime?: string | null;
   outcomes: string[];
   outcomePrices: string[];
   clobTokenIds: string[];
@@ -137,8 +178,36 @@ export type GammaMarket = {
   acceptingOrders?: boolean | null;
   enableOrderBook?: boolean | null;
   negRisk: boolean;
-  /** Present only when the market has a non-default fee schedule. */
-  feeSchedule?: FeeSchedule;
+  /** Whether trading fees apply to this market. */
+  feesEnabled?: boolean | null;
+  /** The fee curve — read fees from here, see {@link FeeSchedule}. */
+  feeSchedule?: FeeSchedule | null;
+  /** Fee programme label, e.g. `crypto_fees_v2`, `sports_fees_v3`. */
+  feeType?: string | null;
+  /** Vendor base fee fields (integers). Not inputs to the `feeSchedule` formula. */
+  takerBaseFee?: number | null;
+  makerBaseFee?: number | null;
+  /** Crypto up/down markets only: asset, window and TWAP settlement. */
+  cryptoMarketConfig?: CryptoMarketConfig | null;
+  /** How the market resolves, e.g. `oracle`. */
+  resolutionMechanism?: string | null;
+  /** What happens when the primary resolution cannot be made, e.g. `none`, `equal_split`. */
+  fallbackResolutionType?: string | null;
+  /** The book is cleared when the trading window opens at `eventStartTime`. */
+  clearBookOnStart?: boolean | null;
+  /** Request-for-quote trading enabled. */
+  rfqEnabled?: boolean | null;
+  /**
+   * Position system: `v1` (ConditionalTokens — trade `clobTokenIds`, sign
+   * for CTF Exchange V2, which is what this connect does) or `v2`
+   * (Polymarket Protocol V2 — trade `positionIds` on ExchangeV3, domain
+   * version `"3"`, not yet supported by this connect's order signing).
+   */
+  version?: string | null;
+  /** Protocol V2 markets: outcome position ids, by outcome index. */
+  positionIds?: string[] | null;
+  /** Protocol V2 markets: `inactive` | `active` | `resolved` (V1 uses `umaResolutionStatus`). */
+  resolutionStatus?: string | null;
 };
 
 const _gammaMarket = Guardian.object({
@@ -149,7 +218,7 @@ const _gammaMarket = Guardian.object({
   description: Guardian.string().optional(),
   startDate: Guardian.string().optional(),
   endDate: Guardian.string().optional(),
-  eventStartTime: Guardian.string().optional(),
+  eventStartTime: Guardian.string().nullable().optional(),
   outcomes: Guardian.array(Guardian.string()),
   outcomePrices: Guardian.array(Guardian.string()),
   clobTokenIds: Guardian.array(Guardian.string()),
@@ -167,7 +236,19 @@ const _gammaMarket = Guardian.object({
   acceptingOrders: Guardian.boolean().nullable().optional(),
   enableOrderBook: Guardian.boolean().nullable().optional(),
   negRisk: Guardian.boolean(),
-  feeSchedule: FeeScheduleSchemaObject.optional(),
+  feesEnabled: Guardian.boolean().strict().nullable().optional(),
+  feeSchedule: FeeScheduleSchemaObject.nullable().optional(),
+  feeType: Guardian.string().nullable().optional(),
+  takerBaseFee: Guardian.number().nullable().optional(),
+  makerBaseFee: Guardian.number().nullable().optional(),
+  cryptoMarketConfig: CryptoMarketConfigSchemaObject.nullable().optional(),
+  resolutionMechanism: Guardian.string().nullable().optional(),
+  fallbackResolutionType: Guardian.string().nullable().optional(),
+  clearBookOnStart: Guardian.boolean().strict().nullable().optional(),
+  rfqEnabled: Guardian.boolean().strict().nullable().optional(),
+  version: Guardian.string().nullable().optional(),
+  positionIds: Guardian.array(Guardian.string()).nullable().optional(),
+  resolutionStatus: Guardian.string().nullable().optional(),
 }).passthrough().describe({
   title: 'Gamma market',
   description:

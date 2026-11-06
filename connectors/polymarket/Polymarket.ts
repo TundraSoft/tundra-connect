@@ -64,9 +64,17 @@ import {
   type ClobTradesPage,
   ClobTradesPageSchemaObject,
   ClobVersionSchemaObject,
-  type DataPosition,
-  DataPositionListSchemaObject,
-  DataValueListSchemaObject,
+  type DataActivityPage,
+  DataActivityPageSchemaObject,
+  type DataPositionsPage,
+  DataPositionsPageSchemaObject,
+  type DataResolution,
+  DataResolutionListSchemaObject,
+  type DataToken,
+  DataTokenListSchemaObject,
+  type DataTradesPage,
+  DataTradesPageSchemaObject,
+  DataValueSchemaObject,
   type GammaMarket,
   GammaMarketKeysetPageSchemaObject,
   GammaMarketListSchemaObject,
@@ -85,7 +93,7 @@ export const GAMMA_API = 'https://gamma-api.polymarket.com';
 export const CLOB_API = 'https://clob.polymarket.com';
 /** Production Relayer API host — gasless split/merge/redeem meta-transactions. */
 export const RELAYER_API = 'https://relayer-v2.polymarket.com';
-/** Production Data API host — public, read-only portfolio view (positions, value) keyed by wallet address. */
+/** Production Data API host — public, read-only portfolio, activity, token and resolution views. Every route this client calls is under `/v2` (v1 retired 2026-11-02). */
 export const DATA_API = 'https://data-api.polymarket.com';
 /** Polygon mainnet chain id — the CLOB rejects any other chain id in production. */
 export const POLYGON_CHAIN_ID = 137;
@@ -219,37 +227,122 @@ export type GetFillsOptions = {
   cursor?: string;
 };
 
-/** Filters for {@link Polymarket.getPositions}. */
+/** A single id or a list of ids, sent comma-separated. */
+export type IdList = string | readonly string[];
+
+/** Filters for {@link Polymarket.getPositions} (`GET /v2/positions`). */
 export type GetPositionsOptions = {
-  /** Wallet to read. Defaults to `auth.funder` (the proxy wallet that holds positions). */
-  user?: string;
-  /** Condition id(s) to restrict to. Mutually exclusive with `eventId`. */
-  market?: string | string[];
-  /** Event id(s) to restrict to. Mutually exclusive with `market`. */
-  eventId?: string | string[];
-  /** Hide positions smaller than this many shares. Vendor default `1`. */
-  sizeThreshold?: number;
-  /** Only positions in markets resolved in the held outcome's favour. */
-  redeemable?: boolean;
-  /** Only positions where both outcomes are held. */
-  mergeable?: boolean;
-  /** Vendor default 100. */
-  limit?: number;
-  offset?: number;
-  sortBy?:
-    | 'CURRENT'
-    | 'INITIAL'
-    | 'TOKENS'
-    | 'CASHPNL'
-    | 'PERCENTPNL'
-    | 'TITLE'
-    | 'RESOLVING'
-    | 'PRICE'
-    | 'AVGPRICE';
-  sortDirection?: 'ASC' | 'DESC';
-  /** Case-insensitive market-title filter. */
+  /**
+   * Wallet to read. Defaults to `auth.funder` (the proxy wallet that holds
+   * positions). `null` drops the wallet anchor, listing a market's holders
+   * instead — then `condition` must name exactly one market.
+   */
+  user?: string | null;
+  /** Condition id(s), at most 20. With a wallet, narrows its positions. */
+  condition?: IdList;
+  /** Gamma event id(s), at most 20. Wallet-anchored reads only. */
+  eventId?: IdList;
+  /**
+   * Lifecycle filter. `OPEN` (the vendor default) is the superset, settled-
+   * but-unredeemed winners included; `REDEEMABLE` narrows to those;
+   * `REDEEMABLE_LOST` to still-held losing sides; `MERGEABLE` to pairs that
+   * can merge back to collateral; `CLOSED` to exited positions.
+   */
+  status?: 'OPEN' | 'REDEEMABLE' | 'REDEEMABLE_LOST' | 'MERGEABLE' | 'CLOSED';
+  /** Case-insensitive market-title substring. Not carried by the cursor — resend it on every page. */
   title?: string;
+  /** What `filterAmount` measures. Vendor default `TOKENS`. */
+  filterType?: 'CASH' | 'TOKENS';
+  /** Minimum current holding (shares for `TOKENS`, USDC for `CASH`). Vendor default 0.1 shares. */
+  filterAmount?: number;
+  /** Also include positions in archived markets. Not with `status: 'CLOSED'`. */
+  includeArchived?: boolean;
+  sortBy?:
+    | 'CURRENT_VALUE'
+    | 'PRICE'
+    | 'TOKENS'
+    | 'UNREALIZED_PNL'
+    | 'REALIZED_PNL'
+    | 'TOTAL_PNL'
+    | 'TIMESTAMP';
+  sortDirection?: 'ASC' | 'DESC';
+  /** Epoch seconds, inclusive bounds on each row's `lastEventAt`. Resend on every page. */
+  start?: number;
+  end?: number;
+  /** First-page size, at most 1000. Ignored with `cursor` (the cursor carries its own). */
+  limit?: number;
+  /** `pagination.nextCursor` from the previous page. Send it with the same `user`/`condition` anchor. */
+  cursor?: string;
 };
+
+/** Filters for {@link Polymarket.getActivity} (`GET /v2/activity`). */
+export type GetActivityOptions = {
+  /** Wallet to read. Defaults to `auth.funder`. */
+  user?: string;
+  /**
+   * Activity type(s): `TRADE`, `SPLIT`, `MERGE`, `REDEEM`, `CONVERSION`,
+   * `MIGRATION`, `REWARD`, `YIELD`, `MAKER_REBATE`, `TAKER_REBATE`,
+   * `REFERRAL_REWARD`, `DEPOSIT`, `WITHDRAWAL`, `TIP`, … Omitted, every type
+   * but `TIP`.
+   */
+  type?: IdList;
+  /** Condition id(s), at most 20. Mutually exclusive with `eventId`. */
+  condition?: IdList;
+  /** Gamma event id(s), at most 20. */
+  eventId?: IdList;
+  side?: 'BUY' | 'SELL';
+  /** Epoch seconds, inclusive. Vendor default: three years back (`1` for full history). */
+  start?: number;
+  /** Epoch seconds, inclusive. Vendor default: now plus one day. */
+  end?: number;
+  /** Vendor default `DESC` (newest first). Bound into the cursor. */
+  sortDirection?: 'ASC' | 'DESC';
+  /** Include `DEPOSIT`/`WITHDRAWAL` rows (the vendor drops them by default). */
+  includeDepositsWithdrawals?: boolean;
+  /** Page size, vendor default 100, at most 1000. */
+  limit?: number;
+  cursor?: string;
+};
+
+/** Filters for {@link Polymarket.getTrades} (`GET /v2/trades`). */
+export type GetTradesOptions = {
+  /** Restrict to one wallet. Omitted, this is the market/event/global feed — there is no `auth.funder` default here. */
+  user?: string;
+  /** Condition id(s), at most 20. */
+  condition?: IdList;
+  /** Gamma event id(s), at most 20. */
+  eventId?: IdList;
+  side?: 'BUY' | 'SELL';
+  /** Vendor default `true`: each fill once, on its taker side. `false` adds the maker rows. */
+  takerOnly?: boolean;
+  filterType?: 'CASH' | 'TOKENS';
+  /** Minimum trade size; vendor default 0.01. */
+  filterAmount?: number;
+  /** Epoch seconds, inclusive. Honoured on the `user` shape only. */
+  start?: number;
+  end?: number;
+  limit?: number;
+  cursor?: string;
+};
+
+/** Selector for {@link Polymarket.getTokens} — exactly one of the two. */
+export type GetTokensOptions =
+  | {
+    /** Up to 50 decimal token ids. Unknown ids are simply absent from the result. */
+    tokenIds: readonly string[];
+    conditions?: never;
+  }
+  | {
+    /** Up to 10 condition selectors: a condition id, a neg-risk market id, or a polymarket-v2 condition/event id. */
+    conditions: readonly string[];
+    tokenIds?: never;
+  };
+
+/** Selector for {@link Polymarket.getResolutions} — exactly one of the three. */
+export type GetResolutionsOptions =
+  | { questionId: string; condition?: never; eventId?: never }
+  | { condition: IdList; questionId?: never; eventId?: never }
+  | { eventId: IdList; questionId?: never; condition?: never };
 
 /** Filters for {@link Polymarket.getMarkets}. */
 export type GetMarketsOptions = {
@@ -434,8 +527,9 @@ export type OrderResult = {
  * order are real secp256k1/EIP-712 signatures, not delegated elsewhere);
  * order placement additionally needs `auth.funder`. The Relayer's gasless
  * collateral actions ({@link split}/{@link merge}/{@link redeem}) further
- * need `auth.relayerApiKey`/`auth.relayerApiKeyAddress`. The WebSocket
- * market/user feeds are out of scope for this connect; see the README.
+ * need `auth.relayerApiKey`/`auth.relayerApiKeyAddress`. The Data API v2
+ * reads (positions, value, activity, trades, tokens, resolutions) are
+ * public. WebSocket feeds live in the separate `./sockets` export.
  *
  * @example
  * ```typescript
@@ -946,66 +1040,77 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     );
   }
 
-  // ── Data API (public portfolio view) ────────────────────────────────────
+  // ── Data API v2 (public portfolio, activity, tokens, resolutions) ───────
 
   /**
-   * Open positions of a wallet with mark-to-market value and PnL, from
-   * the public Data API — no signing involved. Defaults to `auth.funder`
-   * (the proxy wallet that actually holds positions), so a client built
-   * with trading credentials reads its own book; pass `user` to read any
-   * other wallet.
+   * One cursor page of a wallet's positions with fee-exclusive basis,
+   * mark-to-market value and PnL, from the public Data API — no signing
+   * involved. Defaults to `auth.funder` (the proxy wallet that holds the
+   * positions); pass `user` to read any other wallet, or `user: null` with
+   * one `condition` to list that market's holders. Follow
+   * `pagination.nextCursor` until it is `null`.
    *
-   * Offset-paginated: the vendor returns up to `limit` (default 100) rows
-   * starting at `offset`; a page shorter than `limit` is the last.
-   *
-   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when neither
-   * `user` nor `auth.funder` is available; `RESPONSE_ERROR` when the body
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when `user` is
+   * omitted and `auth.funder` is not set; `INVALID_OPTIONS` for
+   * `user: null` without a `condition`; `RESPONSE_ERROR` when the body
    * fails validation; or `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
    *
    * @example
    * ```typescript
-   * const positions = await client.getPositions({ redeemable: true });
-   * for (const p of positions) console.log(p.title, p.outcome, p.size, p.cashPnl);
+   * let cursor: string | undefined;
+   * do {
+   *   const page = await client.getPositions({ status: 'REDEEMABLE', cursor });
+   *   for (const p of page.data) console.log(p.title, p.outcome, p.currentSize, p.unrealizedPnl);
+   *   cursor = page.pagination.nextCursor ?? undefined;
+   * } while (cursor);
    * ```
    */
   public async getPositions(
     options: GetPositionsOptions = {},
-  ): Promise<DataPosition[]> {
-    const user = options.user ?? this.__requireFunder();
-    const query: Record<string, string> = { user };
-    const list = (value: string | string[]) =>
-      Array.isArray(value) ? value.join(',') : value;
-    if (options.market !== undefined) query.market = list(options.market);
-    if (options.eventId !== undefined) query.eventId = list(options.eventId);
-    if (options.sizeThreshold !== undefined) {
-      query.sizeThreshold = String(options.sizeThreshold);
+  ): Promise<DataPositionsPage> {
+    const query: Record<string, string> = {};
+    if (options.user === null) {
+      if (options.condition === undefined) {
+        throw new PolymarketError('INVALID_OPTIONS', {
+          method: 'getPositions',
+          detail: '`user: null` (market holders) needs a `condition`',
+        });
+      }
+    } else {
+      query.user = options.user ?? this.__requireFunder();
     }
-    if (options.redeemable !== undefined) {
-      query.redeemable = String(options.redeemable);
-    }
-    if (options.mergeable !== undefined) {
-      query.mergeable = String(options.mergeable);
-    }
-    if (options.limit !== undefined) query.limit = String(options.limit);
-    if (options.offset !== undefined) query.offset = String(options.offset);
-    if (options.sortBy) query.sortBy = options.sortBy;
-    if (options.sortDirection) query.sortDirection = options.sortDirection;
-    if (options.title) query.title = options.title;
+    Polymarket.__setList(query, 'condition', options.condition);
+    Polymarket.__setList(query, 'event_id', options.eventId);
+    Polymarket.__setQuery(query, {
+      status: options.status,
+      title: options.title,
+      filter_type: options.filterType,
+      filter_amount: options.filterAmount,
+      include_archived: options.includeArchived,
+      sort_by: options.sortBy,
+      sort_direction: options.sortDirection,
+      start: options.start,
+      end: options.end,
+      limit: options.limit,
+      cursor: options.cursor,
+    });
     return await this.__requestAndValidate(
       {
-        path: '/positions',
+        path: '/v2/positions',
         baseURL: this.__dataBaseURL,
         method: 'GET',
         query,
       },
-      DataPositionListSchemaObject,
+      DataPositionsPageSchemaObject,
     );
   }
 
   /**
-   * Total mark-to-market value of a wallet's positions in USDC, from the
-   * public Data API. Defaults to `auth.funder`; `market` narrows it to
-   * one or more condition ids. Returns `0` for a wallet with no positions.
+   * Total value of a wallet's positions in USDC — single-market holdings
+   * marked to market plus unresolved combos at cost basis — from the public
+   * Data API. Defaults to `auth.funder`; `condition` narrows it to one or
+   * more markets (and drops the combo term). `0` for a wallet with no
+   * positions.
    *
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when neither
    * `user` nor `auth.funder` is available; `RESPONSE_ERROR` when the body
@@ -1019,25 +1124,195 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * ```
    */
   public async getPortfolioValue(
-    options: { user?: string; market?: string | string[] } = {},
+    options: { user?: string; condition?: IdList } = {},
   ): Promise<number> {
-    const user = options.user ?? this.__requireFunder();
-    const query: Record<string, string> = { user };
-    if (options.market !== undefined) {
-      query.market = Array.isArray(options.market)
-        ? options.market.join(',')
-        : options.market;
-    }
-    const values = await this.__requestAndValidate(
+    const query: Record<string, string> = {
+      user: options.user ?? this.__requireFunder(),
+    };
+    Polymarket.__setList(query, 'condition', options.condition);
+    const row = await this.__requestAndValidate(
       {
-        path: '/value',
+        path: '/v2/value',
         baseURL: this.__dataBaseURL,
         method: 'GET',
         query,
       },
-      DataValueListSchemaObject,
+      DataValueSchemaObject,
     );
-    return values[0]?.value ?? 0;
+    return row.value;
+  }
+
+  /**
+   * One cursor page of a wallet's on-chain activity — trades, splits,
+   * merges, redeems (one row per outcome), rewards, rebates, … — newest
+   * first by default. Defaults to `auth.funder`.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when neither
+   * `user` nor `auth.funder` is available; `RESPONSE_ERROR` when the body
+   * fails validation; or `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const { data } = await client.getActivity({ type: ['TRADE', 'REDEEM'], limit: 50 });
+   * for (const row of data) console.log(row.type, row.size, row.usdcSize, row.transactionHash);
+   * ```
+   */
+  public async getActivity(
+    options: GetActivityOptions = {},
+  ): Promise<DataActivityPage> {
+    const query: Record<string, string> = {
+      user: options.user ?? this.__requireFunder(),
+    };
+    Polymarket.__setList(query, 'type', options.type);
+    Polymarket.__setList(query, 'condition', options.condition);
+    Polymarket.__setList(query, 'event_id', options.eventId);
+    Polymarket.__setQuery(query, {
+      side: options.side,
+      start: options.start,
+      end: options.end,
+      sort_direction: options.sortDirection,
+      exclude_deposits_withdrawals: options.includeDepositsWithdrawals ===
+          undefined
+        ? undefined
+        : !options.includeDepositsWithdrawals,
+      limit: options.limit,
+      cursor: options.cursor,
+    });
+    return await this.__requestAndValidate(
+      {
+        path: '/v2/activity',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataActivityPageSchemaObject,
+    );
+  }
+
+  /**
+   * One cursor page of the public trade feed — every fill once, on its
+   * taker side, unless `takerOnly: false`. Filter by wallet, market or
+   * event; with none, the global feed. (For the account's own CLOB fills,
+   * with maker detail, use {@link getFills}.)
+   *
+   * @throws {PolymarketError} `RESPONSE_ERROR` when the body fails
+   * validation; or `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const { data: trades } = await client.getTrades({ condition: conditionId, limit: 100 });
+   * for (const t of trades) console.log(t.side, t.size, t.price, t.timestamp);
+   * ```
+   */
+  public async getTrades(
+    options: GetTradesOptions = {},
+  ): Promise<DataTradesPage> {
+    const query: Record<string, string> = {};
+    Polymarket.__setList(query, 'condition', options.condition);
+    Polymarket.__setList(query, 'event_id', options.eventId);
+    Polymarket.__setQuery(query, {
+      user: options.user,
+      side: options.side,
+      taker_only: options.takerOnly,
+      filter_type: options.filterType,
+      filter_amount: options.filterAmount,
+      start: options.start,
+      end: options.end,
+      limit: options.limit,
+      cursor: options.cursor,
+    });
+    return await this.__requestAndValidate(
+      {
+        path: '/v2/trades',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataTradesPageSchemaObject,
+    );
+  }
+
+  /**
+   * Reference facts for outcome tokens — condition, contract module,
+   * outcome slot and label, the opposite token, and on-chain settlement
+   * (`resolved`, `finalPrice`) — by up to 50 token ids (request order kept,
+   * unknown ids absent) or for every token of up to 10 conditions.
+   *
+   * @throws {PolymarketError} `INVALID_OPTIONS` unless exactly one selector
+   * is given; `RESPONSE_ERROR` when the body fails validation; or
+   * `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const tokens = await client.getTokens({ conditions: [conditionId] });
+   * for (const t of tokens) console.log(t.outcome, t.tokenId, t.resolved, t.finalPrice);
+   * ```
+   */
+  public async getTokens(options: GetTokensOptions): Promise<DataToken[]> {
+    const query: Record<string, string> = {};
+    if (options.tokenIds !== undefined) {
+      Polymarket.__setList(query, 'token_id', options.tokenIds);
+    }
+    if (options.conditions !== undefined) {
+      Polymarket.__setList(query, 'condition', options.conditions);
+    }
+    if (Object.keys(query).length !== 1) {
+      throw new PolymarketError('INVALID_OPTIONS', {
+        method: 'getTokens',
+        detail: 'pass exactly one non-empty `tokenIds` or `conditions`',
+      });
+    }
+    return await this.__requestAndValidate(
+      {
+        path: '/v2/tokens',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataTokenListSchemaObject,
+    );
+  }
+
+  /**
+   * Resolution lifecycle by UMA question, condition(s) or Gamma event(s):
+   * status, dispute flags, payouts once settled, and — while a proposal or
+   * vote is live — `expectedSettlementTime` with its `settlementTimeBasis`.
+   * The estimate is not a deadline: a disputed vote can roll into a later
+   * round, and none is given while `extendedReview` is `true`. Answers are
+   * cached by the vendor for up to 5 seconds while any row is live.
+   *
+   * @throws {PolymarketError} `INVALID_OPTIONS` unless exactly one selector
+   * is given; `RESPONSE_ERROR` when the body fails validation; or
+   * `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const [row] = await client.getResolutions({ condition: conditionId });
+   * if (row?.status !== 'resolved') console.log('settles ~', row?.expectedSettlementTime);
+   * ```
+   */
+  public async getResolutions(
+    options: GetResolutionsOptions,
+  ): Promise<DataResolution[]> {
+    const query: Record<string, string> = {};
+    Polymarket.__setQuery(query, { question_id: options.questionId });
+    Polymarket.__setList(query, 'condition', options.condition);
+    Polymarket.__setList(query, 'event_id', options.eventId);
+    if (Object.keys(query).length !== 1) {
+      throw new PolymarketError('INVALID_OPTIONS', {
+        method: 'getResolutions',
+        detail: 'pass exactly one of `questionId`, `condition` or `eventId`',
+      });
+    }
+    return await this.__requestAndValidate(
+      {
+        path: '/v2/resolutions',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataResolutionListSchemaObject,
+    );
   }
 
   /**
@@ -1536,6 +1811,27 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   }
 
   // ── internals ────────────────────────────────────────────────────────────
+
+  /** Sets each defined value as a query parameter, stringified. */
+  private static __setQuery(
+    query: Record<string, string>,
+    values: Record<string, string | number | boolean | undefined>,
+  ): void {
+    for (const [key, value] of Object.entries(values)) {
+      if (value !== undefined) query[key] = String(value);
+    }
+  }
+
+  /** Sets a comma-separated list parameter; an empty list sets nothing. */
+  private static __setList(
+    query: Record<string, string>,
+    key: string,
+    value: IdList | undefined,
+  ): void {
+    if (value === undefined) return;
+    const joined = typeof value === 'string' ? value : value.join(',');
+    if (joined !== '') query[key] = joined;
+  }
 
   /**
    * Builds a `RESTlerEndpoint`-shaped `DELETE` request carrying a JSON

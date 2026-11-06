@@ -3,10 +3,12 @@
 Typed [Polymarket](https://polymarket.com) prediction-market client for Deno,
 Bun, Node.js and Cloudflare Workers. It covers **Gamma** market discovery (no
 auth), **CLOB** trading with secp256k1/EIP-712 order signing (L1/L2 auth),
-portfolio positions and value, gasless split, merge and redeem, and
-real-time **WebSocket feeds** (order books, trades, your orders and fills,
-Chainlink/Binance reference prices). An alternative to the official
-`@polymarket/clob-client` for the endpoints it covers.
+**Data API v2** positions, portfolio value, activity, trades, token lookup and
+resolution state (with settlement-time estimates), fee estimates from each
+market's own fee schedule, gasless split, merge and redeem, and real-time
+**WebSocket feeds** (order books, trades, your orders and fills, and PolyBolt's
+Chainlink/Pyth crypto, equity, forex and TWAP reference prices). An
+alternative to the official Polymarket SDKs for the endpoints it covers.
 
 [![JSR](https://jsr.io/badges/@tundraconnect/polymarket)](https://jsr.io/@tundraconnect/polymarket)
 [![JSR Score](https://jsr.io/badges/@tundraconnect/polymarket/score)](https://jsr.io/@tundraconnect/polymarket)
@@ -29,15 +31,22 @@ One `Polymarket` client covers both APIs, matching how a Gamma market's
   known before it is sent; never re-signed),
   `cancelOrder()`/`cancelOrders()`/`cancelMarketOrders()`/
   `cancelAllOrders()`.
-- **Data API** (`data-api.polymarket.com`) — `getPositions()` and
-  `getPortfolioValue()`: the public, read-only portfolio view keyed by
-  wallet address (mark-to-market value and PnL). No signing; defaults to
-  `auth.funder`, reads any wallet via `user`.
+- **Data API v2** (`data-api.polymarket.com/v2`) — `getPositions()`
+  (open/redeemable/mergeable/closed lifecycle, fee-exclusive basis and PnL),
+  `getPortfolioValue()`, `getActivity()`, `getTrades()`, `getTokens()` and
+  `getResolutions()` (including `expectedSettlementTime`). Public and
+  unsigned; cursor-paginated (`pagination.nextCursor`); wallet reads
+  default to `auth.funder`. Data API v1 was retired on 2026-11-02 and is no
+  longer called anywhere.
+- **Fees** — `estimateFees(market, { price, shares })` computes
+  `shares × rate × p × (1 − p)` from the market's own `feeSchedule` (makers
+  pay nothing on a taker-only schedule and earn its `rebateRate`).
 - **WebSocket feeds** (`@tundraconnect/polymarket/sockets`, importable
   without the REST client) — `PolymarketMarketSocket` (full-depth books,
   every level change, trades, tick-size changes), `PolymarketUserSocket`
-  (your orders and trades), `PolymarketPriceSocket` (PolyBolt reference
-  prices) and `PolymarketLiveDataSocket` (Chainlink and Binance prices).
+  (your orders and trades) and `PolymarketPriceSocket` (PolyBolt: crypto,
+  equity and forex prices with provider pins, `source` and `marketStatus`,
+  and the Chainlink 60-second TWAPs crypto up/down markets settle on).
   Async iterables of Guardian-validated events with automatic reconnects
   and explicit reconnect/gap events — see
   [Sockets](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-Sockets).
@@ -92,11 +101,16 @@ client with these calls, the same way you would for order signing.
 
 ### Out of scope (for now)
 
-- The real-time data socket's **activity** and **comments** topics, and
-  the **sports** feed — only the crypto reference prices are wired up.
-- Data API **activity/leaderboard/holders** feeds — only the portfolio
-  half (`/positions`, `/value`) is wired up, via `getPositions()` /
-  `getPortfolioValue()`.
+- **Polymarket Protocol V2 markets** (Gamma `version: "v2"`, traded by
+  `positionIds` on ExchangeV3 with EIP-712 domain version `"3"`). This
+  client signs for CTF Exchange V2 (`version: "v1"` markets — every listed
+  crypto up/down market as of 2026-11-06); `GammaMarket.version` says which
+  a market is.
+- The RTDS **comments** topic, PolyBolt's `esports.series` channel and the
+  **sports** feed. (The legacy RTDS price topics were removed — use
+  PolyBolt.)
+- Other Data API v2 routes (leaderboards, holders, PnL series, price
+  history, combos, …).
 
 ## Testing your code
 
@@ -125,9 +139,12 @@ reassign the protected `_fetch`.
 
 ## Upstream
 
-- [Polymarket CLOB API reference](https://docs.polymarket.com/developers/CLOB/introduction)
-- [Polymarket Gamma API reference](https://docs.polymarket.com/developers/gamma-markets-api/overview)
+- [Polymarket trading overview](https://docs.polymarket.com/trading/overview)
+- [Polymarket market data (Gamma)](https://docs.polymarket.com/market-data/overview)
+- [Polymarket Data API v2](https://docs.polymarket.com/api-reference/data-api/overview)
+- [PolyBolt WebSocket](https://docs.polymarket.com/api-reference/live-data/overview)
 - [Polymarket trading fees](https://docs.polymarket.com/trading/fees)
+- [Polymarket changelog](https://docs.polymarket.com/changelog)
 
 ## Installation
 
@@ -172,9 +189,9 @@ await clob.deriveApiCredentials();
 const balance = await clob.getBalance();
 console.log('USDC available:', balance.balance);
 
-// Portfolio: open orders and fills (CLOB), positions and value (Data API).
+// Portfolio: open orders and fills (CLOB), positions and value (Data API v2).
 const { data: openOrders } = await clob.getOpenOrders();
-const positions = await clob.getPositions();
+const { data: positions } = await clob.getPositions();
 console.log(
   openOrders.length,
   'resting orders,',
