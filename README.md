@@ -29,6 +29,8 @@ failures surface as one typed error class per vendor.
   Pyth Pro
 - **Search, data and operations:** Algolia, Upstash Redis, Sentry,
   OpenWeatherMap
+- **Energy:** U.S. EIA open data (WTI and Brent spot prices, weekly
+  petroleum stocks)
 - **URL safety:** Google Web Risk, URLhaus (abuse.ch)
 - **Analytics:** Google Analytics 4 server-side events (Measurement Protocol)
 - **Cloudflare platform:** DNS records and zones, Workers KV from outside a
@@ -58,6 +60,7 @@ CI-verified).
 - **[CoinGecko](./connectors/coingecko/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/coingecko)](https://jsr.io/@tundraconnect/coingecko) — Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.
 - **[Discord](./connectors/discord/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/discord)](https://jsr.io/@tundraconnect/discord) — Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.
 - **[DodoPayments](./connectors/dodo-payments/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/dodo-payments)](https://jsr.io/@tundraconnect/dodo-payments) — Typed Dodo Payments client: create, verify and refund payments, manage subscriptions and plan changes, sync products and discount codes, open the customer portal, and verify Standard Webhooks signatures.
+- **[EIA](./connectors/eia/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/eia)](https://jsr.io/@tundraconnect/eia) — Typed U.S. EIA Open Data API v2 client for Deno, Bun, Node.js, browsers and Cloudflare Workers: any route and facet, auto-pagination past the 5,000-row limit, and helpers for WTI/Brent spot prices and Weekly Petroleum Status Report stocks.
 - **[GCS](./connectors/gcs/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/gcs)](https://jsr.io/@tundraconnect/gcs) — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.
 - **[GoogleAnalytics](./connectors/google-analytics/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/google-analytics)](https://jsr.io/@tundraconnect/google-analytics) — Typed Google Analytics 4 Measurement Protocol client: send server-side events and validate them against the debug endpoint, with GA4's event, parameter and user-property limits checked before the request is made.
 - **[GoogleCertificateManager](./connectors/google-certificate-manager/README.md)** [![JSR](https://jsr.io/badges/@tundraconnect/google-certificate-manager)](https://jsr.io/@tundraconnect/google-certificate-manager) — Typed Google Cloud Certificate Manager client: create, read, list and delete managed TLS certificates and certificate map entries, poll long-running operations, with service-account auth on Workers, Deno, Bun and Node.

@@ -21,6 +21,7 @@ body:
         - CoinGecko
         - Discord
         - DodoPayments
+        - EIA
         - GCS
         - GoogleAnalytics
         - GoogleCertificateManager

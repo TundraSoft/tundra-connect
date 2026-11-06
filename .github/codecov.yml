@@ -57,6 +57,10 @@ component_management:
         name: dodo-payments
         paths:
           - connectors/dodo-payments/**
+      - component_id: eia
+        name: eia
+        paths:
+          - connectors/eia/**
       - component_id: gcs
         name: gcs
         paths:

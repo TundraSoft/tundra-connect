@@ -178,6 +178,18 @@
         }
       ]
     },
+    "connectors/eia": {
+      "release-type": "node",
+      "component": "eia",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/gcs": {
       "release-type": "node",
       "component": "gcs",
