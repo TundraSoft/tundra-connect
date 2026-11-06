@@ -15,7 +15,7 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-33 connects are implemented today:
+34 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
@@ -34,6 +34,7 @@ if you'd like to champion one.
 - **[GoogleWebRisk](connectors/google-web-risk/README.md)** — Typed Google Web Risk client: check a URL against Google's malware, phishing and unwanted-software lists with the Lookup API's uris:search, under a hard per-call deadline.
 - **[Kalshi](connectors/kalshi/README.md)** — Typed Kalshi client: public market data, plus RSA-PSS-signed trading — balance, positions, fills and orders; place, amend and cancel orders — and a signed real-time WebSocket feed for order books, trades, fills and order updates.
 - **[ntfy](connectors/ntfy/README.md)** — Typed ntfy.sh client for publishing push notifications to a topic.
+- **[OpenMeteo](connectors/open-meteo/README.md)** — Typed Open-Meteo weather client for Deno, Bun, Node.js, browsers and Cloudflare Workers: Forecast, Ensemble (every member), Previous Runs, Historical Forecast, Single Runs and archive APIs, with explicit model choice (GFS, HRRR, ECMWF IFS, ICON, ...) and any variable by name.
 - **[OpenExchange](connectors/openexchange/README.md)** — Typed Open Exchange Rates client: latest and historical rates, time series, currency conversion, OHLC data and account usage.
 - **[OpenWeatherMap](connectors/openweathermap/README.md)** — Typed OpenWeatherMap client: current weather and 5-day / 3-hour forecasts by city name or coordinates.
 - **[PayPal](connectors/paypal/README.md)** — Typed PayPal client for Orders v2: create, fetch, capture and refund, with automatic OAuth2 tokens, idempotency keys and webhook verification.

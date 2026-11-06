@@ -42,6 +42,7 @@ on:
           - connectors/google-web-risk
           - connectors/kalshi
           - connectors/ntfy
+          - connectors/open-meteo
           - connectors/openexchange
           - connectors/openweathermap
           - connectors/paypal

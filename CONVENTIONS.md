@@ -490,6 +490,10 @@ server (the WebSocket mock server) are skipped by it.
   payment requires a real checkout) or that would mutate real, undo-less
   state on a live account (e.g. Sentry's `updateIssue`) — exclude it with a
   one-line comment explaining why, don't force it.
+- **Keyless vendors** (Open-Meteo's free tier, aviationweather.gov,
+  Deribit's public market data) gate their live `describe` on
+  `LIVE_TEST_PUBLIC` instead of a credential; the live-tests workflow
+  sets it, like `LIVE_TEST_SOCKETS` for public feeds.
 - **`LIVE_TEST_ALLOW_VISIBLE_EFFECTS`** additionally gates any live call
   whose side effect is real-world-visible with no way to undo it (an actual
   chat message, SMS, or call — e.g. Discord/Telegram/ntfy/Twilio's send
