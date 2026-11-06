@@ -15,7 +15,7 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-33 connects are implemented today:
+34 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AzureBlob](connectors/azure-blob/README.md)** — Typed Azure Blob Storage client with Shared Key or SAS auth: upload, download, list, inspect and delete blobs, including streamed block uploads and downloads for large files.
@@ -26,6 +26,7 @@ if you'd like to champion one.
 - **[CloudflareSaaS](connectors/cloudflare-saas/README.md)** — Typed Cloudflare for SaaS client: create, list, inspect, update and delete custom hostnames with their TLS and ownership validation state, manage the fallback origin, and read the hostname quota.
 - **[CloudflareTurnstile](connectors/cloudflare-turnstile/README.md)** — Typed Cloudflare Turnstile client: verify a widget token server-side with siteverify, with hostname and action checks, a hard per-call deadline, and failed challenges as answers instead of errors.
 - **[CoinGecko](connectors/coingecko/README.md)** — Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.
+- **[Deribit](connectors/deribit/README.md)** — Typed Deribit API client for Deno, Bun, Node.js, browsers and Cloudflare Workers: option-chain discovery, book summaries and historical trades over REST, plus a JSON-RPC WebSocket feed of trades, order books with change_id gap detection, tickers with mark IV and greeks, DVOL, price indices and option mark prices.
 - **[Discord](connectors/discord/README.md)** — Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.
 - **[DodoPayments](connectors/dodo-payments/README.md)** — Typed Dodo Payments client: create, verify and refund payments, manage subscriptions and plan changes, sync products and discount codes, open the customer portal, and verify Standard Webhooks signatures.
 - **[GCS](connectors/gcs/README.md)** — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.

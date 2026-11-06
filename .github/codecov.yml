@@ -49,6 +49,10 @@ component_management:
         name: coingecko
         paths:
           - connectors/coingecko/**
+      - component_id: deribit
+        name: deribit
+        paths:
+          - connectors/deribit/**
       - component_id: discord
         name: discord
         paths:
