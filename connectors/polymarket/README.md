@@ -103,9 +103,11 @@ client with these calls, the same way you would for order signing.
 
 - **Polymarket Protocol V2 markets** (Gamma `version: "v2"`, traded by
   `positionIds` on ExchangeV3 with EIP-712 domain version `"3"`). This
-  client signs for CTF Exchange V2 (`version: "v1"` markets — every listed
-  crypto up/down market as of 2026-11-06); `GammaMarket.version` says which
-  a market is.
+  client signs only for CTF Exchange V2 (`version: "v1"` markets). Gamma
+  lists V2 markets alongside v1 — including `polyv2…` crypto up/down
+  markets for some assets, some covering the same window as a v1 market —
+  so check `GammaMarket.version` before ordering: an order signed
+  here for a V2 market uses the wrong EIP-712 domain.
 - The RTDS **comments** topic, PolyBolt's `esports.series` channel and the
   **sports** feed. (The legacy RTDS price topics were removed — use
   PolyBolt.)
