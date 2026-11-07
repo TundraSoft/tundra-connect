@@ -6,7 +6,6 @@ import {
 } from './PolymarketMarketSocket.ts';
 import { collectUntil, MockFeedServer } from './fixtures/MockFeedServer.ts';
 import { envArgs } from '@utils';
-import { PolymarketLiveDataSocket } from './PolymarketLiveDataSocket.ts';
 
 const BOOK = {
   market: '0xa69e',
@@ -225,20 +224,6 @@ describe({
         if (seen.has('book') && seen.has('price_change')) break;
       }
       assert(seen.has('book'), `saw ${[...seen]}`);
-    });
-
-    it('streams Chainlink and Binance reference prices', async () => {
-      const socket = new PolymarketLiveDataSocket({
-        sources: { chainlink: ['btc/usd'], binance: ['btcusdt'] },
-        signal: AbortSignal.timeout(20_000),
-      });
-      const sources = new Set<string>();
-      for await (const event of socket) {
-        if (event.type === 'invalid') throw event.error;
-        if (event.type === 'price') sources.add(event.source);
-        if (sources.size === 2) break;
-      }
-      assertEquals([...sources].sort(), ['binance', 'chainlink']);
     });
   },
 });

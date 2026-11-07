@@ -2,74 +2,18 @@ import { type BaseGuardian, Guardian } from '@guardian';
 import { camelizeKeys } from './camelizeKeys.ts';
 
 /**
- * Real-time reference-price messages: the legacy real-time data socket
- * (`wss://ws-live-data.polymarket.com` — Chainlink and Binance crypto
- * prices) and its replacement, PolyBolt (`wss://ws-live-v2.polymarket.com/ws`
- * — Chainlink/Pyth crypto, equity, TWAP and Polymarket top-of-book
- * channels). Keys are camelCased and every unmodelled field passes
- * through; `fullAccuracyValue` stays a string because it is the exact
- * decimal (or, on the legacy Chainlink topic, an E18 integer) the source
- * published.
+ * PolyBolt (`wss://ws-live-v2.polymarket.com/ws`) messages — Chainlink/Pyth
+ * crypto, equity (stocks, ETFs, forex, metals, commodities), the
+ * Chainlink 60-second TWAP channels and Polymarket top-of-book. Keys are
+ * camelCased and every unmodelled field passes through.
+ * `fullAccuracyValue` stays a string: it is the exact decimal the source
+ * published, the value to record when a market settles on it.
  */
-
-// ── Legacy real-time data socket ───────────────────────────────────────────
-
-/** One price update from the legacy real-time data socket. */
-export type PolymarketLiveDataPrice = {
-  /** `crypto_prices_chainlink` or `crypto_prices` (Binance). */
-  topic: string;
-  /** `update` for live prices. */
-  type: string;
-  /** Server send time, Unix milliseconds. */
-  timestamp: number;
-  connectionId?: string;
-  payload: {
-    /** Wire symbol: `btc/usd` (Chainlink) or `btcusdt` (Binance). */
-    symbol: string;
-    /** Source event time, Unix milliseconds. */
-    timestamp: number;
-    value: number;
-    /** Exact published value: an E18 integer string on Chainlink, a decimal on Binance. */
-    fullAccuracyValue?: string;
-  };
-};
-
-/**
- * Schema for a legacy real-time data socket price message.
- *
- * @example
- * ```typescript
- * import { PolymarketLiveDataPriceSchemaObject } from '@tundraconnect/polymarket/schemas';
- *
- * const [error, price] = PolymarketLiveDataPriceSchemaObject.safeParse({
- *   topic: 'crypto_prices', type: 'update', timestamp: 1792414378173,
- *   payload: { symbol: 'xrpusdt', timestamp: 1792414378000, value: 1.3098, full_accuracy_value: '1.30980000' },
- * });
- * ```
- */
-export const PolymarketLiveDataPriceSchemaObject: BaseGuardian<
-  PolymarketLiveDataPrice
-> = Guardian.preprocess(
-  camelizeKeys,
-  Guardian.object({
-    topic: Guardian.string(),
-    type: Guardian.string(),
-    timestamp: Guardian.number(),
-    connectionId: Guardian.string().optional(),
-    payload: Guardian.object({
-      symbol: Guardian.string(),
-      timestamp: Guardian.number(),
-      value: Guardian.number(),
-      fullAccuracyValue: Guardian.string().optional(),
-    }).passthrough(),
-  }).passthrough().describe({
-    title: 'Live-data price',
-    description:
-      'A Chainlink or Binance crypto price from the legacy real-time data socket.',
-  }),
-);
 
 // ── PolyBolt ───────────────────────────────────────────────────────────────
+
+/** `open` | `closed` | `unknown` — the producer's own statement about the priced instrument's market. Absent means not stated, never open. */
+export type PolymarketMarketStatus = 'open' | 'closed' | 'unknown';
 
 /** One historical point inside a PolyBolt snapshot batch (no symbol/source — those are on the batch). */
 export type PolymarketPricePoint = {
@@ -81,7 +25,9 @@ export type PolymarketPricePoint = {
 
 /**
  * A live PolyBolt price — `price.crypto`, `price.equity`, or their
- * `.twap` channels.
+ * `.twap` channels. Every update is delivered, including a status-only
+ * change that repeats the last price and `timestamp` with
+ * `isCarriedForward: true` — never de-duplicate on `timestamp`.
  */
 export type PolymarketPriceUpdate = {
   symbol: string;
@@ -90,21 +36,34 @@ export type PolymarketPriceUpdate = {
   fullAccuracyValue: string;
   /** Source event time, Unix milliseconds. */
   timestamp: number;
-  /** `chainlink` | `pyth` | `massive`. */
+  /**
+   * The vendor that produced this price: `chainlink`, `pyth` or `massive`
+   * today, but treat the set as open. A symbol's vendor can change between
+   * connections (and briefly mid-roll), so read it on every point.
+   */
   source: string;
-  /** TWAP channels only. */
+  /** TWAP channels only: the averaging window, seconds (60). */
   windowSeconds?: number;
   /** Equity only: ingest receive time, Unix milliseconds. */
   receivedAt?: number;
-  /** Equity only: carried forward from the last session (market closed). */
+  /** Equity only: repeats an already-measured price (closed session, or a status change). */
   isCarriedForward?: boolean;
+  /** Equity channels only (since 2026-10-21); absent when the producer states nothing. */
+  marketStatus?: PolymarketMarketStatus;
 };
 
 /** The snapshot sent once per new PolyBolt subscription: up to two minutes of history. */
 export type PolymarketPriceSnapshot = {
   symbol: string;
+  /** The vendor behind every point in the batch — re-read it after each reconnect. */
   source: string;
   windowSeconds?: number;
+  /**
+   * Equity channels: the series' current status. While `closed` or
+   * `unknown`, `data` also holds the last price even when it is older than
+   * two minutes (the price the market stopped at).
+   */
+  marketStatus?: PolymarketMarketStatus;
   data: PolymarketPricePoint[];
 };
 
@@ -143,6 +102,8 @@ const _point = Guardian.object({
   windowSeconds: Guardian.number().optional(),
   receivedAt: Guardian.number().optional(),
   isCarriedForward: Guardian.boolean().strict().optional(),
+  marketStatus: Guardian.enum(['open', 'closed', 'unknown'] as const)
+    .optional(),
 }).passthrough();
 
 /**
@@ -164,7 +125,8 @@ export const PolymarketPriceUpdateSchemaObject: BaseGuardian<
   camelizeKeys,
   _point.describe({
     title: 'PolyBolt price',
-    description: 'A live crypto, equity or TWAP reference price.',
+    description:
+      'A live crypto, equity or TWAP reference price, with its producing vendor and (equity) market status.',
   }),
 );
 
@@ -189,6 +151,8 @@ export const PolymarketPriceSnapshotSchemaObject: BaseGuardian<
     symbol: Guardian.string(),
     source: Guardian.string(),
     windowSeconds: Guardian.number().optional(),
+    marketStatus: Guardian.enum(['open', 'closed', 'unknown'] as const)
+      .optional(),
     data: Guardian.array(
       Guardian.object({
         value: Guardian.number(),

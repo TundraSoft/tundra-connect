@@ -4,8 +4,9 @@
  * (trading — L1/L2 auth, real secp256k1/EIP-712 order signing).
  *
  * Typed Polymarket client: Gamma market discovery, CLOB trading with
- * secp256k1/EIP-712 order signing, portfolio positions and value, and gasless
- * split/merge/redeem.
+ * secp256k1/EIP-712 order signing, Data API v2 portfolio, activity, token and
+ * resolution reads, fee estimates from each market's own fee schedule, and
+ * gasless split/merge/redeem.
  *
  * Subpaths: `./schemas` (Guardian schemas and inferred types), `./sockets`
  * (WebSocket feeds, importable without the REST client) and `./errors`
@@ -33,9 +34,9 @@
  * const balance = await clob.getBalance();
  * console.log('USDC available:', balance.balance);
  *
- * // Portfolio: open orders and fills (CLOB), positions and value (Data API).
+ * // Portfolio: open orders and fills (CLOB), positions and value (Data API v2).
  * const { data: openOrders } = await clob.getOpenOrders();
- * const positions = await clob.getPositions();
+ * const { data: positions } = await clob.getPositions();
  * console.log(
  *   openOrders.length,
  *   'resting orders,',
@@ -83,11 +84,16 @@ export {
   CLOB_API,
   DATA_API,
   GAMMA_API,
+  type GetActivityOptions,
   type GetFillsOptions,
   type GetMarketsOptions,
   type GetMarketsResult,
   type GetOpenOrdersOptions,
   type GetPositionsOptions,
+  type GetResolutionsOptions,
+  type GetTokensOptions,
+  type GetTradesOptions,
+  type IdList,
   type OrderAction,
   type OrderRequest,
   type OrderResult,
@@ -100,6 +106,13 @@ export {
   RELAYER_API,
   type SubmitOrderOptions,
 } from './Polymarket.ts';
+
+// Fee arithmetic from a market's own feeSchedule
+export {
+  estimateFees,
+  type FeeEstimate,
+  type FeeSource,
+} from './PolymarketFees.ts';
 
 // Caller-supplied signing (keys held outside JavaScript)
 export type {

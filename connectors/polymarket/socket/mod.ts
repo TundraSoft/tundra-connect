@@ -6,9 +6,8 @@
  * - {@link PolymarketUserSocket} — the account's own orders and trades,
  *   authenticated with the same CLOB API credentials as the REST client.
  * - {@link PolymarketPriceSocket} — PolyBolt reference prices (Chainlink/Pyth
- *   crypto, equities, TWAPs) and Polymarket top-of-book.
- * - {@link PolymarketLiveDataSocket} — the legacy real-time data socket's
- *   Chainlink and Binance crypto prices.
+ *   crypto, equities and forex, the Chainlink 60-second TWAPs crypto up/down
+ *   markets settle on) and Polymarket top-of-book.
  *
  * Each socket is an async iterable of typed, Guardian-validated events plus
  * lifecycle events (`connected`, `disconnected`, `gap`, `error`,
@@ -67,20 +66,15 @@ export {
   type PolymarketUserSocketOptions,
 } from './PolymarketUserSocket.ts';
 export {
+  POLYMARKET_PRICE_SYMBOLS,
   POLYMARKET_PRICE_WS_URL,
   type PolymarketPriceChannel,
   type PolymarketPriceEnvelopeFields,
   type PolymarketPriceEvent,
   type PolymarketPriceFilter,
+  type PolymarketPriceProvider,
   PolymarketPriceSocket,
   type PolymarketPriceSocketEvent,
   type PolymarketPriceSocketOptions,
+  type PolymarketPriceSubscribed,
 } from './PolymarketPriceSocket.ts';
-export {
-  POLYMARKET_LIVE_DATA_WS_URL,
-  type PolymarketLiveDataPriceEvent,
-  PolymarketLiveDataSocket,
-  type PolymarketLiveDataSocketEvent,
-  type PolymarketLiveDataSocketOptions,
-  type PolymarketLiveDataSource,
-} from './PolymarketLiveDataSocket.ts';

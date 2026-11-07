@@ -14,6 +14,7 @@ export const PolymarketErrorCodes = {
   RESPONSE_ERROR: 'Polymarket API response did not match the expected schema.',
   RATE_LIMITED: 'Polymarket rate-limited this request (HTTP 429).',
   NOT_FOUND: 'The requested Polymarket resource was not found.',
+  INVALID_OPTIONS: 'Invalid options for ${method}: ${detail}',
   AUTH_FAILED:
     'Polymarket rejected the request credentials (HTTP 401): ${detail}',
   SERVICE_UNAVAILABLE:

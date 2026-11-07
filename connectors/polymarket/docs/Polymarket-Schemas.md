@@ -11,12 +11,20 @@ const [error, market] = GammaMarketSchemaObject.safeParse(rawResponse);
 
 ## Gamma
 
-| Schema                              | Endpoint                              | Notes                                                                                                                                                                                                                                                           |
-| ----------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GammaMarketSchemaObject`           | `/markets/*`, `/markets/slug/{slug}`  | `.passthrough()` — unmodeled vendor fields survive on the parsed object. `outcomes`/`outcomePrices`/`clobTokenIds` accept either a JSON-encoded string or a native array (Gamma serializes both ways, observed in the wild) and always normalize to `string[]`. |
-| `GammaMarketListSchemaObject`       | `/markets` (legacy)                   | A bare array of `GammaMarketSchemaObject` entries.                                                                                                                                                                                                              |
-| `GammaMarketKeysetPageSchemaObject` | `/markets/keyset`                     | `{ markets, nextCursor? }` — the keyset endpoint wraps its page in an object, unlike legacy's bare array.                                                                                                                                                       |
-| `FeeScheduleSchemaObject`           | (nested in `GammaMarket.feeSchedule`) | Only present on markets with a non-default fee schedule.                                                                                                                                                                                                        |
+| Schema                              | Endpoint                                     | Notes                                                                                                                                                                                                                                                           |
+| ----------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GammaMarketSchemaObject`           | `/markets/*`, `/markets/slug/{slug}`         | `.passthrough()` — unmodeled vendor fields survive on the parsed object. `outcomes`/`outcomePrices`/`clobTokenIds` accept either a JSON-encoded string or a native array (Gamma serializes both ways, observed in the wild) and always normalize to `string[]`. |
+| `GammaMarketListSchemaObject`       | `/markets` (legacy)                          | A bare array of `GammaMarketSchemaObject` entries.                                                                                                                                                                                                              |
+| `GammaMarketKeysetPageSchemaObject` | `/markets/keyset`                            | `{ markets, nextCursor? }` — the keyset endpoint wraps its page in an object, unlike legacy's bare array.                                                                                                                                                       |
+| `FeeScheduleSchemaObject`           | (nested in `GammaMarket.feeSchedule`)        | `{ rate, exponent, takerOnly?, rebateRate? }` — the only input `estimateFees()` reads.                                                                                                                                                                          |
+| `CryptoMarketConfigSchemaObject`    | (nested in `GammaMarket.cryptoMarketConfig`) | Crypto up/down markets: `asset`, `duration`, `twapEnabled`, `twapLookbackSeconds`.                                                                                                                                                                              |
+
+`GammaMarket` also types the fee fields (`feesEnabled`, `feeSchedule`,
+`feeType`, `takerBaseFee`/`makerBaseFee`), `cryptoMarketConfig`,
+`resolutionMechanism`, `fallbackResolutionType`, `eventStartTime`,
+`clearBookOnStart`, `rfqEnabled` and `version` (`v1` ConditionalTokens,
+`v2` Protocol V2 — with `positionIds` and `resolutionStatus`); each is
+optional and may be `null`.
 
 `GammaMarket.active`/`closed`/`archived`/`negRisk` all default to `false`
 when the vendor omits them (matching the vendor's own documented default),
@@ -45,13 +53,21 @@ before that field's own type check — verified empirically against
 | `ClobPostOrdersResponseSchemaObject` | `POST /orders`                                                    | A bare array of `ClobPostOrderResponseSchemaObject` entries, one per submitted order.                                                                                                                                       |
 | `ClobCancelResponseSchemaObject`     | `DELETE /order`, `DELETE /orders`, `DELETE /cancel-market-orders` | Normalizes `not_canceled` to `notCanceled`; both default to empty when the vendor omits them.                                                                                                                               |
 
-## Data API
+## Data API v2
 
-| Schema                         | Endpoint             | Notes                                                                                                                           |
-| ------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `DataPositionSchemaObject`     | one `/positions` row | Already camelCase and numeric on the wire — validated, not normalized. `.passthrough()` keeps `icon`, `eventId`, `endDate`, ... |
-| `DataPositionListSchemaObject` | `GET /positions`     | Bare array; a `null` body normalizes to `[]`.                                                                                   |
-| `DataValueListSchemaObject`    | `GET /value`         | `[{ user, value }]` — one entry per requested wallet.                                                                           |
+Every v2 payload is snake_case on the wire; these schemas camelCase every
+key (modelled or not) and pass unmodelled fields through.
+
+| Schema                           | Endpoint              | Notes                                                                                                               |
+| -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `DataPositionsPageSchemaObject`  | `GET /v2/positions`   | `{ data: DataPosition[], pagination }`. Economics required; Gamma/profile enrichment (`title`, `icon`, …) optional. |
+| `DataPositionSchemaObject`       | one positions row     | `currentSize` is the holding, `totalSize` lifetime buys; `entryCostUsdc` fee-exclusive, `entryFeesUsdc` on top.     |
+| `DataValueSchemaObject`          | `GET /v2/value`       | Unwraps `data` to `{ proxyWallet, value }`.                                                                         |
+| `DataActivityPageSchemaObject`   | `GET /v2/activity`    | `{ data: DataActivity[], pagination }`; `isCombo` only on combo trade rows.                                         |
+| `DataTradesPageSchemaObject`     | `GET /v2/trades`      | `{ data: DataTrade[], pagination }`.                                                                                |
+| `DataTokenListSchemaObject`      | `GET /v2/tokens`      | Unwraps `data`; `structuralConditionId`, `finalPrice`, `clobIndex`, … may be `null`.                                |
+| `DataResolutionListSchemaObject` | `GET /v2/resolutions` | Unwraps `data`; `expectedSettlementTime`/`settlementTimeBasis` only while an estimate applies.                      |
+| `DataPaginationSchemaObject`     | `pagination` block    | `{ hasMore, limit, nextCursor: string \| null, offset }`.                                                           |
 
 ## Relayer
 
@@ -74,22 +90,21 @@ The socket event payloads (`event.data`). Every key is camelCased (unknown
 ones too), decimal and timestamp strings become numbers, and
 `.passthrough()` keeps every field the venue sends.
 
-| Schema                                  | Message                            | Notes                                                                                    |
-| --------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| `PolymarketBookSchemaObject`            | market `book`                      | Full-depth `bids`/`asks`; the initial snapshot also carries `tickSize`/`lastTradePrice`. |
-| `PolymarketPriceChangeSchemaObject`     | market `price_change`              | `priceChanges[]`; accepts the `changes` variant. `size` is the level's new size.         |
-| `PolymarketTickSizeChangeSchemaObject`  | market `tick_size_change`          |                                                                                          |
-| `PolymarketLastTradePriceSchemaObject`  | market `last_trade_price`          |                                                                                          |
-| `PolymarketBestBidAskSchemaObject`      | market `best_bid_ask`              |                                                                                          |
-| `PolymarketNewMarketSchemaObject`       | market `new_market`                | Many extra fields (description, tags, fees) pass through.                                |
-| `PolymarketMarketResolvedSchemaObject`  | market `market_resolved`           |                                                                                          |
-| `PolymarketUserOrderSchemaObject`       | user `order`                       | `type` is `PLACEMENT`/`UPDATE`/`CANCELLATION`.                                           |
-| `PolymarketUserTradeSchemaObject`       | user `trade`                       | A `null` `transaction_hash` becomes absent; `makerOrders` rows are camelCased.           |
-| `PolymarketPriceEnvelopeSchemaObject`   | PolyBolt envelope                  | `seq`/`ts`/`dropped` must be real integers.                                              |
-| `PolymarketPriceUpdateSchemaObject`     | PolyBolt live price                | `fullAccuracyValue` keeps the exact decimal string.                                      |
-| `PolymarketPriceSnapshotSchemaObject`   | PolyBolt snapshot batch            |                                                                                          |
-| `PolymarketPriceBestBidAskSchemaObject` | PolyBolt `price.polymarket`        |                                                                                          |
-| `PolymarketLiveDataPriceSchemaObject`   | legacy `crypto_prices(_chainlink)` | `payload.fullAccuracyValue` stays a string (an E18 integer on Chainlink).                |
+| Schema                                  | Message                     | Notes                                                                                    |
+| --------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------- |
+| `PolymarketBookSchemaObject`            | market `book`               | Full-depth `bids`/`asks`; the initial snapshot also carries `tickSize`/`lastTradePrice`. |
+| `PolymarketPriceChangeSchemaObject`     | market `price_change`       | `priceChanges[]`; accepts the `changes` variant. `size` is the level's new size.         |
+| `PolymarketTickSizeChangeSchemaObject`  | market `tick_size_change`   |                                                                                          |
+| `PolymarketLastTradePriceSchemaObject`  | market `last_trade_price`   |                                                                                          |
+| `PolymarketBestBidAskSchemaObject`      | market `best_bid_ask`       |                                                                                          |
+| `PolymarketNewMarketSchemaObject`       | market `new_market`         | Many extra fields (description, tags, fees) pass through.                                |
+| `PolymarketMarketResolvedSchemaObject`  | market `market_resolved`    |                                                                                          |
+| `PolymarketUserOrderSchemaObject`       | user `order`                | `type` is `PLACEMENT`/`UPDATE`/`CANCELLATION`.                                           |
+| `PolymarketUserTradeSchemaObject`       | user `trade`                | A `null` `transaction_hash` becomes absent; `makerOrders` rows are camelCased.           |
+| `PolymarketPriceEnvelopeSchemaObject`   | PolyBolt envelope           | `seq`/`ts`/`dropped` must be real integers.                                              |
+| `PolymarketPriceUpdateSchemaObject`     | PolyBolt live price         | `fullAccuracyValue` keeps the exact decimal string; `source`, `marketStatus` (equity).   |
+| `PolymarketPriceSnapshotSchemaObject`   | PolyBolt snapshot batch     | Batch-level `source` and `marketStatus`.                                                 |
+| `PolymarketPriceBestBidAskSchemaObject` | PolyBolt `price.polymarket` |                                                                                          |
 
 See [Sockets](Polymarket-Sockets.md) for the events that carry them.
 

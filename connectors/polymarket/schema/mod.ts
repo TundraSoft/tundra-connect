@@ -52,15 +52,32 @@ export {
   ClobTradesPageSchemaObject,
 } from './ClobData.ts';
 export {
+  type DataActivity,
+  type DataActivityPage,
+  DataActivityPageSchemaObject,
+  DataActivitySchemaObject,
+  type DataPagination,
+  DataPaginationSchemaObject,
   type DataPosition,
-  type DataPositionList,
-  DataPositionListSchemaObject,
   DataPositionSchemaObject,
+  type DataPositionsPage,
+  DataPositionsPageSchemaObject,
+  type DataResolution,
+  type DataResolutionList,
+  DataResolutionListSchemaObject,
+  type DataToken,
+  type DataTokenList,
+  DataTokenListSchemaObject,
+  type DataTrade,
+  DataTradeSchemaObject,
+  type DataTradesPage,
+  DataTradesPageSchemaObject,
   type DataValue,
-  type DataValueList,
-  DataValueListSchemaObject,
+  DataValueSchemaObject,
 } from './DataApi.ts';
 export {
+  type CryptoMarketConfig,
+  CryptoMarketConfigSchemaObject,
   type FeeSchedule,
   FeeScheduleSchemaObject,
   type GammaMarket,
@@ -103,8 +120,7 @@ export {
   PolymarketUserTradeSchemaObject,
 } from './UserChannel.ts';
 export {
-  type PolymarketLiveDataPrice,
-  PolymarketLiveDataPriceSchemaObject,
+  type PolymarketMarketStatus,
   type PolymarketPriceBestBidAsk,
   PolymarketPriceBestBidAskSchemaObject,
   type PolymarketPriceEnvelope,
@@ -114,4 +130,4 @@ export {
   PolymarketPriceSnapshotSchemaObject,
   type PolymarketPriceUpdate,
   PolymarketPriceUpdateSchemaObject,
-} from './LiveData.ts';
+} from './PriceChannel.ts';

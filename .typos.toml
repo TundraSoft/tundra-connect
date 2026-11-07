@@ -37,6 +37,8 @@ http = "http"
 https = "https"
 iso = "iso"
 json = "json"
+# PolyBolt commodity symbol: WTI crude front-month (`cll`)
+cll = "cll"
 # Pyth Lazer — the former (and endpoint) name of Pyth Pro
 lazer = "lazer"
 jwt = "jwt"
