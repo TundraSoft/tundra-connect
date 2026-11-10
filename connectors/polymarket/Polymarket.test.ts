@@ -1,7 +1,13 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import { envArgs } from '@utils';
-import { CLOB_API, DATA_API, GAMMA_API, Polymarket } from './Polymarket.ts';
+import {
+  CLOB_API,
+  DATA_API,
+  GAMMA_API,
+  orderAsset,
+  Polymarket,
+} from './Polymarket.ts';
 import { estimateFees } from './PolymarketFees.ts';
 import { PolymarketError } from './errors/mod.ts';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
@@ -2321,7 +2327,7 @@ describe('Polymarket — prepareOrder / submitPrepared', () => {
         price: v.input.price,
         shares: v.input.shares,
         orderType: 'GTC',
-        version: v.input.version as 1 | 2,
+        version: v.input.version as 1 | 2 | 3,
         negRisk: v.input.negRisk,
         salt: v.input.salt,
         nowMs: v.input.nowMs,
@@ -2500,6 +2506,152 @@ describe('Polymarket — prepareOrder / submitPrepared', () => {
   });
 });
 
+// ── Polymarket Protocol V2 markets (ExchangeV3) ─────────────────────────────
+
+describe('Polymarket — Protocol V2 markets (ExchangeV3)', () => {
+  const trader = () =>
+    new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        privateKey: TEST_KEY,
+        funder: PROXY,
+        apiCredentials: CREDS,
+      },
+    });
+  const v1Market = {
+    version: 'v1',
+    outcomes: ['Yes', 'No'],
+    clobTokenIds: ['111', '222'],
+    positionIds: null,
+  };
+  const v2Market = {
+    version: 'v2',
+    outcomes: ['Up', 'Down'],
+    clobTokenIds: ['333', '444'],
+    positionIds: ['333', '444'],
+  };
+  const order = {
+    side: 'BUY' as const,
+    price: 0.55,
+    shares: 9,
+    orderType: 'GTC' as const,
+  };
+
+  it('orderAsset picks clobTokenIds for v1 and positionIds + ExchangeV3 for v2', () => {
+    asserts.assertEquals(orderAsset(v1Market, 1), { tokenId: '222' });
+    asserts.assertEquals(orderAsset(v1Market, 'Yes'), { tokenId: '111' });
+    asserts.assertEquals(orderAsset(v2Market, 'Down'), {
+      tokenId: '444',
+      version: 3,
+    });
+  });
+
+  it('orderAsset refuses an unknown version or outcome instead of guessing', () => {
+    for (
+      const [market, outcome] of [
+        [{ ...v2Market, version: null }, 0],
+        [{ ...v2Market, version: 'v3' }, 0],
+        [v2Market, 'Sideways'],
+        [v2Market, 2],
+        [{ ...v2Market, positionIds: null }, 0],
+      ] as const
+    ) {
+      const err = asserts.assertThrows(
+        () => orderAsset(market, outcome),
+        PolymarketError,
+      );
+      asserts.assertEquals(err.code, 'INVALID_OPTIONS');
+    }
+  });
+
+  it('signs version 3 for ExchangeV3 with no version or neg-risk lookup', async () => {
+    const c = trader();
+    const prepared = await c.prepareOrder({
+      ...orderAsset(v2Market, 'Up'),
+      ...order,
+      salt: 1,
+      nowMs: 1_000,
+    });
+    asserts.assertEquals(prepared.version, 3);
+    asserts.assertEquals(prepared.negRisk, false);
+    asserts.assertEquals(prepared.tokenId, '333');
+    asserts.assertEquals(c.requests.length, 0, 'no /version, no /neg-risk');
+    const v2 = await c.prepareOrder({
+      tokenId: '333',
+      ...order,
+      version: 2,
+      negRisk: false,
+      salt: 1,
+      nowMs: 1_000,
+    });
+    asserts.assertNotEquals(prepared.orderHash, v2.orderHash);
+    asserts.assertEquals(Object.keys(prepared.order), Object.keys(v2.order));
+  });
+
+  it('a batch looks up neg-risk only for its v1 orders', async () => {
+    const c = trader();
+    c.setResponseQueue([
+      { body: { version: 2 } },
+      { body: { neg_risk: true } },
+    ]);
+    const [v1, v2] = await c.prepareOrders([
+      { ...orderAsset(v1Market, 'Yes'), ...order },
+      { ...orderAsset(v2Market, 'Up'), ...order },
+    ]);
+    asserts.assertEquals([v1!.version, v1!.negRisk], [2, true]);
+    asserts.assertEquals([v2!.version, v2!.negRisk], [3, false]);
+    const paths = c.requests.map((r) => new URL(r.url).pathname);
+    asserts.assertEquals(paths.sort(), ['/neg-risk', '/version']);
+    asserts.assertEquals(
+      new URL(c.requests.find((r) => r.url.includes('/neg-risk'))!.url)
+        .searchParams.get('token_id'),
+      '111',
+    );
+  });
+
+  it('never re-signs a version 3 order for the /version exchange on a mismatch', async () => {
+    const c = trader();
+    c.setResponseQueue([
+      { body: { errorMsg: 'order_version_mismatch' }, status: 400 },
+      { body: { version: 2 } },
+    ]);
+    const err = await asserts.assertRejects(
+      () => c.submitOrder({ ...orderAsset(v2Market, 'Up'), ...order }),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'ORDER_VERSION_STALE');
+    asserts.assertEquals(
+      c.requests.filter((r) => r.method === 'POST').length,
+      1,
+      'one POST — no retry',
+    );
+  });
+
+  it('reads a V2 position balance as CONDITIONAL-V2', async () => {
+    const c = trader();
+    c.setResponse({ balance: '5000000', allowances: {} });
+    await c.getBalance(orderAsset(v2Market, 'Up'));
+    const url = new URL(c.lastRequest!.url);
+    asserts.assertEquals(url.searchParams.get('asset_type'), 'CONDITIONAL-V2');
+    asserts.assertEquals(url.searchParams.get('token_id'), '333');
+    await c.getBalance(orderAsset(v1Market, 'Yes'));
+    asserts.assertEquals(
+      new URL(c.lastRequest!.url).searchParams.get('asset_type'),
+      'CONDITIONAL',
+    );
+  });
+
+  it('getMarkets passes the version filter', async () => {
+    const c = new MockPolymarket({});
+    c.setResponse([]);
+    await c.getMarkets({ version: 'v2' });
+    asserts.assertEquals(
+      new URL(c.lastRequest!.url).searchParams.get('version'),
+      'v2',
+    );
+  });
+});
+
 // ── Live: duplicate submission (places a real order) ────────────────────────
 // Needs a funded proxy wallet: CONNECTOR_POLYMARKET_PRIVATE_KEY,
 // CONNECTOR_POLYMARKET_FUNDER and LIVE_TEST_ALLOW_ORDERS. It rests one
@@ -2552,6 +2704,97 @@ describe({
         asserts.assertEquals(err.code, 'ORDER_DUPLICATE');
         const order = await client.getOrder(prepared.orderHash);
         asserts.assertEquals(order.id, prepared.orderHash);
+      } finally {
+        await client.cancelOrder(prepared.orderHash).catch(() => {});
+      }
+    });
+  },
+});
+
+// ── Live: Polymarket Protocol V2 (ExchangeV3) ───────────────────────────────
+// Read-only with a key and funder: types a live V2 market, picks its
+// position id and reads its CONDITIONAL-V2 balance. With
+// LIVE_TEST_ALLOW_ORDERS as well, it also rests one post-only BUY of 5
+// shares at 0.01 ($0.05 of collateral) on that market — signed for
+// ExchangeV3 — and cancels it in `finally`. Needs pUSD approved for
+// ExchangeV3 (the collateral balance's `allowances` shows it).
+const v2Trader = () =>
+  new Polymarket({
+    auth: {
+      type: 'CUSTOM',
+      privateKey: credentials.privateKey!,
+      funder: env.get('CONNECTOR_POLYMARKET_FUNDER')!,
+    },
+  });
+const liveV2Market = async (client: Polymarket) => {
+  const { markets } = await client.getMarkets({
+    endpoint: 'keyset',
+    version: 'v2',
+    closed: false,
+    ascending: false, // newest first — the oldest have already ended
+    limit: 50,
+  });
+  const market = markets.find((m) =>
+    m.version === 'v2' && m.acceptingOrders === true &&
+    (m.positionIds?.length ?? 0) > 0 &&
+    m.endDate !== undefined && m.endDate !== null &&
+    Date.parse(m.endDate) > Date.now() + 3_600_000
+  );
+  asserts.assert(market, 'no open Protocol V2 market accepting orders');
+  return market;
+};
+
+describe({
+  name: 'Polymarket — Protocol V2 live',
+  ignore: !liveTestsEnabled || !env.get('CONNECTOR_POLYMARKET_FUNDER'),
+  bun: false,
+  node: false,
+  fn: () => {
+    it('lists a V2 market, picks its position id and reads its CONDITIONAL-V2 balance', async () => {
+      const client = v2Trader();
+      await client.deriveApiCredentials();
+      const market = await liveV2Market(client);
+      const asset = orderAsset(market, 0);
+      asserts.assertEquals(asset, {
+        tokenId: market.positionIds![0]!,
+        version: 3,
+      });
+      const position = await client.getBalance(asset);
+      asserts.assert(position.balance >= 0);
+      const collateral = await client.getBalance();
+      asserts.assert(Number.isFinite(collateral.balance));
+    });
+  },
+});
+
+describe({
+  name: 'Polymarket — live Protocol V2 order',
+  ignore: !orderTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('rests and cancels a post-only ExchangeV3 order on a V2 market', async () => {
+      const client = v2Trader();
+      await client.deriveApiCredentials();
+      const market = await liveV2Market(client);
+      const prepared = await client.prepareOrder({
+        ...orderAsset(market, 0),
+        side: 'BUY',
+        price: 0.01,
+        shares: 5,
+        orderType: 'GTC',
+        postOnly: true,
+      });
+      asserts.assertEquals(prepared.version, 3);
+      try {
+        const placed = await client.submitPrepared(prepared);
+        asserts.assertEquals(
+          placed.id,
+          prepared.orderHash,
+          'the venue order id is the ExchangeV3 EIP-712 hash',
+        );
+        const resting = await client.getOrder(prepared.orderHash);
+        asserts.assertEquals(resting.id, prepared.orderHash);
       } finally {
         await client.cancelOrder(prepared.orderHash).catch(() => {});
       }

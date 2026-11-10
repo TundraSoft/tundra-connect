@@ -95,6 +95,8 @@ export {
   type GetTradesOptions,
   type IdList,
   type OrderAction,
+  type OrderAsset,
+  orderAsset,
   type OrderRequest,
   type OrderResult,
   Polymarket,

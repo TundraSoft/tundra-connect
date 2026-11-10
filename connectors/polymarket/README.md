@@ -28,7 +28,10 @@ One `Polymarket` client covers both APIs, matching how a Gamma market's
   order by hash, in any state), `submitOrder()`/`submitOrders()`
   (single/bulk, up to 15 per request, auto-chunked),
   `prepareOrder()`/`submitPrepared()` (sign first, so the order's hash is
-  known before it is sent; never re-signed),
+  known before it is sent; never re-signed), on ConditionalTokens and
+  Polymarket Protocol V2 markets alike — `orderAsset(market, outcome)`
+  picks `clobTokenIds` or `positionIds` and the exchange (CTF Exchange V2
+  or ExchangeV3) from the market's `version`,
   `cancelOrder()`/`cancelOrders()`/`cancelMarketOrders()`/
   `cancelAllOrders()`.
 - **Data API v2** (`data-api.polymarket.com/v2`) — `getPositions()`
@@ -101,13 +104,10 @@ client with these calls, the same way you would for order signing.
 
 ### Out of scope (for now)
 
-- **Polymarket Protocol V2 markets** (Gamma `version: "v2"`, traded by
-  `positionIds` on ExchangeV3 with EIP-712 domain version `"3"`). This
-  client signs only for CTF Exchange V2 (`version: "v1"` markets). Gamma
-  lists V2 markets alongside v1 — including `polyv2…` crypto up/down
-  markets for some assets, some covering the same window as a v1 market —
-  so check `GammaMarket.version` before ordering: an order signed
-  here for a V2 market uses the wrong EIP-712 domain.
+- **Gasless split/merge/redeem of Polymarket Protocol V2 positions** (the
+  V2 Router). Orders on V2 markets are supported — see below — but
+  `split()`/`merge()`/`redeem()` cover ConditionalTokens (`version: "v1"`)
+  markets only.
 - The RTDS **comments** topic, PolyBolt's `esports.series` channel and the
   **sports** feed. (The legacy RTDS price topics were removed — use
   PolyBolt.)

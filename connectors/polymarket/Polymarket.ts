@@ -370,6 +370,8 @@ export type GetMarketsOptions = {
   startDateMax?: string;
   /** Server-side filter to exact condition ids. */
   conditionIds?: string[];
+  /** Position system: `'v2'` lists only Polymarket Protocol V2 markets — Gamma leaves them out of an unfiltered listing. */
+  version?: 'v1' | 'v2';
   /** `'keyset'` pagination cursor from a previous call's {@link GetMarketsResult.nextCursor}. */
   cursor?: string;
   /** `'legacy'` pagination offset. */
@@ -383,9 +385,72 @@ export type GetMarketsResult = {
   nextCursor?: string;
 };
 
+/** What to put in an order for one outcome of a market — see {@link orderAsset}. */
+export type OrderAsset = {
+  /** The outcome's id: `clobTokenIds[i]` (Gamma `version: "v1"`) or `positionIds[i]` (`"v2"`). */
+  tokenId: string;
+  /** `3` (ExchangeV3) for a Protocol V2 market; absent for a v1 market, so the CLOB's `/version` decides. */
+  version?: ProtocolVersion;
+};
+
+/**
+ * The order id and exchange version for one outcome of `market`, chosen by
+ * the market's Gamma `version` as Polymarket's V2 migration guide requires:
+ * `"v1"` → `clobTokenIds[i]`, signed for whatever `/version` reports;
+ * `"v2"` → `positionIds[i]`, signed for ExchangeV3 (`version: 3`). Spread
+ * it into {@link Polymarket.submitOrder} or {@link Polymarket.prepareOrder}.
+ * Pure — no request.
+ *
+ * @param outcome - Outcome index, or its label (`'Yes'`, `'Up'`, …) as in `market.outcomes`.
+ * @throws {PolymarketError} `INVALID_OPTIONS` for a missing or unknown
+ * `version`, an unknown outcome, or a market without that outcome's id.
+ *
+ * @example
+ * ```typescript
+ * const market = (await client.getMarketBySlug(slug))!;
+ * await client.submitOrder({
+ *   ...orderAsset(market, 'Up'),
+ *   side: 'BUY', price: 0.5, shares: 10, orderType: 'GTC',
+ * });
+ * ```
+ */
+export function orderAsset(
+  market: Pick<
+    GammaMarket,
+    'version' | 'outcomes' | 'clobTokenIds' | 'positionIds'
+  >,
+  outcome: number | string,
+): OrderAsset {
+  const fail = (detail: string): never => {
+    throw new PolymarketError('INVALID_OPTIONS', {
+      method: 'orderAsset',
+      detail,
+    });
+  };
+  const index = typeof outcome === 'number'
+    ? outcome
+    : market.outcomes.indexOf(outcome);
+  if (!Number.isInteger(index) || index < 0) {
+    fail(`unknown outcome ${JSON.stringify(outcome)}`);
+  }
+  if (market.version === 'v1') {
+    const tokenId = market.clobTokenIds[index];
+    return tokenId ? { tokenId } : fail(`no clobTokenIds[${index}]`);
+  }
+  if (market.version === 'v2') {
+    const tokenId = market.positionIds?.[index];
+    return tokenId ? { tokenId, version: 3 } : fail(`no positionIds[${index}]`);
+  }
+  return fail(`unsupported market version ${JSON.stringify(market.version)}`);
+}
+
 /** Inputs to {@link Polymarket.submitOrder}. */
 export type SubmitOrderOptions = {
-  /** CLOB ERC-1155 token id (decimal string) — from a Gamma market's `clobTokenIds`. */
+  /**
+   * Outcome id (decimal string): a Gamma market's `clobTokenIds` entry, or
+   * a Protocol V2 market's `positionIds` entry with `version: 3` —
+   * {@link orderAsset} picks the right pair.
+   */
   tokenId: string;
   side: OrderSide;
   /** On-tick, `[0.01, 0.99]`. */
@@ -395,9 +460,9 @@ export type SubmitOrderOptions = {
   orderType: 'GTC' | 'GTD' | 'FOK' | 'FAK';
   /** Unix SECONDS the order auto-cancels at. REQUIRED for `orderType: 'GTD'` (a GTD order with no expiration would silently behave exactly like GTC); ignored for GTC/FOK/FAK. */
   expirationTime?: number;
-  /** Looked up via {@link Polymarket.getNegRisk} when omitted. */
+  /** Looked up via {@link Polymarket.getNegRisk} when omitted. Ignored for `version: 3` — ExchangeV3 has no neg-risk variant. */
   negRisk?: boolean;
-  /** Looked up via {@link Polymarket.getVersion} when omitted. */
+  /** Looked up via {@link Polymarket.getVersion} when omitted. `3` (ExchangeV3) for a Protocol V2 market — never looked up, see {@link orderAsset}. */
   version?: ProtocolVersion;
   /** Order must rest on the book and not match immediately. Only valid for GTC/GTD. @default false */
   postOnly?: boolean;
@@ -405,8 +470,14 @@ export type SubmitOrderOptions = {
   deferExec?: boolean;
 };
 
-/** Inputs to {@link Polymarket.submitOrders} — one order; `version` is resolved once for the whole batch, not per-order. */
-export type BulkOrderInput = Omit<SubmitOrderOptions, 'version'>;
+/**
+ * Inputs to {@link Polymarket.submitOrders} — one order. The CTF exchange
+ * version is resolved once for the whole batch; only a Protocol V2 order
+ * carries its own `version: 3` (from {@link orderAsset}).
+ */
+export type BulkOrderInput = Omit<SubmitOrderOptions, 'version'> & {
+  version?: 3;
+};
 
 /** Inputs to {@link Polymarket.prepareOrder} — an order plus the two values that fix its identity. */
 export type PrepareOrderOptions = SubmitOrderOptions & {
@@ -681,6 +752,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     if (options.conditionIds?.length) {
       query.condition_ids = options.conditionIds.join(',');
     }
+    if (options.version) query.version = options.version;
     if (usesKeyset && options.cursor) query.after_cursor = options.cursor;
     if (!usesKeyset && options.offset) query.offset = String(options.offset);
 
@@ -902,21 +974,27 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * share balance of that outcome token (what a SELL can draw on).
    *
    * @param options.tokenId - Outcome token id for a share balance; omit for USDC.
+   * @param options.version - `3` for a Protocol V2 position (`asset_type=CONDITIONAL-V2`), as {@link orderAsset} returns it. The collateral balance's `allowances` lists ExchangeV3 once it is approved.
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`.
    *
    * @example
    * ```typescript
    * const { balance } = await client.getBalance(); // USDC, e.g. 125.5
    * const shares = await client.getBalance({ tokenId }); // shares of one outcome
+   * const v2 = await client.getBalance(orderAsset(market, 'Yes')); // a V2 position
    * ```
    */
   public async getBalance(
-    options: { tokenId?: string } = {},
+    options: { tokenId?: string; version?: ProtocolVersion } = {},
   ): Promise<ClobBalance> {
     const signer = this.__requireSigner();
     const creds = this.__requireApiCreds();
     const query: Record<string, string> = {
-      asset_type: options.tokenId ? 'CONDITIONAL' : 'COLLATERAL',
+      asset_type: !options.tokenId
+        ? 'COLLATERAL'
+        : options.version === 3
+        ? 'CONDITIONAL-V2'
+        : 'CONDITIONAL',
       signature_type: String(this.__signatureType),
     };
     if (options.tokenId) query.token_id = options.tokenId;
@@ -1344,6 +1422,9 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     const signer = this.__requireSigner();
     const funder = this.__requireFunder();
     Polymarket.__validateOrderInput(options);
+    if (options.version === 3) {
+      return await this.__prepare(signer, funder, 3, false, options);
+    }
     const [version, negRisk] = await Promise.all([
       options.version !== undefined
         ? Promise.resolve(options.version)
@@ -1371,9 +1452,9 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     for (const order of orders) Polymarket.__validateOrderInput(order);
     const uncachedTokenIds = [
       ...new Set(
-        orders.filter((order) => order.negRisk === undefined).map((order) =>
-          order.tokenId
-        ),
+        orders.filter((order) =>
+          order.negRisk === undefined && order.version !== 3
+        ).map((order) => order.tokenId),
       ),
     ];
     const negRiskByToken = new Map<string, boolean>();
@@ -1391,7 +1472,9 @@ export class Polymarket extends RESTler<PolymarketOptions> {
         signer,
         funder,
         order.version ?? version!,
-        order.negRisk ?? negRiskByToken.get(order.tokenId)!,
+        order.version === 3
+          ? false
+          : order.negRisk ?? negRiskByToken.get(order.tokenId)!,
         order,
       )
     ));
@@ -1509,8 +1592,11 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     try {
       return await this.submitPrepared(prepared);
     } catch (err) {
+      // `/version` names the CTF exchange, never ExchangeV3 — re-signing a
+      // Protocol V2 order for it would only send it to the wrong exchange.
       if (
-        !(err instanceof PolymarketError) || err.code !== 'ORDER_VERSION_STALE'
+        !(err instanceof PolymarketError) ||
+        err.code !== 'ORDER_VERSION_STALE' || prepared.version === 3
       ) {
         throw err;
       }
@@ -1587,7 +1673,9 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     const prepared = await this.prepareOrders(orders);
     const results = await this.submitPreparedBatch(prepared);
     const stale = results.flatMap((r, i) =>
-      r.rejectionCode === 'VERSION_STALE' ? [i] : []
+      r.rejectionCode === 'VERSION_STALE' && prepared[i]!.version !== 3
+        ? [i]
+        : []
     );
     if (stale.length === 0) return results;
 
@@ -2131,7 +2219,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * inside the per-order build step, so a doomed order — or a doomed
    * batch — is refused before wasting a version/neg-risk lookup.
    */
-  private static __validateOrderInput(input: BulkOrderInput): void {
+  private static __validateOrderInput(input: SubmitOrderOptions): void {
     if (input.orderType === 'GTD' && !input.expirationTime) {
       // Without this, a GTD order silently signs/sends expiration=0 (the
       // wire and, for V1, the SIGNED struct's default) and behaves exactly
