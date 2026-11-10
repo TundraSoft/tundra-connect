@@ -1057,8 +1057,10 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * for an order recorded before it was sent (see {@link prepareOrder}).
    *
    * @throws {PolymarketError} `NOT_FOUND` when the venue has no such order
-   * for this account; `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`;
-   * `RESPONSE_ERROR` when the body fails validation.
+   * for this account (it answers `200` with a `null` body) — including,
+   * briefly, an order it has only just accepted;
+   * `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`; `RESPONSE_ERROR`
+   * when the body fails validation.
    *
    * @example
    * ```typescript
@@ -1069,15 +1071,19 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   public async getOrder(orderId: string): Promise<ClobOpenOrder> {
     const signer = this.__requireSigner();
     const creds = this.__requireApiCreds();
-    return await this.__requestAndValidate(
+    const order = await this.__requestAndValidate(
       {
         path: `/data/order/${encodeURIComponent(orderId)}`,
         baseURL: this.__clobBaseURL,
         method: 'GET',
         auth: this.__l2Auth(signer, creds),
       },
-      ClobOpenOrderSchemaObject,
+      ClobOpenOrderSchemaObject.nullable(),
     );
+    if (order === null) {
+      throw new PolymarketError('NOT_FOUND', { status: 200, body: null });
+    }
+    return order;
   }
 
   /**
@@ -2641,7 +2647,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
 
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
-    guard: BaseGuardian<B>,
+    guard: Pick<BaseGuardian<B>, 'parse'>,
   ): Promise<B> {
     try {
       const resp = await this._makeRequest(endpoint, {

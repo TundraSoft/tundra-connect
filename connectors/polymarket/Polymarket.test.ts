@@ -2504,6 +2504,16 @@ describe('Polymarket — prepareOrder / submitPrepared', () => {
     asserts.assertEquals(order.sizeMatched, 9);
     asserts.assert(c.lastRequest!.url.includes('/data/order/0xabc'));
   });
+
+  it("getOrder maps the venue's null body for an unknown order to NOT_FOUND", async () => {
+    const c = trader();
+    c.setResponse(null);
+    const err = await asserts.assertRejects(
+      () => c.getOrder('0xabc'),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'NOT_FOUND');
+  });
 });
 
 // ── Polymarket Protocol V2 markets (ExchangeV3) ─────────────────────────────
@@ -2801,15 +2811,32 @@ describe({
       asserts.assertEquals(prepared.version, 3);
       try {
         const placed = await client.submitPrepared(prepared);
+        console.log(`placed: status ${placed.status}, id ${placed.id}`);
         asserts.assertEquals(
           placed.id,
           prepared.orderHash,
           'the venue order id is the ExchangeV3 EIP-712 hash',
         );
-        const resting = await client.getOrder(prepared.orderHash);
+        // The order lookup can trail the accept by a moment (seen on a V2
+        // crypto window): retry NOT_FOUND for up to ~3 s.
+        let resting;
+        for (let attempt = 0; attempt < 15 && !resting; attempt++) {
+          resting = await client.getOrder(prepared.orderHash).catch((e) => {
+            if (e instanceof PolymarketError && e.code === 'NOT_FOUND') {
+              return undefined;
+            }
+            throw e;
+          });
+          if (!resting) await new Promise((r) => setTimeout(r, 200));
+        }
+        asserts.assert(resting, 'the venue never showed the order');
+        console.log(`looked up: status ${resting.status}`);
         asserts.assertEquals(resting.id, prepared.orderHash);
       } finally {
-        await client.cancelOrder(prepared.orderHash).catch(() => {});
+        const cancel = await client.cancelOrder(prepared.orderHash).catch((
+          e,
+        ) => e);
+        console.log('cancel:', JSON.stringify(cancel));
       }
     });
   },
