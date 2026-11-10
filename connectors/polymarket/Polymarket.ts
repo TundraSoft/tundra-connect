@@ -13,7 +13,7 @@ import {
   RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
-import { type BaseGuardian, type GuardianError } from '@guardian';
+import { type BaseGuardian, Guardian, type GuardianError } from '@guardian';
 import { checksumAddress, toHex } from './PolymarketEip712.ts';
 import {
   buildL1Headers,
@@ -42,6 +42,10 @@ import {
   buildProxyMetaTx,
   buildRedeemTx,
   buildSplitTx,
+  buildV2MergeTx,
+  buildV2RedeemTxs,
+  buildV2SplitTx,
+  v2PositionId,
 } from './PolymarketRelayer.ts';
 import { PolymarketError } from './errors/mod.ts';
 import {
@@ -81,6 +85,8 @@ import {
   GammaMarketSchemaObject,
   type RelayerSubmitResponse,
   RelayerSubmitResponseSchemaObject,
+  type RelayerTransaction,
+  RelayerTransactionSchemaObject,
   RelayPayloadSchemaObject,
 } from './schema/mod.ts';
 
@@ -444,6 +450,67 @@ export function orderAsset(
   return fail(`unsupported market version ${JSON.stringify(market.version)}`);
 }
 
+/**
+ * Which position system a market's split/merge/redeem goes through — see
+ * {@link positionMarket}. `version` `'v1'` (the default) routes through the
+ * CTF collateral adapter `negRisk` picks; `'v2'` through the Protocol V2
+ * Router, for standard and neg-risk markets alike.
+ */
+export type PositionMarket =
+  | { conditionId: string; version?: 'v1'; negRisk: boolean }
+  | { conditionId: string; version: 'v2' };
+
+/** Inputs to {@link Polymarket.split} and {@link Polymarket.merge}. */
+export type SplitMergeOptions = PositionMarket & {
+  /** pUSD to split into (or shares of each outcome to merge back from). */
+  amountUsd: number;
+};
+
+/** Inputs to {@link Polymarket.redeem}. */
+export type RedeemOptions =
+  | { conditionId: string; version?: 'v1'; negRisk: boolean }
+  | {
+    conditionId: string;
+    version: 'v2';
+    /**
+     * Shares to redeem per outcome, by outcome index (`[yes, no]`). The
+     * Router takes an explicit amount; omitted, the wallet's whole
+     * `CONDITIONAL-V2` balance of each outcome is read first (two
+     * {@link Polymarket.getBalance} calls, which need CLOB credentials).
+     */
+    shares?: readonly number[];
+  };
+
+/**
+ * The split/merge/redeem routing for `market`, from its Gamma `version`:
+ * `"v1"` → `{ conditionId, negRisk }` (CTF collateral adapters); `"v2"` →
+ * `{ conditionId, version: 'v2' }` (the Protocol V2 Router). Spread it
+ * into {@link Polymarket.split}/{@link Polymarket.merge}/
+ * {@link Polymarket.redeem}. Pure — no request.
+ *
+ * @throws {PolymarketError} `INVALID_OPTIONS` for a missing or unknown `version`.
+ *
+ * @example
+ * ```typescript
+ * const market = (await client.getMarketBySlug(slug))!;
+ * await client.split({ ...positionMarket(market), amountUsd: 1 });
+ * ```
+ */
+export function positionMarket(
+  market: Pick<GammaMarket, 'version' | 'conditionId' | 'negRisk'>,
+): PositionMarket {
+  if (market.version === 'v1') {
+    return { conditionId: market.conditionId, negRisk: market.negRisk };
+  }
+  if (market.version === 'v2') {
+    return { conditionId: market.conditionId, version: 'v2' };
+  }
+  throw new PolymarketError('INVALID_OPTIONS', {
+    method: 'positionMarket',
+    detail: `unsupported market version ${JSON.stringify(market.version)}`,
+  });
+}
+
 /** Inputs to {@link Polymarket.submitOrder}. */
 export type SubmitOrderOptions = {
   /**
@@ -525,12 +592,8 @@ export type OrderAction = OrderSide | 'SPLIT' | 'MERGE' | 'REDEEM';
  */
 export type OrderRequest =
   | ({ action: OrderSide } & Omit<SubmitOrderOptions, 'side'>)
-  | ({ action: 'SPLIT' | 'MERGE' } & {
-    conditionId: string;
-    amountUsd: number;
-    negRisk: boolean;
-  })
-  | ({ action: 'REDEEM' } & { conditionId: string; negRisk: boolean });
+  | ({ action: 'SPLIT' | 'MERGE' } & SplitMergeOptions)
+  | ({ action: 'REDEEM' } & RedeemOptions);
 
 /**
  * Convenience result of every trading/collateral action —
@@ -1803,56 +1866,122 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * of EACH outcome (e.g. both UP and DOWN), gasless — the relayer pays
    * gas, funded from `auth.funder`'s own on-chain collateral.
    *
+   * Routing follows the market's position system — spread
+   * {@link positionMarket} in: a `v1` market goes through the CTF
+   * collateral adapter `negRisk` picks, a `version: 'v2'` market through
+   * the Protocol V2 Router (which needs the wallet's pUSD approved for
+   * it).
+   *
    * This moves real, on-chain funds and cannot be undone by this connect;
    * review `PolymarketRelayer.ts` yourself before trusting it with real
    * money — see the README's "Key custody" section.
    *
-   * @param negRisk - `false` for a binary (non-neg-risk) market — pass
-   * {@link getNegRisk} for the market's token if unsure.
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` (also thrown
    * when `auth.funder` is unset) / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
    */
-  public async split(
-    options: { conditionId: string; amountUsd: number; negRisk: boolean },
-  ): Promise<OrderResult> {
-    const tx = buildSplitTx(
-      options.conditionId,
-      options.amountUsd,
-      options.negRisk,
-    );
-    return await this.__submitRelayerTx('SPLIT', tx, options.amountUsd);
+  public async split(options: SplitMergeOptions): Promise<OrderResult> {
+    const tx = options.version === 'v2'
+      ? buildV2SplitTx(options.conditionId, options.amountUsd)
+      : buildSplitTx(options.conditionId, options.amountUsd, options.negRisk);
+    return await this.__submitRelayerTx('SPLIT', [tx], options.amountUsd);
   }
 
   /**
    * MERGE: the inverse of {@link split} — burns `amountUsd` of each
    * outcome pair and returns `amountUsd` pUSD. Same routing/risk notes as
-   * `split`.
+   * `split`; on a `version: 'v2'` market the Router must be an approved
+   * PositionManager operator for the wallet.
    *
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
    */
-  public async merge(
-    options: { conditionId: string; amountUsd: number; negRisk: boolean },
-  ): Promise<OrderResult> {
-    const tx = buildMergeTx(
-      options.conditionId,
-      options.amountUsd,
-      options.negRisk,
-    );
-    return await this.__submitRelayerTx('MERGE', tx, options.amountUsd);
+  public async merge(options: SplitMergeOptions): Promise<OrderResult> {
+    const tx = options.version === 'v2'
+      ? buildV2MergeTx(options.conditionId, options.amountUsd)
+      : buildMergeTx(options.conditionId, options.amountUsd, options.negRisk);
+    return await this.__submitRelayerTx('MERGE', [tx], options.amountUsd);
   }
 
   /**
-   * REDEEM: convert the full held balance of a RESOLVED market's outcome
-   * shares back to pUSD (winning shares pay $1 each, losing $0). Same
-   * routing/risk notes as `split`.
+   * REDEEM: convert a RESOLVED market's outcome shares back to pUSD
+   * (winning shares pay $1 each, losing $0). Same routing/risk notes as
+   * `split`.
    *
-   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
+   * A `v1` market redeems the full held balance of both outcomes in one
+   * call. The Protocol V2 Router redeems one outcome and an explicit
+   * amount per call instead: a `version: 'v2'` redeem sends one call per
+   * outcome holding shares, all in one meta-tx, for `options.shares` — or,
+   * without it, the wallet's whole `CONDITIONAL-V2` balance of each
+   * outcome, read with {@link getBalance} first. The Router must be an
+   * approved PositionManager operator for the wallet.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` /
+   * `CONFIG_MISSING_RELAYER_CREDENTIALS`; `NO_API_CREDENTIALS` for a V2
+   * redeem without `shares` before {@link deriveApiCredentials};
+   * `INVALID_OPTIONS` when a V2 redeem has nothing to redeem.
    */
-  public async redeem(
-    options: { conditionId: string; negRisk: boolean },
-  ): Promise<OrderResult> {
-    const tx = buildRedeemTx(options.conditionId, options.negRisk);
-    return await this.__submitRelayerTx('REDEEM', tx, 0);
+  public async redeem(options: RedeemOptions): Promise<OrderResult> {
+    if (options.version !== 'v2') {
+      const tx = buildRedeemTx(options.conditionId, options.negRisk);
+      return await this.__submitRelayerTx('REDEEM', [tx], 0);
+    }
+    // Validate the relayer config before spending balance reads on it.
+    this.__requireSigner();
+    this.__requireFunder();
+    this.__requireRelayerCredentials();
+    const shares = options.shares ?? await Promise.all(
+      [0, 1].map(async (outcomeIndex) =>
+        (await this.getBalance({
+          tokenId: v2PositionId(options.conditionId, outcomeIndex),
+          version: 3,
+        })).balance
+      ),
+    );
+    let txs: ProxyTransaction[];
+    try {
+      txs = buildV2RedeemTxs(options.conditionId, shares);
+    } catch (cause) {
+      throw new PolymarketError('INVALID_OPTIONS', {
+        method: 'redeem',
+        detail: cause instanceof Error ? cause.message : String(cause),
+      }, cause instanceof Error ? cause : undefined);
+    }
+    return await this.__submitRelayerTx('REDEEM', txs, 0);
+  }
+
+  /**
+   * One relayed split/merge/redeem by the `id` its {@link OrderResult}
+   * carries (`GET /transaction`) — poll it until `state` is
+   * `STATE_CONFIRMED` before relying on the new balances; `STATE_FAILED`
+   * and `STATE_INVALID` are terminal. This connect does not poll for you.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_RELAYER_CREDENTIALS`;
+   * `NOT_FOUND` for an unknown id; `RESPONSE_ERROR` when the body fails
+   * validation.
+   *
+   * @example
+   * ```typescript
+   * const { id } = await client.split({ ...positionMarket(market), amountUsd: 1 });
+   * const tx = await client.getRelayerTransaction(id);
+   * console.log(tx.state, tx.transactionHash);
+   * ```
+   */
+  public async getRelayerTransaction(
+    transactionId: string,
+  ): Promise<RelayerTransaction> {
+    const { relayerApiKey, relayerApiKeyAddress } = this
+      .__requireRelayerCredentials();
+    const [tx] = await this.__requestAndValidate(
+      {
+        path: '/transaction',
+        baseURL: this.__relayerBaseURL,
+        method: 'GET',
+        query: { id: transactionId },
+        auth: this.__relayerAuth(relayerApiKey, relayerApiKeyAddress),
+      },
+      Guardian.array(RelayerTransactionSchemaObject),
+    );
+    if (!tx) throw new PolymarketError('NOT_FOUND', { status: 200, body: [] });
+    return tx;
   }
 
   /**
@@ -2069,7 +2198,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    */
   private async __submitRelayerTx(
     action: 'SPLIT' | 'MERGE' | 'REDEEM',
-    tx: ProxyTransaction,
+    txs: readonly ProxyTransaction[],
     amountUsd: number,
   ): Promise<OrderResult> {
     const signer = this.__requireSigner();
@@ -2091,7 +2220,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
 
     const envelope = await buildProxyMetaTx(
       signer,
-      [tx],
+      txs,
       relayPayload,
       funder,
     );

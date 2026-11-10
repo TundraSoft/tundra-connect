@@ -55,8 +55,12 @@ One `Polymarket` client covers both APIs, matching how a Gamma market's
   [Sockets](https://github.com/TundraSoft/tundra-connect/wiki/Polymarket-Sockets).
 - **Relayer** (`relayer-v2.polymarket.com`) — `split()`/`merge()`/`redeem()`,
   gasless collateral split/merge/redeem via a signed EIP-191 proxy
-  meta-transaction. Requires `auth.relayerApiKey`/`auth.relayerApiKeyAddress`,
-  a credential separate from the CLOB's L2 `apiCredentials`.
+  meta-transaction, through the CTF collateral adapters (v1 markets) or
+  the Protocol V2 Router (v2 markets) — `positionMarket(market)` picks
+  the route from the market's `version` — and `getRelayerTransaction()`
+  to follow one to `STATE_CONFIRMED`. Requires
+  `auth.relayerApiKey`/`auth.relayerApiKeyAddress`, a credential separate
+  from the CLOB's L2 `apiCredentials`.
 
 `submitOrder()`/`submitOrders()`/`split()`/`merge()`/`redeem()` all resolve
 to the same `OrderResult` shape (a `slippage` field included — `0` for
@@ -104,10 +108,11 @@ client with these calls, the same way you would for order signing.
 
 ### Out of scope (for now)
 
-- **Gasless split/merge/redeem of Polymarket Protocol V2 positions** (the
-  V2 Router). Orders on V2 markets are supported — see below — but
-  `split()`/`merge()`/`redeem()` cover ConditionalTokens (`version: "v1"`)
-  markets only.
+- Sending token approvals (pUSD, Conditional Tokens, PositionManager) and
+  the V2 Router's neg-risk and Combo operations (`convert`,
+  `horizontalSplit`/`horizontalMerge`, `prepareCondition`).
+- Safe and Deposit Wallet relayer flows — the Relayer path signs for the
+  Polymarket proxy wallet (`PROXY`) only.
 - The RTDS **comments** topic, PolyBolt's `esports.series` channel and the
   **sports** feed. (The legacy RTDS price topics were removed — use
   PolyBolt.)

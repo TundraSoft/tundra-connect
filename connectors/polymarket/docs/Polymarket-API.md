@@ -82,35 +82,36 @@ credential separate from the CLOB's L2 `apiCredentials`, required only for
 
 ## Endpoints
 
-| Method                   | Endpoint                                                        | Auth                                  | Result                                                    |
-| ------------------------ | --------------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------- |
-| `getMarkets()`           | `GET /markets` or `GET /markets/keyset`                         | none                                  | `{ markets, nextCursor? }`                                |
-| `getMarketBySlug()`      | `GET /markets/slug/{slug}`                                      | none                                  | A `GammaMarket`, or `null` if not found                   |
-| `getVersion()`           | `GET /version`                                                  | none                                  | The active CTF exchange version (1\|2), cached            |
-| `getTickSize()`          | `GET /tick-size`                                                | none                                  | Minimum price tick for a token, cached                    |
-| `getNegRisk()`           | `GET /neg-risk`                                                 | none                                  | Whether a token trades neg-risk, cached                   |
-| `getOrderbook()`         | `GET /book`                                                     | none                                  | Aggregated bid/ask levels for one token                   |
-| `keepalive()`            | `GET /`                                                         | none                                  | `boolean` — never throws                                  |
-| `deriveApiCredentials()` | `POST /auth/api-key` (falls back to `GET /auth/derive-api-key`) | L1 (EIP-712)                          | `{ apiKey, secret, passphrase }`                          |
-| `getBalance()`           | `GET /balance-allowance`                                        | L2 (HMAC)                             | Available pUSD (or shares of one token or V2 position)    |
-| `getOpenOrders()`        | `GET /data/orders`                                              | L2 (HMAC)                             | `{ data, nextCursor? }` of the account's orders           |
-| `getFills()`             | `GET /data/trades`                                              | L2 (HMAC)                             | `{ data, nextCursor? }` of the account's fills            |
-| `submitOrder()`          | `POST /order`                                                   | L2 (HMAC) + order signature (EIP-712) | Fill/no-match/rejection outcome                           |
-| `submitOrders()`         | `POST /orders` (chunked at 15)                                  | L2 (HMAC) + order signature (EIP-712) | One outcome per input order, same order                   |
-| `cancelOrder()`          | `DELETE /order`                                                 | L2 (HMAC)                             | `{ canceled, notCanceled }`                               |
-| `cancelOrders()`         | `DELETE /orders`                                                | L2 (HMAC)                             | `{ canceled, notCanceled }`                               |
-| `cancelMarketOrders()`   | `DELETE /cancel-market-orders`                                  | L2 (HMAC)                             | `{ canceled, notCanceled }`                               |
-| `cancelAllOrders()`      | `DELETE /cancel-all`                                            | L2 (HMAC)                             | `{ canceled, notCanceled }`                               |
-| `getPositions()`         | `GET /v2/positions` (Data API)                                  | none                                  | `{ data: DataPosition[], pagination }` with basis and PnL |
-| `getPortfolioValue()`    | `GET /v2/value` (Data API)                                      | none                                  | Total position value in USDC                              |
-| `getActivity()`          | `GET /v2/activity` (Data API)                                   | none                                  | `{ data: DataActivity[], pagination }`                    |
-| `getTrades()`            | `GET /v2/trades` (Data API)                                     | none                                  | `{ data: DataTrade[], pagination }`                       |
-| `getTokens()`            | `GET /v2/tokens` (Data API)                                     | none                                  | `DataToken[]` — condition, outcome, settlement per token  |
-| `getResolutions()`       | `GET /v2/resolutions` (Data API)                                | none                                  | `DataResolution[]` — lifecycle and settlement estimate    |
-| `split()`                | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                             |
-| `merge()`                | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                             |
-| `redeem()`               | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                             |
-| `order()`                | dispatches to one of the above by `request.action`              | (whichever the dispatched call needs) | `OrderResult`                                             |
+| Method                    | Endpoint                                                        | Auth                                  | Result                                                    |
+| ------------------------- | --------------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------- |
+| `getMarkets()`            | `GET /markets` or `GET /markets/keyset`                         | none                                  | `{ markets, nextCursor? }`                                |
+| `getMarketBySlug()`       | `GET /markets/slug/{slug}`                                      | none                                  | A `GammaMarket`, or `null` if not found                   |
+| `getVersion()`            | `GET /version`                                                  | none                                  | The active CTF exchange version (1\|2), cached            |
+| `getTickSize()`           | `GET /tick-size`                                                | none                                  | Minimum price tick for a token, cached                    |
+| `getNegRisk()`            | `GET /neg-risk`                                                 | none                                  | Whether a token trades neg-risk, cached                   |
+| `getOrderbook()`          | `GET /book`                                                     | none                                  | Aggregated bid/ask levels for one token                   |
+| `keepalive()`             | `GET /`                                                         | none                                  | `boolean` — never throws                                  |
+| `deriveApiCredentials()`  | `POST /auth/api-key` (falls back to `GET /auth/derive-api-key`) | L1 (EIP-712)                          | `{ apiKey, secret, passphrase }`                          |
+| `getBalance()`            | `GET /balance-allowance`                                        | L2 (HMAC)                             | Available pUSD (or shares of one token or V2 position)    |
+| `getOpenOrders()`         | `GET /data/orders`                                              | L2 (HMAC)                             | `{ data, nextCursor? }` of the account's orders           |
+| `getFills()`              | `GET /data/trades`                                              | L2 (HMAC)                             | `{ data, nextCursor? }` of the account's fills            |
+| `submitOrder()`           | `POST /order`                                                   | L2 (HMAC) + order signature (EIP-712) | Fill/no-match/rejection outcome                           |
+| `submitOrders()`          | `POST /orders` (chunked at 15)                                  | L2 (HMAC) + order signature (EIP-712) | One outcome per input order, same order                   |
+| `cancelOrder()`           | `DELETE /order`                                                 | L2 (HMAC)                             | `{ canceled, notCanceled }`                               |
+| `cancelOrders()`          | `DELETE /orders`                                                | L2 (HMAC)                             | `{ canceled, notCanceled }`                               |
+| `cancelMarketOrders()`    | `DELETE /cancel-market-orders`                                  | L2 (HMAC)                             | `{ canceled, notCanceled }`                               |
+| `cancelAllOrders()`       | `DELETE /cancel-all`                                            | L2 (HMAC)                             | `{ canceled, notCanceled }`                               |
+| `getPositions()`          | `GET /v2/positions` (Data API)                                  | none                                  | `{ data: DataPosition[], pagination }` with basis and PnL |
+| `getPortfolioValue()`     | `GET /v2/value` (Data API)                                      | none                                  | Total position value in USDC                              |
+| `getActivity()`           | `GET /v2/activity` (Data API)                                   | none                                  | `{ data: DataActivity[], pagination }`                    |
+| `getTrades()`             | `GET /v2/trades` (Data API)                                     | none                                  | `{ data: DataTrade[], pagination }`                       |
+| `getTokens()`             | `GET /v2/tokens` (Data API)                                     | none                                  | `DataToken[]` — condition, outcome, settlement per token  |
+| `getResolutions()`        | `GET /v2/resolutions` (Data API)                                | none                                  | `DataResolution[]` — lifecycle and settlement estimate    |
+| `split()`                 | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                             |
+| `merge()`                 | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                             |
+| `redeem()`                | `GET /relay-payload` + `POST /submit` (Relayer)                 | Relayer API key + EIP-191 signature   | `OrderResult`                                             |
+| `getRelayerTransaction()` | `GET /transaction` (Relayer)                                    | Relayer API key                       | `RelayerTransaction` — `state`, `transactionHash`         |
+| `order()`                 | dispatches to one of the above by `request.action`              | (whichever the dispatched call needs) | `OrderResult`                                             |
 
 `submitOrder()`/`submitOrders()`/`split()`/`merge()`/`redeem()`/`order()` all
 resolve to the same `OrderResult` shape — see
@@ -270,8 +271,9 @@ order the funder must approve pUSD for ExchangeV3 (BUY) and
 PositionManager `setApprovalForAll` for ExchangeV3 (SELL); existing CTF
 approvals do not carry over. The collateral `getBalance()` lists
 ExchangeV3 in `allowances` once pUSD is approved. Gasless
-`split()`/`merge()`/`redeem()` remain ConditionalTokens-only — V2
-positions go through the V2 Router, which this client does not call yet.
+`split()`/`merge()`/`redeem()` on V2 markets go through the Protocol V2
+Router — spread `positionMarket(market)` in; see
+[below](#split--merge--redeem--gasless-collateral-actions-relayer).
 
 ### `prepareOrder()` / `submitPrepared()` — identity before sending
 
@@ -416,18 +418,21 @@ const value = await client.getPortfolioValue();
 const cash = (await client.getBalance()).balance;
 console.log(positions.length, 'positions worth', value, '+', cash, 'USDC cash');
 
-// Anything to redeem? (Page through with the cursor.)
+// Anything to redeem? (Page through with the cursor.) Positions don't say
+// which position system they are on, so look the markets up in Gamma and
+// let positionMarket() route each one (CTF adapter or V2 Router).
 let next: string | undefined;
 do {
   const page = await client.getPositions({
     status: 'REDEEMABLE',
     cursor: next,
   });
-  for (const p of page.data) {
-    await client.redeem({
-      conditionId: p.conditionId,
-      negRisk: p.negativeRisk,
-    });
+  const conditionIds = [...new Set(page.data.map((p) => p.conditionId))];
+  if (conditionIds.length > 0) {
+    const { markets } = await client.getMarkets({ conditionIds });
+    for (const market of markets) {
+      await client.redeem(positionMarket(market));
+    }
   }
   next = page.pagination.nextCursor ?? undefined;
 } while (next);
@@ -518,16 +523,63 @@ conversion with no price to slip on, so `slippage` is always `0` there.
 ### `split()` / `merge()` / `redeem()` — gasless collateral actions (Relayer)
 
 ```ts
+import { positionMarket } from '@tundraconnect/polymarket';
+
+const market = (await client.getMarketBySlug(slug))!;
+const route = positionMarket(market); // v1: { conditionId, negRisk }; v2: { conditionId, version: 'v2' }
+
 // SPLIT: 5 pUSD collateral -> 5 shares of EACH outcome.
-const split = await client.split({ conditionId, amountUsd: 5, negRisk: false });
+const split = await client.split({ ...route, amountUsd: 5 });
 console.log(split.id); // the Relayer's transaction id
 
+// Wait for it to land before relying on the new shares.
+let tx = await client.getRelayerTransaction(split.id);
+while (
+  !['STATE_CONFIRMED', 'STATE_FAILED', 'STATE_INVALID'].includes(tx.state)
+) {
+  await new Promise((r) => setTimeout(r, 2_000));
+  tx = await client.getRelayerTransaction(split.id);
+}
+
 // MERGE: the inverse — burns 5 shares of each outcome, returns 5 pUSD.
-await client.merge({ conditionId, amountUsd: 5, negRisk: false });
+await client.merge({ ...route, amountUsd: 5 });
 
 // REDEEM: convert a RESOLVED market's held outcome shares back to pUSD.
-await client.redeem({ conditionId, negRisk: false });
+await client.redeem(route);
 ```
+
+The market's Gamma `version` decides the route, as Polymarket's V2
+migration guide requires — `positionMarket(market)` reads it (and throws
+`INVALID_OPTIONS` for a missing or unknown one), or pass it yourself:
+
+| Market `version` | Options                          | Target                                                                                      |
+| ---------------- | -------------------------------- | ------------------------------------------------------------------------------------------- |
+| `v1` (default)   | `{ conditionId, negRisk }`       | CTF collateral adapter (`0xAdA1…cE1f`, or the neg-risk one `0xadA2…eAab`)                   |
+| `v2`             | `{ conditionId, version: 'v2' }` | Protocol V2 Router `0x12121212006e4CD160D18e3f00711DA5c3372600`, standard or neg-risk alike |
+
+On a V2 market, `conditionId` is Gamma's (the 31-byte Router condition,
+padded to 32 bytes with a zero final byte; the bare 31-byte form works
+too). The Router's `split(bytes31,uint256)` and `merge(bytes31,uint256)`
+take the amount like the adapters do. Its `redeem(bytes31,uint256,uint256)`
+redeems ONE outcome and an explicit amount per call, so a V2 `redeem()`
+sends one call per outcome holding shares, all in one meta-transaction:
+`redeem({ ...route, shares: [yes, no] })`, or without `shares`, the
+wallet's whole `CONDITIONAL-V2` balance of each outcome, read first with
+two `getBalance()` calls (which need CLOB credentials —
+`deriveApiCredentials()` first). Nothing to redeem throws
+`INVALID_OPTIONS` before anything is sent.
+
+The wallet needs its own approvals for the Router — CTF approvals do not
+carry over: pUSD `approve(Router)` for split, and PositionManager
+(`0x006F54F7f9A22e0000CC2AB60031000000ae9fEF`)
+`setApprovalForAll(Router, true)` for merge and redeem. Polymarket's UI
+sets both; this client does not send approvals.
+
+`POST /submit` only acknowledges the relay (`status` `STATE_NEW`).
+`getRelayerTransaction(id)` reads its progress —
+`STATE_NEW` → `STATE_EXECUTED` → `STATE_MINED` → `STATE_CONFIRMED`, with
+`STATE_FAILED`/`STATE_INVALID` terminal — and the on-chain
+`transactionHash` once broadcast. This client never polls for you.
 
 Each call signs one EIP-191 proxy meta-transaction with `auth.privateKey`,
 fetches a fresh relay nonce (`GET /relay-payload`), and submits it
@@ -556,7 +608,7 @@ await client.order({
   amountUsd: 5,
   negRisk: false,
 });
-await client.order({ action: 'REDEEM', conditionId, negRisk: false });
+await client.order({ action: 'REDEEM', ...positionMarket(market) });
 ```
 
 `request.action` selects the underlying call: `'BUY'`/`'SELL'` goes to

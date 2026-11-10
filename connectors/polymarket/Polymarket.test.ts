@@ -7,6 +7,7 @@ import {
   GAMMA_API,
   orderAsset,
   Polymarket,
+  positionMarket,
 } from './Polymarket.ts';
 import { estimateFees } from './PolymarketFees.ts';
 import { PolymarketError } from './errors/mod.ts';
@@ -1530,6 +1531,165 @@ describe('Polymarket — split/merge/redeem (Relayer)', () => {
   });
 });
 
+describe('Polymarket — Protocol V2 split/merge/redeem (Router)', () => {
+  const V2_CID =
+    '0x0123af4bea70d5496e79463949a694ac2a000000000000000000000000000000';
+  const YES_ID =
+    '515362348146691341657562482954931281080656089672727589681305261334690004992';
+  const NO_ID =
+    '515362348146691341657562482954931281080656089672727589681305261334690004993';
+  const ROUTER_WORD = '12121212006e4cd160d18e3f00711da5c3372600';
+  const RELAY = {
+    body: {
+      address: '0x4444444444444444444444444444444444444444',
+      nonce: '3',
+    },
+  };
+
+  function client() {
+    return new MockPolymarket({
+      auth: {
+        type: 'CUSTOM',
+        privateKey: TEST_KEY,
+        funder: PROXY,
+        apiCredentials: CREDS,
+        relayerApiKey: 'relayer-key',
+        relayerApiKeyAddress: TEST_ADDR,
+      },
+    });
+  }
+  const submitted = (c: MockPolymarket): string =>
+    JSON.parse(c.requests.find((r) => r.url.includes('/submit'))!.body!).data;
+  const count = (haystack: string, needle: string) =>
+    haystack.split(needle).length - 1;
+
+  it('positionMarket routes v1 by negRisk and v2 to the Router, and refuses an unknown version', () => {
+    asserts.assertEquals(
+      positionMarket({ version: 'v1', conditionId: '0xc', negRisk: true }),
+      { conditionId: '0xc', negRisk: true },
+    );
+    asserts.assertEquals(
+      positionMarket({ version: 'v2', conditionId: V2_CID, negRisk: true }),
+      { conditionId: V2_CID, version: 'v2' },
+    );
+    const err = asserts.assertThrows(
+      () =>
+        positionMarket({ version: null, conditionId: '0xc', negRisk: false }),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'INVALID_OPTIONS');
+  });
+
+  it('splits and merges a V2 market through the Router', async () => {
+    const c = client();
+    c.setResponseQueue([RELAY, { body: { transactionID: 'tx-s' } }]);
+    const split = await c.split({
+      conditionId: V2_CID,
+      version: 'v2',
+      amountUsd: 1,
+    });
+    asserts.assertEquals(split.action, 'SPLIT');
+    asserts.assertEquals(split.id, 'tx-s');
+    asserts.assertEquals(split.makingAmount, 1);
+    const data = submitted(c);
+    asserts.assertEquals(count(data, ROUTER_WORD), 1);
+    asserts.assertEquals(count(data, '82d3b9f1'), 1);
+    asserts.assertEquals(
+      count(data, 'ada100db00ca00073811820692005400218fce1f'),
+      0,
+    );
+
+    const m = client();
+    m.setResponseQueue([RELAY, { body: { transactionID: 'tx-m' } }]);
+    await m.merge({ conditionId: V2_CID, version: 'v2', amountUsd: 1 });
+    asserts.assertEquals(count(submitted(m), '5b63685e'), 1);
+  });
+
+  it('redeems the whole CONDITIONAL-V2 balance of each outcome when no shares are given', async () => {
+    const c = client();
+    c.setResponseQueue([
+      { body: { balance: '2000000' } },
+      { body: { balance: '2000000' } },
+      RELAY,
+      { body: { transactionID: 'tx-r' } },
+    ]);
+    const result = await c.redeem({ conditionId: V2_CID, version: 'v2' });
+    asserts.assertEquals(result.action, 'REDEEM');
+    asserts.assertEquals(result.id, 'tx-r');
+    const reads = c.requests.filter((r) =>
+      r.url.includes('/balance-allowance')
+    );
+    asserts.assertEquals(reads.length, 2);
+    for (const r of reads) {
+      asserts.assert(r.url.includes('asset_type=CONDITIONAL-V2'));
+    }
+    asserts.assert(reads.some((r) => r.url.includes(`token_id=${YES_ID}`)));
+    asserts.assert(reads.some((r) => r.url.includes(`token_id=${NO_ID}`)));
+    const data = submitted(c);
+    asserts.assertEquals(count(data, 'd217a3cc'), 2);
+    asserts.assertEquals(count(data, ROUTER_WORD), 2);
+  });
+
+  it('redeems only the outcomes given shares, with no balance reads', async () => {
+    const c = client();
+    c.setResponseQueue([RELAY, { body: { transactionID: 'tx-r' } }]);
+    await c.redeem({ conditionId: V2_CID, version: 'v2', shares: [0, 1.5] });
+    asserts.assertEquals(
+      c.requests.filter((r) => r.url.includes('/balance-allowance')).length,
+      0,
+    );
+    asserts.assertEquals(count(submitted(c), 'd217a3cc'), 1);
+  });
+
+  it('refuses a V2 redeem with nothing to redeem before relaying anything', async () => {
+    const c = client();
+    const err = await asserts.assertRejects(
+      () => c.redeem({ conditionId: V2_CID, version: 'v2', shares: [0, 0] }),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'INVALID_OPTIONS');
+    asserts.assertEquals(c.requests.length, 0);
+  });
+
+  it('order() dispatches a V2 SPLIT to the Router', async () => {
+    const c = client();
+    c.setResponseQueue([RELAY, { body: { transactionID: 'tx-o' } }]);
+    await c.order({
+      action: 'SPLIT',
+      conditionId: V2_CID,
+      version: 'v2',
+      amountUsd: 2,
+    });
+    asserts.assertEquals(count(submitted(c), '82d3b9f1'), 1);
+  });
+
+  it('getRelayerTransaction reads one relayed transaction, NOT_FOUND when absent', async () => {
+    const c = client();
+    c.setResponse([{
+      transactionID: 'tx-1',
+      state: 'STATE_CONFIRMED',
+      transactionHash: '0xabc',
+      type: 'PROXY',
+    }]);
+    const tx = await c.getRelayerTransaction('tx-1');
+    asserts.assertEquals(tx.transactionId, 'tx-1');
+    asserts.assertEquals(tx.state, 'STATE_CONFIRMED');
+    asserts.assertEquals(tx.transactionHash, '0xabc');
+    asserts.assert(c.lastRequest!.url.includes('/transaction?id=tx-1'));
+    asserts.assertEquals(
+      c.lastRequest!.headers['RELAYER_API_KEY'],
+      'relayer-key',
+    );
+
+    c.setResponse([]);
+    const err = await asserts.assertRejects(
+      () => c.getRelayerTransaction('tx-2'),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'NOT_FOUND');
+  });
+});
+
 describe('Polymarket — order() dispatcher', () => {
   const CID =
     '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
@@ -2838,6 +2998,68 @@ describe({
         ) => e);
         console.log('cancel:', JSON.stringify(cancel));
       }
+    });
+  },
+});
+
+// With LIVE_TEST_ALLOW_ORDERS and a Relayer API key: splits $1 of pUSD into
+// both outcomes of a live V2 crypto market through the Router, waits for
+// the relay to confirm, then merges the $1 straight back — gasless, net
+// zero. Needs pUSD approved for the Router and the Router as a
+// PositionManager operator (Polymarket's UI sets both).
+const relayerTestsEnabled = orderTestsEnabled &&
+  !!env.get('CONNECTOR_POLYMARKET_RELAYER_API_KEY') &&
+  !!env.get('CONNECTOR_POLYMARKET_RELAYER_API_KEY_ADDRESS');
+
+const waitForRelay = async (client: Polymarket, id: string) => {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const tx = await client.getRelayerTransaction(id).catch((e) => {
+      if (e instanceof PolymarketError && e.code === 'NOT_FOUND') {
+        return undefined;
+      }
+      throw e;
+    });
+    if (tx?.state === 'STATE_CONFIRMED') return tx;
+    if (tx?.state === 'STATE_FAILED' || tx?.state === 'STATE_INVALID') {
+      throw new Error(`relay ${id} ended ${tx.state}`);
+    }
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+  throw new Error(`relay ${id} not confirmed within 2 minutes`);
+};
+
+describe({
+  name: 'Polymarket — live Protocol V2 split and merge',
+  ignore: !relayerTestsEnabled,
+  bun: false,
+  node: false,
+  fn: () => {
+    it('splits $1 into both outcomes of a V2 crypto market and merges it back', async () => {
+      const client = new Polymarket({
+        auth: {
+          type: 'CUSTOM',
+          privateKey: credentials.privateKey!,
+          funder: env.get('CONNECTOR_POLYMARKET_FUNDER')!,
+          relayerApiKey: env.get('CONNECTOR_POLYMARKET_RELAYER_API_KEY')!,
+          relayerApiKeyAddress: env.get(
+            'CONNECTOR_POLYMARKET_RELAYER_API_KEY_ADDRESS',
+          )!,
+        },
+      });
+      const market = await liveV2Market(client, true);
+      const route = positionMarket(market);
+      asserts.assertEquals(route.version, 'v2');
+      console.log(`V2 split/merge market: ${market.slug}`);
+
+      const split = await client.split({ ...route, amountUsd: 1 });
+      console.log(`split: relay ${split.id} ${split.status}`);
+      const splitTx = await waitForRelay(client, split.id);
+      console.log(`split confirmed: ${splitTx.transactionHash}`);
+
+      const merge = await client.merge({ ...route, amountUsd: 1 });
+      console.log(`merge: relay ${merge.id} ${merge.status}`);
+      const mergeTx = await waitForRelay(client, merge.id);
+      console.log(`merge confirmed: ${mergeTx.transactionHash}`);
     });
   },
 });

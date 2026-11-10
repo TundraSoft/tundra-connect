@@ -8,11 +8,16 @@ import {
   buildProxyMetaTx,
   buildRedeemTx,
   buildSplitTx,
+  buildV2MergeTx,
+  buildV2RedeemTxs,
+  buildV2SplitTx,
   CTF_COLLATERAL_ADAPTER,
   NEG_RISK_CTF_COLLATERAL_ADAPTER,
   PROXY_FACTORY,
   RELAY_HUB,
   relayStructHash,
+  ROUTER,
+  v2PositionId,
 } from './PolymarketRelayer.ts';
 
 // Same test vectors as this connect's Rust sibling (ClobClient/src/relayer/
@@ -198,5 +203,84 @@ describe('PolymarketRelayer — proxy meta-tx envelope', () => {
       PROXY_WALLET,
     );
     asserts.assert(env.data.length > 0);
+  });
+});
+
+// Protocol V2 Router calldata, cross-checked byte for byte against viem
+// 2.21.0 `encodeFunctionData` for `split(bytes31,uint256)`,
+// `merge(bytes31,uint256)` and `redeem(bytes31,uint256,uint256)`; the
+// three selectors are in the deployed Router implementation's bytecode.
+// The condition and position ids are a live Gamma V2 market's
+// (polyv2xrp-updown-4h-1794344400).
+describe('PolymarketRelayer — Protocol V2 Router', () => {
+  const V2_CID =
+    '0x0123af4bea70d5496e79463949a694ac2a000000000000000000000000000000';
+  const WORD = '0123af4bea70d5496e79463949a694ac2a' + '0'.repeat(30);
+  const amount = (micro: number) => micro.toString(16).padStart(64, '0');
+
+  it('splits and merges on the Router with the 2-arg bytes31 form', () => {
+    const split = buildV2SplitTx(V2_CID, 1.25);
+    asserts.assertEquals(split.to, ROUTER);
+    asserts.assertEquals(split.operation, 1);
+    asserts.assertEquals(split.value, 0n);
+    asserts.assertEquals(
+      toHex(split.data),
+      `82d3b9f1${WORD}${amount(1_250_000)}`,
+    );
+    asserts.assertEquals(
+      toHex(buildV2MergeTx(V2_CID, 3).data),
+      `5b63685e${WORD}${amount(3_000_000)}`,
+    );
+    asserts.assertEquals(
+      toHex(selector('split(bytes31,uint256)')),
+      '82d3b9f1',
+    );
+  });
+
+  it('accepts the bare 31-byte condition id', () => {
+    asserts.assertEquals(
+      toHex(buildV2SplitTx(V2_CID.slice(0, 64), 1.25).data),
+      toHex(buildV2SplitTx(V2_CID, 1.25).data),
+    );
+  });
+
+  it('refuses a padded id with a non-zero final byte (a position id) and a zero amount', () => {
+    asserts.assertThrows(() => buildV2SplitTx(`${V2_CID.slice(0, 64)}01`, 1));
+    asserts.assertThrows(() => buildV2SplitTx('0x1234', 1));
+    asserts.assertThrows(() => buildV2MergeTx(V2_CID, 0));
+  });
+
+  it('redeems one call per outcome holding shares, skipping zeros', () => {
+    const both = buildV2RedeemTxs(V2_CID, [2.5, 0.000001]);
+    asserts.assertEquals(both.length, 2);
+    asserts.assertEquals(
+      toHex(both[0]!.data),
+      `d217a3cc${WORD}${amount(0)}${amount(2_500_000)}`,
+    );
+    asserts.assertEquals(
+      toHex(both[1]!.data),
+      `d217a3cc${WORD}${amount(1)}${amount(1)}`,
+    );
+    const noOnly = buildV2RedeemTxs(V2_CID, [0, 4]);
+    asserts.assertEquals(noOnly.length, 1);
+    asserts.assertEquals(noOnly[0]!.to, ROUTER);
+    asserts.assertEquals(
+      toHex(noOnly[0]!.data),
+      `d217a3cc${WORD}${amount(1)}${amount(4_000_000)}`,
+    );
+    asserts.assertThrows(() => buildV2RedeemTxs(V2_CID, [0, 0]));
+    asserts.assertThrows(() => buildV2RedeemTxs(V2_CID, [-1, 1]));
+  });
+
+  it('derives the PositionManager position ids Gamma lists', () => {
+    asserts.assertEquals(
+      v2PositionId(V2_CID, 0),
+      '515362348146691341657562482954931281080656089672727589681305261334690004992',
+    );
+    asserts.assertEquals(
+      v2PositionId(V2_CID, 1),
+      '515362348146691341657562482954931281080656089672727589681305261334690004993',
+    );
+    asserts.assertThrows(() => v2PositionId(V2_CID, 256));
   });
 });

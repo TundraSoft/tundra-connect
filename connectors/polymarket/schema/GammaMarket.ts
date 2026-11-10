@@ -198,10 +198,11 @@ export type GammaMarket = {
   /** Request-for-quote trading enabled. */
   rfqEnabled?: boolean | null;
   /**
-   * Position system: `v1` (ConditionalTokens — trade `clobTokenIds`, sign
-   * for CTF Exchange V2, which is what this connect does) or `v2`
-   * (Polymarket Protocol V2 — trade `positionIds` on ExchangeV3, domain
-   * version `"3"`, not yet supported by this connect's order signing).
+   * Position system: `v1` (ConditionalTokens — trade `clobTokenIds` on
+   * CTF Exchange V2; split/merge/redeem via the CTF collateral adapters)
+   * or `v2` (Polymarket Protocol V2 — trade `positionIds` on ExchangeV3,
+   * domain version `"3"`; split/merge/redeem via the Router). See
+   * `orderAsset` and `positionMarket`.
    */
   version?: string | null;
   /** Protocol V2 markets: outcome position ids, by outcome index. */

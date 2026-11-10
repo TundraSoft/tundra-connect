@@ -71,15 +71,16 @@ key (modelled or not) and pass unmodelled fields through.
 
 ## Relayer
 
-| Schema                              | Endpoint             | Notes                                                                                                              |
-| ----------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `RelayPayloadSchemaObject`          | `GET /relay-payload` | `{ address, nonce }` — the caller's next relay-hub nonce and the relay account that will broadcast the meta-tx.    |
-| `RelayerSubmitResponseSchemaObject` | `POST /submit`       | Normalizes the vendor's `transactionID` (capital ID) to `transactionId`; `state` is optional (e.g. `"STATE_NEW"`). |
+| Schema                              | Endpoint                       | Notes                                                                                                                                                                                                                        |
+| ----------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RelayPayloadSchemaObject`          | `GET /relay-payload`           | `{ address, nonce }` — the caller's next relay-hub nonce and the relay account that will broadcast the meta-tx.                                                                                                              |
+| `RelayerSubmitResponseSchemaObject` | `POST /submit`                 | Normalizes the vendor's `transactionID` (capital ID) to `transactionId`; `state` is optional (e.g. `"STATE_NEW"`).                                                                                                           |
+| `RelayerTransactionSchemaObject`    | `GET /transaction` (one entry) | `transactionId` (normalized from `transactionID`), `state` (`STATE_NEW` … `STATE_CONFIRMED`, or terminal `STATE_FAILED`/`STATE_INVALID`), `transactionHash` once broadcast, `proxyAddress`, `type`, `createdAt`/`updatedAt`. |
 
-Neither Relayer schema carries the on-chain transaction hash — `POST /submit`
-only acknowledges that the relay hub accepted the meta-tx for broadcast;
-polling `GET /transaction` for confirmation is not implemented by this
-connect. `Polymarket.split()`/`merge()`/`redeem()` wrap a
+`POST /submit` only acknowledges that the relay hub accepted the meta-tx
+for broadcast — it carries no on-chain hash. `Polymarket.getRelayerTransaction()`
+reads `GET /transaction` for the state and hash; it never polls for you.
+`Polymarket.split()`/`merge()`/`redeem()` wrap a
 `RelayerSubmitResponse` into the same `OrderResult` shape used by every
 other trading/collateral action — see
 [API: OrderResult](Polymarket-API.md#orderresult--one-shape-for-every-action).

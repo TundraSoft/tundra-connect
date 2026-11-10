@@ -28,7 +28,7 @@ export const RelayPayloadSchemaObject: BaseGuardian<RelayPayload> = Guardian
     description: 'The relay-hub nonce and relay account for one meta-tx.',
   });
 
-/** Response schema for `POST /submit`. The on-chain transaction hash is NOT included — poll `GET /transaction` to retrieve it later (not implemented by this connect). */
+/** Response schema for `POST /submit`. The on-chain transaction hash is NOT included — poll `Polymarket.getRelayerTransaction()` (`GET /transaction`) for it and for confirmation. */
 export type RelayerSubmitResponse = {
   transactionId: string;
   /** e.g. `"STATE_NEW"`. */
@@ -72,3 +72,62 @@ export const RelayerSubmitResponseSchemaObject: BaseGuardian<
   },
   _submitResponse,
 );
+
+/** One relayed transaction from the Relayer's `GET /transaction`. */
+export type RelayerTransaction = {
+  /** The id `POST /submit` returned. */
+  transactionId: string;
+  /**
+   * `STATE_NEW` → `STATE_EXECUTED` → `STATE_MINED` → `STATE_CONFIRMED`;
+   * `STATE_FAILED` and `STATE_INVALID` are terminal failures. Compare
+   * case-sensitively; an unrecognized value passes through.
+   */
+  state: string;
+  /** On-chain transaction hash, once broadcast. */
+  transactionHash?: string | null;
+  /** The proxy wallet the meta-tx executed through. */
+  proxyAddress?: string | null;
+  /** Wallet type, e.g. `PROXY`. */
+  type?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+/**
+ * Schema for one entry of the Relayer's `GET /transaction` array.
+ * `transactionID` (capital ID) is normalized to `transactionId`.
+ *
+ * @example
+ * ```typescript
+ * import { RelayerTransactionSchemaObject } from '@tundraconnect/polymarket/schemas';
+ *
+ * const [error, tx] = RelayerTransactionSchemaObject.safeParse({
+ *   transactionID: '0190b317-a1d3-7bec-9b91-eeb6dcd3a620',
+ *   state: 'STATE_CONFIRMED',
+ *   transactionHash: '0x38cb…35d8',
+ * });
+ * ```
+ */
+export const RelayerTransactionSchemaObject: BaseGuardian<RelayerTransaction> =
+  Guardian.preprocess(
+    (raw: unknown) => {
+      if (typeof raw !== 'object' || raw === null) return raw;
+      const obj = raw as Record<string, unknown>;
+      if (obj.transactionId === undefined && obj.transactionID !== undefined) {
+        return { ...obj, transactionId: obj.transactionID };
+      }
+      return obj;
+    },
+    Guardian.object({
+      transactionId: Guardian.string().minLength(1),
+      state: Guardian.string().minLength(1),
+      transactionHash: Guardian.string().nullable().optional(),
+      proxyAddress: Guardian.string().nullable().optional(),
+      type: Guardian.string().nullable().optional(),
+      createdAt: Guardian.string().nullable().optional(),
+      updatedAt: Guardian.string().nullable().optional(),
+    }).describe({
+      title: 'Relayer transaction',
+      description: 'A relayed meta-transaction and its on-chain state.',
+    }),
+  );

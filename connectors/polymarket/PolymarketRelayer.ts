@@ -1,6 +1,8 @@
 /**
  * @fileoverview Polymarket Relayer — gasless collateral split/merge/redeem
- * via meta-transactions routed through a Polymarket-UI proxy wallet.
+ * via meta-transactions routed through a Polymarket-UI proxy wallet, on
+ * ConditionalTokens (CTF collateral adapters) and Polymarket Protocol V2
+ * (the Router) markets alike.
  *
  * Every function here is pure (no I/O) and independently testable —
  * `PolymarketRelayer.test.ts` verifies each one against the exact test
@@ -31,6 +33,8 @@ import {
   encodeNegRiskRedeemCall,
   encodeProxyCallData,
   encodeRedeemCall,
+  encodeRouterCall,
+  encodeRouterRedeemCall,
   type ProxyTransaction,
 } from './PolymarketAbi.ts';
 import { type DigestSigner, signMessageWith } from './PolymarketSigner.ts';
@@ -44,6 +48,14 @@ export const CTF_COLLATERAL_ADAPTER =
 /** CTF collateral adapter — neg-risk markets' split/merge/redeem. */
 export const NEG_RISK_CTF_COLLATERAL_ADAPTER =
   '0xadA2005600Dec949baf300f4C6120000bDB6eAab';
+/**
+ * Polymarket Protocol V2 Router — split/merge/redeem for every Gamma
+ * `version: "v2"` market, standard or neg-risk. Split spends pUSD the
+ * wallet approved for it; merge and redeem move PositionManager
+ * (`0x006F54F7f9A22e0000CC2AB60031000000ae9fEF`) shares it is an approved
+ * operator for. CTF approvals do not carry over.
+ */
+export const ROUTER = '0x12121212006e4CD160D18e3f00711DA5c3372600';
 /** Polymarket's ProxyWalletFactory on Polygon — UI proxies deploy from this factory; meta-txs route through its `proxy()` method. */
 export const PROXY_FACTORY = '0xaB45c5A4B0c941a2F231C04C3f49182e1A254052';
 /** The relay hub that executes the meta-tx on the user's behalf. */
@@ -150,6 +162,117 @@ export function buildRedeemTx(
     data: encodeRedeemCall(COLLATERAL_PUSD, condition, BINARY_PARTITION),
     operation: 1,
   };
+}
+
+/**
+ * Parses a Protocol V2 condition id into its `bytes31` ABI word: 31 bytes
+ * (62 hex chars), or Gamma's padded 32-byte form whose final byte must be
+ * zero — a non-zero final byte means it is not a V2 condition id (a V2
+ * position id ends in its outcome index there instead).
+ */
+function parseV2ConditionWord(conditionId: string): Uint8Array {
+  const hex = conditionId.startsWith('0x') ? conditionId.slice(2) : conditionId;
+  if (hex.length === 62) return fromHex(`${hex}00`);
+  if (hex.length !== 64) {
+    throw new Error(
+      `V2 condition_id must be 31 bytes, or 32 with a zero final byte; got ${hex.length} hex chars`,
+    );
+  }
+  const word = fromHex(hex);
+  if (word[31] !== 0) {
+    throw new Error(
+      'V2 condition_id has a non-zero final byte — pass the market conditionId, not a position id',
+    );
+  }
+  return word;
+}
+
+/**
+ * The PositionManager position id of one outcome of a Protocol V2
+ * condition: `conditionId << 8 | outcomeIndex`, as a decimal string — the
+ * same value as Gamma's `positionIds[outcomeIndex]`.
+ */
+export function v2PositionId(
+  conditionId: string,
+  outcomeIndex: number,
+): string {
+  if (
+    !Number.isInteger(outcomeIndex) || outcomeIndex < 0 || outcomeIndex > 255
+  ) {
+    throw new Error(
+      `outcome index must be an integer 0–255; got ${outcomeIndex}`,
+    );
+  }
+  const word = parseV2ConditionWord(conditionId);
+  word[31] = outcomeIndex;
+  return BigInt(`0x${toHex(word)}`).toString();
+}
+
+/** Builds a Protocol V2 SPLIT `ProxyTransaction` on the Router: `amountUsd` pUSD into `amountUsd` shares of each outcome. */
+export function buildV2SplitTx(
+  conditionId: string,
+  amountUsd: number,
+): ProxyTransaction {
+  return buildRouterTx('split', conditionId, amountUsd);
+}
+
+/** Builds a Protocol V2 MERGE `ProxyTransaction` on the Router: `amountUsd` shares of each outcome back into pUSD. */
+export function buildV2MergeTx(
+  conditionId: string,
+  amountUsd: number,
+): ProxyTransaction {
+  return buildRouterTx('merge', conditionId, amountUsd);
+}
+
+function buildRouterTx(
+  functionName: 'split' | 'merge',
+  conditionId: string,
+  amountUsd: number,
+): ProxyTransaction {
+  return {
+    to: ROUTER,
+    value: 0n,
+    data: encodeRouterCall(
+      functionName,
+      parseV2ConditionWord(conditionId),
+      pusdMicroUnits(amountUsd),
+    ),
+    operation: 1,
+  };
+}
+
+/**
+ * Builds the Protocol V2 REDEEM `ProxyTransaction`s on the Router — one per
+ * outcome holding shares, since the Router redeems one outcome and an
+ * explicit amount per call (all of them go in one meta-tx). `shares[i]` is
+ * outcome `i`'s amount; a zero amount is skipped.
+ *
+ * @throws {Error} When an amount is negative or not finite, or every
+ * amount rounds to zero.
+ */
+export function buildV2RedeemTxs(
+  conditionId: string,
+  shares: readonly number[],
+): ProxyTransaction[] {
+  const word = parseV2ConditionWord(conditionId);
+  const txs: ProxyTransaction[] = [];
+  shares.forEach((amount, outcomeIndex) => {
+    const micro = Math.round(amount * 1_000_000);
+    if (!Number.isFinite(micro) || micro < 0) {
+      throw new Error(`redeem shares must be >= 0 (got ${amount})`);
+    }
+    if (micro === 0) return;
+    txs.push({
+      to: ROUTER,
+      value: 0n,
+      data: encodeRouterRedeemCall(word, BigInt(outcomeIndex), BigInt(micro)),
+      operation: 1,
+    });
+  });
+  if (txs.length === 0) {
+    throw new Error('nothing to redeem: every outcome amount is zero');
+  }
+  return txs;
 }
 
 /**

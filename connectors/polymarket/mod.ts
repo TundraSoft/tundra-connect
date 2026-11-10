@@ -103,9 +103,13 @@ export {
   type PolymarketAuth,
   type PolymarketAuthCommon,
   type PolymarketOptions,
+  type PositionMarket,
+  positionMarket,
   type PreparedOrder,
   type PrepareOrderOptions,
+  type RedeemOptions,
   RELAYER_API,
+  type SplitMergeOptions,
   type SubmitOrderOptions,
 } from './Polymarket.ts';
 

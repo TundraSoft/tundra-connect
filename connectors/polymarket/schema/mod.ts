@@ -90,6 +90,8 @@ export {
 export {
   type RelayerSubmitResponse,
   RelayerSubmitResponseSchemaObject,
+  type RelayerTransaction,
+  RelayerTransactionSchemaObject,
   type RelayPayload,
   RelayPayloadSchemaObject,
 } from './Relayer.ts';
