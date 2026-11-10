@@ -2715,9 +2715,9 @@ describe({
 // Read-only with a key and funder: types a live V2 market, picks its
 // position id and reads its CONDITIONAL-V2 balance. With
 // LIVE_TEST_ALLOW_ORDERS as well, it also rests one post-only BUY of 5
-// shares at 0.01 ($0.05 of collateral) on that market — signed for
-// ExchangeV3 — and cancels it in `finally`. Needs pUSD approved for
-// ExchangeV3 (the collateral balance's `allowances` shows it).
+// shares at 0.01 ($0.05 of collateral) on a V2 crypto up/down market —
+// signed for ExchangeV3 — and cancels it in `finally`. Needs pUSD
+// approved for ExchangeV3 (the collateral balance's `allowances` shows it).
 const v2Trader = () =>
   new Polymarket({
     auth: {
@@ -2726,22 +2726,34 @@ const v2Trader = () =>
       funder: env.get('CONNECTOR_POLYMARKET_FUNDER')!,
     },
   });
-const liveV2Market = async (client: Polymarket) => {
-  const { markets } = await client.getMarkets({
-    endpoint: 'keyset',
-    version: 'v2',
-    closed: false,
-    ascending: false, // newest first — the oldest have already ended
-    limit: 50,
-  });
-  const market = markets.find((m) =>
-    m.version === 'v2' && m.acceptingOrders === true &&
-    (m.positionIds?.length ?? 0) > 0 &&
-    m.endDate !== undefined && m.endDate !== null &&
-    Date.parse(m.endDate) > Date.now() + 3_600_000
+// Pages Gamma's V2 listing (keyset, 500 a page) for a market accepting
+// orders that ends more than an hour from now. `crypto` keeps only the
+// crypto up/down windows (`cryptoMarketConfig` set).
+const liveV2Market = async (client: Polymarket, crypto = false) => {
+  let cursor: string | undefined;
+  for (let page = 0; page < 20; page++) {
+    const { markets, nextCursor } = await client.getMarkets({
+      endpoint: 'keyset',
+      version: 'v2',
+      closed: false,
+      limit: 500,
+      cursor,
+    });
+    const market = markets.find((m) =>
+      m.version === 'v2' && m.acceptingOrders === true &&
+      (m.positionIds?.length ?? 0) > 0 &&
+      (!crypto || (m.cryptoMarketConfig !== undefined &&
+        m.cryptoMarketConfig !== null)) &&
+      m.endDate !== undefined && m.endDate !== null &&
+      Date.parse(m.endDate) > Date.now() + 3_600_000
+    );
+    if (market) return market;
+    if (!nextCursor) break;
+    cursor = nextCursor;
+  }
+  throw new Error(
+    `no open Protocol V2${crypto ? ' crypto' : ''} market accepting orders`,
   );
-  asserts.assert(market, 'no open Protocol V2 market accepting orders');
-  return market;
 };
 
 describe({
@@ -2773,10 +2785,11 @@ describe({
   bun: false,
   node: false,
   fn: () => {
-    it('rests and cancels a post-only ExchangeV3 order on a V2 market', async () => {
+    it('rests and cancels a post-only ExchangeV3 order on a V2 crypto market', async () => {
       const client = v2Trader();
       await client.deriveApiCredentials();
-      const market = await liveV2Market(client);
+      const market = await liveV2Market(client, true);
+      console.log(`V2 order market: ${market.slug} (ends ${market.endDate})`);
       const prepared = await client.prepareOrder({
         ...orderAsset(market, 0),
         side: 'BUY',
