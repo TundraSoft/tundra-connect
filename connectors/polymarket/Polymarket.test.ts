@@ -2239,10 +2239,10 @@ describe({
         orderBy: 'startDate',
         ascending: false,
       });
-      const updown = markets.find((m) => m.cryptoMarketConfig);
+      const updown = markets.find((m) => m.cryptoMarketConfig?.twapEnabled);
       if (!updown) return; // none listed right now — nothing to check
       asserts.assertEquals(updown.cryptoMarketConfig!.twapEnabled, true);
-      asserts.assert(updown.cryptoMarketConfig!.twapLookbackSeconds > 0);
+      asserts.assert((updown.cryptoMarketConfig!.twapLookbackSeconds ?? 0) > 0);
       asserts.assert(updown.feeSchedule && updown.feeSchedule.rate > 0);
       asserts.assertEquals(updown.version, 'v1');
       const fee = estimateFees(updown, { price: 0.5, shares: 100 });
@@ -2899,19 +2899,29 @@ const v2Trader = () =>
 // Pages Gamma's V2 listing (keyset, 500 a page) for a market accepting
 // orders that ends more than an hour from now. `crypto` keeps only the
 // crypto up/down windows (`cryptoMarketConfig` set).
-const liveV2Market = async (client: Polymarket, crypto = false) => {
+const liveMarket = async (
+  client: Polymarket,
+  version: 'v1' | 'v2',
+  crypto = false,
+) => {
   let cursor: string | undefined;
   for (let page = 0; page < 20; page++) {
     const { markets, nextCursor } = await client.getMarkets({
       endpoint: 'keyset',
-      version: 'v2',
+      version,
       closed: false,
+      // Soonest-ending first, from an hour out: crypto windows are short,
+      // so they lead the list instead of hiding behind thousands of older
+      // open markets.
+      orderBy: 'endDate',
+      ascending: true,
+      endDateMin: new Date(Date.now() + 3_600_000).toISOString(),
       limit: 500,
       cursor,
     });
     const market = markets.find((m) =>
-      m.version === 'v2' && m.acceptingOrders === true &&
-      (m.positionIds?.length ?? 0) > 0 &&
+      m.version === version && m.acceptingOrders === true &&
+      (version === 'v1' || (m.positionIds?.length ?? 0) > 0) &&
       (!crypto || (m.cryptoMarketConfig !== undefined &&
         m.cryptoMarketConfig !== null)) &&
       m.endDate !== undefined && m.endDate !== null &&
@@ -2922,9 +2932,11 @@ const liveV2Market = async (client: Polymarket, crypto = false) => {
     cursor = nextCursor;
   }
   throw new Error(
-    `no open Protocol V2${crypto ? ' crypto' : ''} market accepting orders`,
+    `no open ${version}${crypto ? ' crypto' : ''} market accepting orders`,
   );
 };
+const liveV2Market = (client: Polymarket, crypto = false) =>
+  liveMarket(client, 'v2', crypto);
 
 describe({
   name: 'Polymarket — Protocol V2 live',
@@ -3002,11 +3014,12 @@ describe({
   },
 });
 
-// With LIVE_TEST_ALLOW_ORDERS and a Relayer API key: splits $1 of pUSD into
-// both outcomes of a live V2 crypto market through the Router, waits for
-// the relay to confirm, then merges the $1 straight back — gasless, net
-// zero. Needs pUSD approved for the Router and the Router as a
-// PositionManager operator (Polymarket's UI sets both).
+// With LIVE_TEST_ALLOW_ORDERS and a Relayer API key: on one live crypto
+// market of each position system, splits $1 of pUSD into both outcomes,
+// waits for the relay to confirm, then merges the $1 straight back —
+// gasless, net zero. v1 goes through the CTF collateral adapter `negRisk`
+// picks, V2 through the Router; each needs the funder's approvals for its
+// target (Polymarket's UI sets them).
 const relayerTestsEnabled = orderTestsEnabled &&
   !!env.get('CONNECTOR_POLYMARKET_RELAYER_API_KEY') &&
   !!env.get('CONNECTOR_POLYMARKET_RELAYER_API_KEY_ADDRESS');
@@ -3029,37 +3042,41 @@ const waitForRelay = async (client: Polymarket, id: string) => {
 };
 
 describe({
-  name: 'Polymarket — live Protocol V2 split and merge',
+  name: 'Polymarket — live split and merge',
   ignore: !relayerTestsEnabled,
   bun: false,
   node: false,
   fn: () => {
-    it('splits $1 into both outcomes of a V2 crypto market and merges it back', async () => {
-      const client = new Polymarket({
-        auth: {
-          type: 'CUSTOM',
-          privateKey: credentials.privateKey!,
-          funder: env.get('CONNECTOR_POLYMARKET_FUNDER')!,
-          relayerApiKey: env.get('CONNECTOR_POLYMARKET_RELAYER_API_KEY')!,
-          relayerApiKeyAddress: env.get(
-            'CONNECTOR_POLYMARKET_RELAYER_API_KEY_ADDRESS',
-          )!,
-        },
+    for (const version of ['v1', 'v2'] as const) {
+      it(`splits $1 into both outcomes of a ${version} crypto market and merges it back`, async () => {
+        const client = new Polymarket({
+          auth: {
+            type: 'CUSTOM',
+            privateKey: credentials.privateKey!,
+            funder: env.get('CONNECTOR_POLYMARKET_FUNDER')!,
+            relayerApiKey: env.get('CONNECTOR_POLYMARKET_RELAYER_API_KEY')!,
+            relayerApiKeyAddress: env.get(
+              'CONNECTOR_POLYMARKET_RELAYER_API_KEY_ADDRESS',
+            )!,
+          },
+        });
+        const market = await liveMarket(client, version, true);
+        const route = positionMarket(market);
+        asserts.assertEquals(route.version === 'v2' ? 'v2' : 'v1', version);
+        console.log(
+          `${version} split/merge market: ${market.slug} (negRisk ${market.negRisk})`,
+        );
+
+        const split = await client.split({ ...route, amountUsd: 1 });
+        console.log(`split: relay ${split.id} ${split.status}`);
+        const splitTx = await waitForRelay(client, split.id);
+        console.log(`split confirmed: ${splitTx.transactionHash}`);
+
+        const merge = await client.merge({ ...route, amountUsd: 1 });
+        console.log(`merge: relay ${merge.id} ${merge.status}`);
+        const mergeTx = await waitForRelay(client, merge.id);
+        console.log(`merge confirmed: ${mergeTx.transactionHash}`);
       });
-      const market = await liveV2Market(client, true);
-      const route = positionMarket(market);
-      asserts.assertEquals(route.version, 'v2');
-      console.log(`V2 split/merge market: ${market.slug}`);
-
-      const split = await client.split({ ...route, amountUsd: 1 });
-      console.log(`split: relay ${split.id} ${split.status}`);
-      const splitTx = await waitForRelay(client, split.id);
-      console.log(`split confirmed: ${splitTx.transactionHash}`);
-
-      const merge = await client.merge({ ...route, amountUsd: 1 });
-      console.log(`merge: relay ${merge.id} ${merge.status}`);
-      const mergeTx = await waitForRelay(client, merge.id);
-      console.log(`merge confirmed: ${mergeTx.transactionHash}`);
-    });
+    }
   },
 });
