@@ -1,6 +1,7 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import {
+  CryptoMarketConfigSchemaObject,
   FeeScheduleSchemaObject,
   GammaMarketListSchemaObject,
   GammaMarketSchemaObject,
@@ -132,6 +133,17 @@ describe('GammaMarket', () => {
         .makerRebatesFeeShareBps,
       10000,
     );
+  });
+
+  it('accepts a non-TWAP up/down config without twapLookbackSeconds (live xag)', () => {
+    const config = CryptoMarketConfigSchemaObject.parse({
+      id: 'xag-15m',
+      asset: 'xag',
+      duration: '15m',
+      twapEnabled: false,
+    });
+    asserts.assertEquals(config.twapEnabled, false);
+    asserts.assertEquals(config.twapLookbackSeconds, undefined);
   });
 
   it('accepts null for the optional new fields, rejects a malformed TWAP config', () => {

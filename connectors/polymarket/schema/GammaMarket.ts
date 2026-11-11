@@ -93,10 +93,12 @@ export const FeeScheduleSchemaObject: BaseGuardian<FeeSchedule> = Guardian
   });
 
 /**
- * A crypto up/down market's settlement configuration: which asset, which
+ * An up/down market's settlement configuration: which asset, which
  * window, and whether the open and settlement prices come from a TWAP.
- * Live markets read `twapEnabled: true, twapLookbackSeconds: 60` — they
- * settle on PolyBolt's `price.crypto.twap` stream (Chainlink).
+ * Crypto markets read `twapEnabled: true, twapLookbackSeconds: 60` — they
+ * settle on PolyBolt's `price.crypto.twap` stream (Chainlink). Gamma also
+ * lists non-TWAP up/down markets under this key (e.g. `xag`, silver:
+ * `twapEnabled: false` and no `twapLookbackSeconds`).
  */
 export type CryptoMarketConfig = {
   /** e.g. `btc-5m-twap-60`. */
@@ -106,8 +108,8 @@ export type CryptoMarketConfig = {
   /** Market window, e.g. `5m`, `15m`, `4h`. */
   duration: string;
   twapEnabled: boolean;
-  /** Averaging window of the settlement TWAP, seconds. */
-  twapLookbackSeconds: number;
+  /** Averaging window of the settlement TWAP, seconds — absent when `twapEnabled` is `false`. */
+  twapLookbackSeconds?: number | null;
 };
 
 /**
@@ -128,7 +130,7 @@ export const CryptoMarketConfigSchemaObject: BaseGuardian<CryptoMarketConfig> =
     asset: Guardian.string(),
     duration: Guardian.string(),
     twapEnabled: Guardian.boolean().strict(),
-    twapLookbackSeconds: Guardian.number(),
+    twapLookbackSeconds: Guardian.number().nullable().optional(),
   }).passthrough().describe({
     title: 'Crypto market config',
     description:
