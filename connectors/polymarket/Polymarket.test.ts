@@ -2832,6 +2832,33 @@ const orderTestsEnabled = !!credentials.privateKey &&
   !!env.get('CONNECTOR_POLYMARKET_FUNDER') &&
   !!env.get('LIVE_TEST_ALLOW_ORDERS');
 
+// Wall-clock timing of each live step, printed as one line per test so a
+// run doubles as a latency sample (client-side: includes TLS, signing and
+// the network round trip).
+const stepTimer = () => {
+  const rows: Array<[string, number]> = [];
+  return {
+    async step<T>(label: string, fn: () => Promise<T>): Promise<T> {
+      const start = performance.now();
+      try {
+        return await fn();
+      } finally {
+        rows.push([label, performance.now() - start]);
+      }
+    },
+    note(label: string, ms: number): void {
+      rows.push([label, ms]);
+    },
+    report(title: string): void {
+      console.log(
+        `${title} timings (ms): ${
+          rows.map(([label, ms]) => `${label} ${Math.round(ms)}`).join(' · ')
+        }`,
+      );
+    },
+  };
+};
+
 describe({
   name: 'Polymarket — live prepared-order duplicate',
   ignore: !orderTestsEnabled,
@@ -2846,36 +2873,52 @@ describe({
           funder: env.get('CONNECTOR_POLYMARKET_FUNDER')!,
         },
       });
-      await client.deriveApiCredentials();
-      const { markets } = await client.getMarkets({ limit: 20, closed: false });
+      const t = stepTimer();
+      await t.step('deriveCredentials', () => client.deriveApiCredentials());
+      const { markets } = await t.step(
+        'findMarket',
+        () => client.getMarkets({ limit: 20, closed: false }),
+      );
       const market = markets.find((m) =>
         m.clobTokenIds.length > 0 && m.acceptingOrders !== false
       );
       asserts.assert(market, 'no open market to rest an order on');
-      const prepared = await client.prepareOrder({
-        tokenId: market.clobTokenIds[0]!,
-        side: 'BUY',
-        price: 0.01,
-        shares: 5,
-        orderType: 'GTC',
-        postOnly: true,
-      });
+      const prepared = await t.step('prepare', () =>
+        client.prepareOrder({
+          tokenId: market.clobTokenIds[0]!,
+          side: 'BUY',
+          price: 0.01,
+          shares: 5,
+          orderType: 'GTC',
+          postOnly: true,
+        }));
       try {
-        const first = await client.submitPrepared(prepared);
+        const first = await t.step(
+          'submit',
+          () => client.submitPrepared(prepared),
+        );
         asserts.assertEquals(
           first.id,
           prepared.orderHash,
           'the venue order id is the EIP-712 hash',
         );
-        const err = await asserts.assertRejects(
-          () => client.submitPrepared(prepared),
-          PolymarketError,
-        );
+        const err = await t.step('resubmit', () =>
+          asserts.assertRejects(
+            () => client.submitPrepared(prepared),
+            PolymarketError,
+          ));
         asserts.assertEquals(err.code, 'ORDER_DUPLICATE');
-        const order = await client.getOrder(prepared.orderHash);
+        const order = await t.step(
+          'getOrder',
+          () => client.getOrder(prepared.orderHash),
+        );
         asserts.assertEquals(order.id, prepared.orderHash);
       } finally {
-        await client.cancelOrder(prepared.orderHash).catch(() => {});
+        await t.step(
+          'cancel',
+          () => client.cancelOrder(prepared.orderHash).catch(() => {}),
+        );
+        t.report('duplicate-order');
       }
     });
   },
@@ -2962,55 +3005,78 @@ describe({
 });
 
 describe({
-  name: 'Polymarket — live Protocol V2 order',
+  name: 'Polymarket — live order',
   ignore: !orderTestsEnabled,
   bun: false,
   node: false,
   fn: () => {
-    it('rests and cancels a post-only ExchangeV3 order on a V2 crypto market', async () => {
-      const client = v2Trader();
-      await client.deriveApiCredentials();
-      const market = await liveV2Market(client, true);
-      console.log(`V2 order market: ${market.slug} (ends ${market.endDate})`);
-      const prepared = await client.prepareOrder({
-        ...orderAsset(market, 0),
-        side: 'BUY',
-        price: 0.01,
-        shares: 5,
-        orderType: 'GTC',
-        postOnly: true,
-      });
-      asserts.assertEquals(prepared.version, 3);
-      try {
-        const placed = await client.submitPrepared(prepared);
-        console.log(`placed: status ${placed.status}, id ${placed.id}`);
-        asserts.assertEquals(
-          placed.id,
-          prepared.orderHash,
-          'the venue order id is the ExchangeV3 EIP-712 hash',
+    for (const version of ['v1', 'v2'] as const) {
+      it(`rests and cancels a post-only order on a ${version} crypto market`, async () => {
+        const client = v2Trader();
+        const t = stepTimer();
+        await t.step('deriveCredentials', () => client.deriveApiCredentials());
+        const market = await t.step(
+          'findMarket',
+          () => liveMarket(client, version, true),
         );
-        // The order lookup can trail the accept by a moment (seen on a V2
-        // crypto window): retry NOT_FOUND for up to ~3 s.
-        let resting;
-        for (let attempt = 0; attempt < 15 && !resting; attempt++) {
-          resting = await client.getOrder(prepared.orderHash).catch((e) => {
-            if (e instanceof PolymarketError && e.code === 'NOT_FOUND') {
-              return undefined;
-            }
-            throw e;
-          });
-          if (!resting) await new Promise((r) => setTimeout(r, 200));
+        console.log(
+          `${version} order market: ${market.slug} (ends ${market.endDate})`,
+        );
+        const prepared = await t.step('prepare', () =>
+          client.prepareOrder({
+            ...orderAsset(market, 0),
+            side: 'BUY',
+            price: 0.01,
+            shares: 5,
+            orderType: 'GTC',
+            postOnly: true,
+          }));
+        // v1 signs for whatever /version reports (CTF Exchange V2); v2
+        // markets sign for ExchangeV3.
+        asserts.assertEquals(prepared.version, version === 'v2' ? 3 : 2);
+        try {
+          const placed = await t.step(
+            'submit',
+            () => client.submitPrepared(prepared),
+          );
+          console.log(`placed: status ${placed.status}, id ${placed.id}`);
+          asserts.assertEquals(
+            placed.id,
+            prepared.orderHash,
+            'the venue order id is the EIP-712 hash',
+          );
+          // The order lookup can trail the accept by a moment (seen on a
+          // V2 crypto window): retry NOT_FOUND for up to ~3 s.
+          let resting;
+          let lookups = 0;
+          const lookupStart = performance.now();
+          for (let attempt = 0; attempt < 15 && !resting; attempt++) {
+            lookups++;
+            resting = await client.getOrder(prepared.orderHash).catch((e) => {
+              if (e instanceof PolymarketError && e.code === 'NOT_FOUND') {
+                return undefined;
+              }
+              throw e;
+            });
+            if (!resting) await new Promise((r) => setTimeout(r, 200));
+          }
+          t.note(
+            `visible(${lookups} lookup${lookups === 1 ? '' : 's'})`,
+            performance.now() - lookupStart,
+          );
+          asserts.assert(resting, 'the venue never showed the order');
+          console.log(`looked up: status ${resting.status}`);
+          asserts.assertEquals(resting.id, prepared.orderHash);
+        } finally {
+          const cancel = await t.step(
+            'cancel',
+            () => client.cancelOrder(prepared.orderHash).catch((e) => e),
+          );
+          console.log('cancel:', JSON.stringify(cancel));
+          t.report(`${version} order`);
         }
-        asserts.assert(resting, 'the venue never showed the order');
-        console.log(`looked up: status ${resting.status}`);
-        asserts.assertEquals(resting.id, prepared.orderHash);
-      } finally {
-        const cancel = await client.cancelOrder(prepared.orderHash).catch((
-          e,
-        ) => e);
-        console.log('cancel:', JSON.stringify(cancel));
-      }
-    });
+      });
+    }
   },
 });
 
@@ -3025,7 +3091,7 @@ const relayerTestsEnabled = orderTestsEnabled &&
   !!env.get('CONNECTOR_POLYMARKET_RELAYER_API_KEY_ADDRESS');
 
 const waitForRelay = async (client: Polymarket, id: string) => {
-  for (let attempt = 0; attempt < 60; attempt++) {
+  for (let attempt = 0; attempt < 240; attempt++) {
     const tx = await client.getRelayerTransaction(id).catch((e) => {
       if (e instanceof PolymarketError && e.code === 'NOT_FOUND') {
         return undefined;
@@ -3036,7 +3102,7 @@ const waitForRelay = async (client: Polymarket, id: string) => {
     if (tx?.state === 'STATE_FAILED' || tx?.state === 'STATE_INVALID') {
       throw new Error(`relay ${id} ended ${tx.state}`);
     }
-    await new Promise((r) => setTimeout(r, 2_000));
+    await new Promise((r) => setTimeout(r, 500));
   }
   throw new Error(`relay ${id} not confirmed within 2 minutes`);
 };
@@ -3060,22 +3126,50 @@ describe({
             )!,
           },
         });
-        const market = await liveMarket(client, version, true);
+        const t = stepTimer();
+        const market = await t.step(
+          'findMarket',
+          () => liveMarket(client, version, true),
+        );
         const route = positionMarket(market);
         asserts.assertEquals(route.version === 'v2' ? 'v2' : 'v1', version);
         console.log(
           `${version} split/merge market: ${market.slug} (negRisk ${market.negRisk})`,
         );
 
-        const split = await client.split({ ...route, amountUsd: 1 });
+        // The relayer's own created → last-updated span, beside the
+        // client's wall clock.
+        const relaySpan = (
+          tx: { createdAt?: string | null; updatedAt?: string | null },
+        ) =>
+          tx.createdAt && tx.updatedAt
+            ? Date.parse(tx.updatedAt) - Date.parse(tx.createdAt)
+            : NaN;
+
+        const split = await t.step(
+          'splitSubmit',
+          () => client.split({ ...route, amountUsd: 1 }),
+        );
         console.log(`split: relay ${split.id} ${split.status}`);
-        const splitTx = await waitForRelay(client, split.id);
+        const splitTx = await t.step(
+          'splitConfirm',
+          () => waitForRelay(client, split.id),
+        );
+        t.note('splitRelayerSpan', relaySpan(splitTx));
         console.log(`split confirmed: ${splitTx.transactionHash}`);
 
-        const merge = await client.merge({ ...route, amountUsd: 1 });
+        const merge = await t.step(
+          'mergeSubmit',
+          () => client.merge({ ...route, amountUsd: 1 }),
+        );
         console.log(`merge: relay ${merge.id} ${merge.status}`);
-        const mergeTx = await waitForRelay(client, merge.id);
+        const mergeTx = await t.step(
+          'mergeConfirm',
+          () => waitForRelay(client, merge.id),
+        );
+        t.note('mergeRelayerSpan', relaySpan(mergeTx));
         console.log(`merge confirmed: ${mergeTx.transactionHash}`);
+        t.report(`${version} split/merge`);
       });
     }
   },
