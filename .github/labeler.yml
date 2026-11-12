@@ -42,6 +42,9 @@ documentation:
 'connector: coingecko':
   - changed-files:
       - any-glob-to-any-file: connectors/coingecko/**
+'connector: deribit':
+  - changed-files:
+      - any-glob-to-any-file: connectors/deribit/**
 'connector: discord':
   - changed-files:
       - any-glob-to-any-file: connectors/discord/**

@@ -166,6 +166,18 @@
         }
       ]
     },
+    "connectors/deribit": {
+      "release-type": "node",
+      "component": "deribit",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/discord": {
       "release-type": "node",
       "component": "discord",

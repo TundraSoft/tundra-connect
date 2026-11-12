@@ -20,6 +20,7 @@ body:
         - CloudflareSaaS
         - CloudflareTurnstile
         - CoinGecko
+        - Deribit
         - Discord
         - DodoPayments
         - EIA
