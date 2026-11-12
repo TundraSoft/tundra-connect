@@ -1052,25 +1052,55 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   ): Promise<ClobBalance> {
     const signer = this.__requireSigner();
     const creds = this.__requireApiCreds();
-    const query: Record<string, string> = {
-      asset_type: !options.tokenId
-        ? 'COLLATERAL'
-        : options.version === 3
-        ? 'CONDITIONAL-V2'
-        : 'CONDITIONAL',
-      signature_type: String(this.__signatureType),
-    };
-    if (options.tokenId) query.token_id = options.tokenId;
     return await this.__requestAndValidate(
       {
         path: '/balance-allowance',
         baseURL: this.__clobBaseURL,
         method: 'GET',
-        query,
+        query: this.__balanceQuery(options),
         auth: this.__l2Auth(signer, creds),
       },
       ClobBalanceSchemaObject,
     );
+  }
+
+  /**
+   * Has the CLOB re-read this wallet's on-chain balance and allowances
+   * (`GET /balance-allowance/update`), then returns the fresh
+   * {@link getBalance} reading. The venue checks orders against its own
+   * cached copy, which can lag the chain: call this after anything that
+   * changed the wallet outside the CLOB — a confirmed
+   * {@link split}/{@link merge}/{@link redeem}, a deposit, or a new
+   * approval — before placing an order that relies on it. Same options as
+   * {@link getBalance}; one asset per call.
+   *
+   * @param options.tokenId - Outcome token id for a share balance; omit for pUSD.
+   * @param options.version - `3` for a Protocol V2 position, as {@link orderAsset} returns it.
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`;
+   * otherwise as {@link getBalance}.
+   *
+   * @example
+   * ```typescript
+   * const { id } = await client.split({ ...positionMarket(market), amountUsd: 5 });
+   * // ...poll getRelayerTransaction(id) until STATE_CONFIRMED, then:
+   * const shares = await client.refreshBalance(orderAsset(market, 'Yes'));
+   * ```
+   */
+  public async refreshBalance(
+    options: { tokenId?: string; version?: ProtocolVersion } = {},
+  ): Promise<ClobBalance> {
+    const signer = this.__requireSigner();
+    const creds = this.__requireApiCreds();
+    // The body carries nothing to validate — a non-2xx still throws through
+    // the connect-wide error mapping.
+    await this._makeRequest({
+      path: '/balance-allowance/update',
+      baseURL: this.__clobBaseURL,
+      method: 'GET',
+      query: this.__balanceQuery(options),
+      auth: this.__l2Auth(signer, creds),
+    });
+    return await this.getBalance(options);
   }
 
   /**
@@ -2034,6 +2064,41 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   }
 
   // ── internals ────────────────────────────────────────────────────────────
+
+  /**
+   * Builds a split/merge/redeem call, reporting a refused input (a
+   * malformed condition id, an amount that is not above zero, nothing to
+   * redeem) as `INVALID_OPTIONS` before any request is made.
+   */
+  private static __positionTx<T>(
+    method: 'split' | 'merge' | 'redeem',
+    build: () => T,
+  ): T {
+    try {
+      return build();
+    } catch (cause) {
+      throw new PolymarketError('INVALID_OPTIONS', {
+        method,
+        detail: cause instanceof Error ? cause.message : String(cause),
+      }, cause instanceof Error ? cause : undefined);
+    }
+  }
+
+  /** The `/balance-allowance` query for collateral, a CTF token, or a Protocol V2 position. */
+  private __balanceQuery(
+    options: { tokenId?: string; version?: ProtocolVersion },
+  ): Record<string, string> {
+    const query: Record<string, string> = {
+      asset_type: !options.tokenId
+        ? 'COLLATERAL'
+        : options.version === 3
+        ? 'CONDITIONAL-V2'
+        : 'CONDITIONAL',
+      signature_type: String(this.__signatureType),
+    };
+    if (options.tokenId) query.token_id = options.tokenId;
+    return query;
+  }
 
   /** Sets each defined value as a query parameter, stringified. */
   private static __setQuery(

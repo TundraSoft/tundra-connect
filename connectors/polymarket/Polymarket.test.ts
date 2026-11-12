@@ -2811,6 +2811,55 @@ describe('Polymarket — Protocol V2 markets (ExchangeV3)', () => {
     );
   });
 
+  it('refreshBalance has the CLOB re-read the asset, then reads it', async () => {
+    const c = trader();
+    // The live update endpoint answers 200 with an empty body.
+    c.setResponseQueue([
+      { body: '' },
+      { body: { balance: '5000000', allowances: {} } },
+    ]);
+    const fresh = await c.refreshBalance(orderAsset(v2Market, 'Up'));
+    asserts.assertEquals(fresh.balance, 5);
+    const [update, read] = c.requests.slice(-2).map((r) => new URL(r.url));
+    asserts.assertEquals(update!.pathname, '/balance-allowance/update');
+    asserts.assertEquals(read!.pathname, '/balance-allowance');
+    for (const url of [update!, read!]) {
+      asserts.assertEquals(
+        url.searchParams.get('asset_type'),
+        'CONDITIONAL-V2',
+      );
+      asserts.assertEquals(url.searchParams.get('token_id'), '333');
+      asserts.assert(url.searchParams.get('signature_type'));
+    }
+    asserts.assert(
+      c.requests.at(-2)!.headers['POLY_SIGNATURE']!.length > 0,
+      'the update call is L2-signed',
+    );
+
+    await c.refreshBalance();
+    const collateral = new URL(c.requests.at(-2)!.url);
+    asserts.assertEquals(collateral.pathname, '/balance-allowance/update');
+    asserts.assertEquals(
+      collateral.searchParams.get('asset_type'),
+      'COLLATERAL',
+    );
+    asserts.assertEquals(collateral.searchParams.has('token_id'), false);
+  });
+
+  it('refreshBalance does not read a balance the CLOB refused to refresh', async () => {
+    const c = trader();
+    c.setResponse({ error: 'Unauthorized' }, 401);
+    const err = await asserts.assertRejects(
+      () => c.refreshBalance(),
+      PolymarketError,
+    );
+    asserts.assertEquals(err.code, 'AUTH_FAILED');
+    asserts.assertEquals(
+      c.requests.filter((r) => r.url.includes('/balance-allowance')).length,
+      1,
+    );
+  });
+
   it('getMarkets passes the version filter', async () => {
     const c = new MockPolymarket({});
     c.setResponse([]);
