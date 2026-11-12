@@ -15,15 +15,17 @@ alternative to the official Polymarket SDKs for the endpoints it covers.
 
 ## Overview
 
-One `Polymarket` client covers both APIs, matching how a Gamma market's
-`clobTokenIds` feed directly into CLOB calls:
+One `Polymarket` client covers all four REST APIs, matching how a Gamma
+market's `clobTokenIds` (or `positionIds`) feed directly into CLOB calls:
 
 - **Gamma** (`gamma-api.polymarket.com`) — `getMarkets()` (legacy offset or
   keyset cursor pagination) and `getMarketBySlug()`. No credentials needed.
 - **CLOB** (`clob.polymarket.com`) — `getVersion()`/`getTickSize()`/
   `getNegRisk()`/`getOrderbook()` (public), `deriveApiCredentials()`
   (one-time L1-signed onboarding), and L2 HMAC-authenticated
-  `getBalance()` (USDC collateral, or one outcome token's shares),
+  `getBalance()` (pUSD collateral, or one outcome token's shares) and
+  `refreshBalance()` (the same, after the CLOB re-reads the wallet's
+  on-chain balance and allowances),
   `getOpenOrders()`/`getFills()` (cursor-paginated), `getOrder()` (one
   order by hash, in any state), `submitOrder()`/`submitOrders()`
   (single/bulk, up to 15 per request, auto-chunked),
@@ -108,9 +110,13 @@ client with these calls, the same way you would for order signing.
 
 ### Out of scope (for now)
 
-- Sending token approvals (pUSD, Conditional Tokens, PositionManager) and
-  the V2 Router's neg-risk and Combo operations (`convert`,
-  `horizontalSplit`/`horizontalMerge`, `prepareCondition`).
+- Sending token approvals (pUSD, Conditional Tokens, PositionManager),
+  Protocol V2's AutoRedeemer, and the V2 Router's neg-risk and Combo
+  operations (`convert`, `horizontalSplit`/`horizontalMerge`,
+  `prepareCondition`).
+- Converting ConditionalTokens holdings to Protocol V2 — Polymarket does
+  not convert them; a v1 market keeps trading and redeeming on the CTF
+  contracts, which this client keeps supporting alongside V2.
 - Safe and Deposit Wallet relayer flows — the Relayer path signs for the
   Polymarket proxy wallet (`PROXY`) only.
 - The RTDS **comments** topic, PolyBolt's `esports.series` channel and the
@@ -194,7 +200,7 @@ const clob = new Polymarket({
 });
 await clob.deriveApiCredentials();
 const balance = await clob.getBalance();
-console.log('USDC available:', balance.balance);
+console.log('pUSD available:', balance.balance);
 
 // Portfolio: open orders and fills (CLOB), positions and value (Data API v2).
 const { data: openOrders } = await clob.getOpenOrders();

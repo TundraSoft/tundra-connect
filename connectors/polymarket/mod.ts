@@ -1,7 +1,8 @@
 /**
- * Typed, cross-runtime client for [Polymarket](https://polymarket.com)'s two
- * public REST APIs: **Gamma** (market discovery — no auth) and the **CLOB**
- * (trading — L1/L2 auth, real secp256k1/EIP-712 order signing).
+ * Typed, cross-runtime client for [Polymarket](https://polymarket.com)'s
+ * REST APIs: **Gamma** (market discovery — no auth), the **CLOB** (trading —
+ * L1/L2 auth, real secp256k1/EIP-712 order signing), the **Data API v2**
+ * (public portfolio reads) and the **Relayer** (gasless split/merge/redeem).
  *
  * Typed Polymarket client: Gamma market discovery, CLOB trading with
  * secp256k1/EIP-712 order signing, Data API v2 portfolio, activity, token and
@@ -32,7 +33,7 @@
  * });
  * await clob.deriveApiCredentials();
  * const balance = await clob.getBalance();
- * console.log('USDC available:', balance.balance);
+ * console.log('pUSD available:', balance.balance);
  *
  * // Portfolio: open orders and fills (CLOB), positions and value (Data API v2).
  * const { data: openOrders } = await clob.getOpenOrders();

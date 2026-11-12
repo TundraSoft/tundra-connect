@@ -148,7 +148,7 @@ export type PolymarketAuth =
 export type PolymarketAuthCommon = {
   type: 'CUSTOM';
   /**
-   * The proxy/funding wallet that holds USDC and appears as `maker` on
+   * The proxy/funding wallet that holds pUSD and appears as `maker` on
    * every signed order — NEVER the signer EOA itself. Required for order
    * placement; irrelevant for read-only CLOB calls (balance, tick-size,
    * ...).
@@ -522,7 +522,7 @@ export type SubmitOrderOptions = {
   side: OrderSide;
   /** On-tick, `[0.01, 0.99]`. */
   price: number;
-  /** Cent-aligned — see {@link quantizeBuy}. */
+  /** Cent-aligned: the venue rejects a `shares × price` that is off a whole cent. */
   shares: number;
   orderType: 'GTC' | 'GTD' | 'FOK' | 'FAK';
   /** Unix SECONDS the order auto-cancels at. REQUIRED for `orderType: 'GTD'` (a GTD order with no expiration would silently behave exactly like GTC); ignored for GTC/FOK/FAK. */
@@ -550,7 +550,7 @@ export type BulkOrderInput = Omit<SubmitOrderOptions, 'version'> & {
 export type PrepareOrderOptions = SubmitOrderOptions & {
   /** Fixed salt — an integer below 2^53. Random when omitted. */
   salt?: number;
-  /** Build clock, Unix ms: the V2 order's signed `timestamp`. @default Date.now() */
+  /** Build clock, Unix ms: the signed `timestamp` of a version 2 or 3 order. @default Date.now() */
   nowMs?: number;
 };
 
@@ -572,7 +572,7 @@ export type PreparedOrder = {
   price: number;
   shares: number;
   orderType: SubmitOrderOptions['orderType'];
-  /** The signed `timestamp` (ms) — V2's struct field; also used for V1's salt entropy. */
+  /** The signed `timestamp` (ms) — a struct field for versions 2 and 3; version 1 uses it for salt entropy only. */
   timestampMs: number;
   signature: `0x${string}`;
   /** The signed order exactly as it goes on the wire (`order` in the request body). */
@@ -1033,16 +1033,16 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   /**
    * Available balance as the venue sees it — the number the CLOB actually
    * checks before accepting an order, not an on-chain read. With no
-   * `tokenId` this is the USDC collateral balance; with one it is the
+   * `tokenId` this is the pUSD collateral balance; with one it is the
    * share balance of that outcome token (what a SELL can draw on).
    *
-   * @param options.tokenId - Outcome token id for a share balance; omit for USDC.
+   * @param options.tokenId - Outcome token id for a share balance; omit for pUSD.
    * @param options.version - `3` for a Protocol V2 position (`asset_type=CONDITIONAL-V2`), as {@link orderAsset} returns it. The collateral balance's `allowances` lists ExchangeV3 once it is approved.
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`.
    *
    * @example
    * ```typescript
-   * const { balance } = await client.getBalance(); // USDC, e.g. 125.5
+   * const { balance } = await client.getBalance(); // pUSD, e.g. 125.5
    * const shares = await client.getBalance({ tokenId }); // shares of one outcome
    * const v2 = await client.getBalance(orderAsset(market, 'Yes')); // a V2 position
    * ```
@@ -2053,7 +2053,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * console.log(result.slippage);
    * ```
    *
-   * @throws {PolymarketError} Whatever the dispatched action throws — see {@link submitOrder} for BUY/SELL and {@link split}/{@link merge}/{@link redeem} for the collateral actions; plus `REQUEST_VALIDATION_ERROR` for an unrecognized `action`.
+   * @throws {PolymarketError} Whatever the dispatched action throws — see {@link submitOrder} for BUY/SELL and {@link split}/{@link merge}/{@link redeem} for the collateral actions; plus `UNKNOWN_ERROR` for an unrecognized `action`.
    */
   public async order(request: OrderRequest): Promise<OrderResult> {
     switch (request.action) {

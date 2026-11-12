@@ -1863,15 +1863,16 @@ describe('Polymarket — error mapping', () => {
 
 // ── Live tests ──────────────────────────────────────────────────────────────
 //
-// Only the credential-free / read-only surface is live-tested:
+// With only the private key set, the credential-free / read-only surface
+// is live-tested:
 //  - Gamma's getMarkets (fully public).
 //  - The CLOB's getVersion/getTickSize/getNegRisk (public, no signing —
 //    they need a real token id, sourced from the live Gamma call itself).
-// deriveApiCredentials, getBalance, submitOrder, and cancelOrder(s) are
-// deliberately excluded: deriving credentials and placing/canceling orders
-// mutate real state tied to a real wallet (and an order can result in a
-// real fill), which this repo's live-test conventions exclude unless the
-// vendor offers a safe, isolated sandbox for it — Polymarket does not.
+// With CONNECTOR_POLYMARKET_FUNDER as well, one read-only test derives
+// credentials and reads balances. Anything that places an order or moves
+// funds — Polymarket has no sandbox — runs only with LIVE_TEST_ALLOW_ORDERS
+// (see the gated describes further down), and split/merge additionally
+// needs the Relayer API key.
 /** Everything an error could surface to a log: its message plus its serialized context. */
 function dumpError(err: unknown): string {
   const e = err as { message?: string; toJSON?: () => unknown };
