@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/deribit",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed Deribit API client for Deno, Bun, Node.js, browsers and Cloudflare Workers: option-chain discovery, book summaries and historical trades over REST, plus a JSON-RPC WebSocket feed of trades, order books with change_id gap detection, tickers with mark IV and greeks, DVOL, price indices and option mark prices.",
   "exports": {
     ".": "./mod.ts",
