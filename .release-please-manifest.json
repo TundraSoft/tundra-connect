@@ -1,5 +1,6 @@
 {
   "connectors/algolia": "0.2.0",
+  "connectors/aviationweather": "0.0.0",
   "connectors/azure-blob": "0.2.0",
   "connectors/binance": "0.1.1",
   "connectors/cloudflare-dns": "0.1.0",

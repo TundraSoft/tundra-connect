@@ -58,6 +58,18 @@
         }
       ]
     },
+    "connectors/aviationweather": {
+      "release-type": "node",
+      "component": "aviationweather",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "connectors/azure-blob": {
       "release-type": "node",
       "component": "azure-blob",

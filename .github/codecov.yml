@@ -17,6 +17,10 @@ component_management:
         name: algolia
         paths:
           - connectors/algolia/**
+      - component_id: aviationweather
+        name: aviationweather
+        paths:
+          - connectors/aviationweather/**
       - component_id: azure-blob
         name: azure-blob
         paths:
