@@ -1,9 +1,10 @@
 /**
  * @fileoverview Minimal Solidity ABI encoding — exactly the handful of
  * fixed-shape contract calls the Relayer path needs (the CTF collateral
- * adapters' `splitPosition`/`mergePositions`/`redeemPositions`, and the
- * Polymarket `ProxyWalletFactory.proxy(calls[])` wrapper), not a
- * general-purpose encoder.
+ * adapters' `splitPosition`/`mergePositions`/`redeemPositions`, the
+ * Protocol V2 Router's `split`/`merge`/`redeem`, and the Polymarket
+ * `ProxyWalletFactory.proxy(calls[])` wrapper), not a general-purpose
+ * encoder.
  *
  * Every function here is pure (no I/O) and independently testable —
  * `PolymarketAbi.test.ts` verifies each one against the exact word-by-word
@@ -130,6 +131,42 @@ export function encodeNegRiskRedeemCall(
     selector('redeemPositions(bytes32,uint256[])'),
     head,
     tail,
+  );
+}
+
+/**
+ * Protocol V2 `Router.split`/`merge` — `(bytes31 conditionId, uint256
+ * amount)`. `conditionWord` is the condition id as its ABI word: the 31
+ * bytes left-aligned, final byte zero (Gamma's 32-byte `conditionId` for a
+ * `version: "v2"` market is already this word).
+ */
+export function encodeRouterCall(
+  functionName: 'split' | 'merge',
+  conditionWord: Uint8Array,
+  amount: bigint,
+): Uint8Array {
+  return concatBytes(
+    selector(`${functionName}(bytes31,uint256)`),
+    bytes32Word(conditionWord),
+    uintWord(amount),
+  );
+}
+
+/**
+ * Protocol V2 `Router.redeem` — `(bytes31 conditionId, uint256
+ * outcomeIndex, uint256 amount)`: one outcome (`0` YES/first, `1`
+ * NO/second — not CTF index sets) and an explicit share amount per call.
+ */
+export function encodeRouterRedeemCall(
+  conditionWord: Uint8Array,
+  outcomeIndex: bigint,
+  amount: bigint,
+): Uint8Array {
+  return concatBytes(
+    selector('redeem(bytes31,uint256,uint256)'),
+    bytes32Word(conditionWord),
+    uintWord(outcomeIndex),
+    uintWord(amount),
   );
 }
 

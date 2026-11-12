@@ -4,12 +4,11 @@ Real-time WebSocket feeds, exported from `@tundraconnect/polymarket/sockets`
 (and the package root). They are independent of the REST `Polymarket`
 client: importing a socket never loads it.
 
-| Socket                     | Feed                                                          | Credentials                               |
-| -------------------------- | ------------------------------------------------------------- | ----------------------------------------- |
-| `PolymarketMarketSocket`   | CLOB market channel: books, level changes, trades, ticks      | none                                      |
-| `PolymarketUserSocket`     | CLOB user channel: your orders and trades                     | CLOB API credentials                      |
-| `PolymarketPriceSocket`    | PolyBolt: Chainlink/Pyth crypto, equities, TWAPs, top-of-book | CLOB API credentials for reference prices |
-| `PolymarketLiveDataSocket` | Legacy real-time data socket: Chainlink and Binance crypto    | none                                      |
+| Socket                   | Feed                                                                    | Credentials                               |
+| ------------------------ | ----------------------------------------------------------------------- | ----------------------------------------- |
+| `PolymarketMarketSocket` | CLOB market channel: books, level changes, trades, ticks                | none                                      |
+| `PolymarketUserSocket`   | CLOB user channel: your orders and trades                               | CLOB API credentials                      |
+| `PolymarketPriceSocket`  | PolyBolt: Chainlink/Pyth crypto, equities and forex, TWAPs, top-of-book | CLOB API credentials for reference prices |
 
 ```ts
 import { PolymarketMarketSocket } from '@tundraconnect/polymarket/sockets';
@@ -40,21 +39,21 @@ exact frame text. Venue events also carry `data` (Guardian-validated,
 camelCased, every venue field kept) and `venueTimestamp` (the venue's own
 time for the message, in milliseconds).
 
-| Type               | Socket    | `data`                                                                 |
-| ------------------ | --------- | ---------------------------------------------------------------------- |
-| `book`             | market    | `PolymarketBook` — every bid and ask level                             |
-| `price_change`     | market    | `PolymarketPriceChange` — the changed levels (`size: 0` removes one)   |
-| `tick_size_change` | market    | `PolymarketTickSizeChange`                                             |
-| `last_trade_price` | market    | `PolymarketLastTradePrice` — one trade print                           |
-| `best_bid_ask`     | market    | `PolymarketBestBidAsk`                                                 |
-| `new_market`       | market    | `PolymarketNewMarket` (sent for every new market)                      |
-| `market_resolved`  | market    | `PolymarketMarketResolved`                                             |
-| `order`            | user      | `PolymarketUserOrder` — placement, update or cancellation              |
-| `trade`            | user      | `PolymarketUserTrade` — once per status (MATCHED, MINED, CONFIRMED, …) |
-| `price`            | price     | `PolymarketPriceUpdate` — a live point                                 |
-| `price_snapshot`   | price     | `PolymarketPriceSnapshot` — the history sent per new subscription      |
-| `best_bid_ask`     | price     | `PolymarketPriceBestBidAsk` (`price.polymarket`)                       |
-| `price`            | live-data | `PolymarketLiveDataPrice`, with `source: 'chainlink' \| 'binance'`     |
+| Type               | Socket | `data`                                                                 |
+| ------------------ | ------ | ---------------------------------------------------------------------- |
+| `book`             | market | `PolymarketBook` — every bid and ask level                             |
+| `price_change`     | market | `PolymarketPriceChange` — the changed levels (`size: 0` removes one)   |
+| `tick_size_change` | market | `PolymarketTickSizeChange`                                             |
+| `last_trade_price` | market | `PolymarketLastTradePrice` — one trade print                           |
+| `best_bid_ask`     | market | `PolymarketBestBidAsk`                                                 |
+| `new_market`       | market | `PolymarketNewMarket` (sent for every new market)                      |
+| `market_resolved`  | market | `PolymarketMarketResolved`                                             |
+| `order`            | user   | `PolymarketUserOrder` — placement, update or cancellation              |
+| `trade`            | user   | `PolymarketUserTrade` — once per status (MATCHED, MINED, CONFIRMED, …) |
+| `price`            | price  | `PolymarketPriceUpdate` — a live point                                 |
+| `price_snapshot`   | price  | `PolymarketPriceSnapshot` — the history sent per new subscription      |
+| `best_bid_ask`     | price  | `PolymarketPriceBestBidAsk` (`price.polymarket`)                       |
+| `subscribed`       | price  | `PolymarketPriceSubscribed` — the ack, with the `provider` served      |
 
 Lifecycle events, on every socket:
 
@@ -86,12 +85,11 @@ a jump is a `gap`, and so is a non-zero `dropped` counter.
 
 ## Liveness
 
-| Socket    | Heartbeat                    | Reconnects when                        |
-| --------- | ---------------------------- | -------------------------------------- |
-| market    | `PING` every 10s             | no frame (incl. `PONG`) for 30s        |
-| user      | `PING` every 10s             | no frame for 30s                       |
-| price     | `{ op: 'ping' }` every 15s   | no frame for 45s                       |
-| live-data | `PING` every 5s (unanswered) | no price data for 30s while subscribed |
+| Socket | Heartbeat                  | Reconnects when                 |
+| ------ | -------------------------- | ------------------------------- |
+| market | `PING` every 10s           | no frame (incl. `PONG`) for 30s |
+| user   | `PING` every 10s           | no frame for 30s                |
+| price  | `{ op: 'ping' }` every 15s | no frame for 45s                |
 
 Override with `heartbeatIntervalMs`, `idleTimeoutMs` and `dataTimeoutMs`.
 Every socket also takes `connectTimeoutMs` (abort a handshake that hasn't
@@ -104,12 +102,11 @@ delivering data.
 
 ## Subscriptions
 
-| Socket    | Add / remove                                                                 |
-| --------- | ---------------------------------------------------------------------------- |
-| market    | `subscribe(assetIds)` / `unsubscribe(assetIds)`                              |
-| user      | `subscribe(conditionIds)` / `unsubscribe(conditionIds)` (none: every market) |
-| price     | `subscribe(channel, filter)` / `unsubscribe(channel, filter)`                |
-| live-data | `subscribe(source, symbols?)` / `unsubscribe(source, symbols?)`              |
+| Socket | Add / remove                                                                 |
+| ------ | ---------------------------------------------------------------------------- |
+| market | `subscribe(assetIds)` / `unsubscribe(assetIds)`                              |
+| user   | `subscribe(conditionIds)` / `unsubscribe(conditionIds)` (none: every market) |
+| price  | `subscribe(channel, filter)` / `unsubscribe(channel, filter)`                |
 
 All of them work before or while connected; the current set is replayed on
 every reconnect. The market socket batches ids 100 per frame; PolyBolt
@@ -132,12 +129,85 @@ Node 22+, browsers, Cloudflare Workers and a bare `deno_core` with the web
 extensions. Pass a `webSocket: (url, { headers }) => WebSocket` factory to
 supply your own implementation (a proxy, a test double).
 
-## The legacy live-data socket
+## PolyBolt reference prices
 
-Polymarket has deprecated the legacy price topics in favour of PolyBolt.
-PolyBolt serves Chainlink (and Pyth) but not Binance, so
-`PolymarketLiveDataSocket` remains the only Polymarket source of its Binance
-reference prices until those topics are switched off.
+| Channel             | Symbols                                                                                                         | Providers                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `price.crypto`      | `btcusd` `ethusd` `solusd` `xrpusd` `dogeusd` `hypeusd` `bnbusd` `zecusd`                                       | Chainlink (default), Pyth on six     |
+| `price.crypto.twap` | the same eight, `windowSeconds: 60`                                                                             | Chainlink only                       |
+| `price.equity`      | stocks, ETFs, forex (incl. `usdchf` `usdmxn` `usdzar` `usdbrl` `usdnok` `usdsek` `usdtry`), metals, commodities | Chainlink where it serves, else Pyth |
+| `price.equity.twap` | `eurusd` `usdjpy`, `windowSeconds: 60`                                                                          | Chainlink                            |
+
+`POLYMARKET_PRICE_SYMBOLS` lists them; any string is accepted, since the
+venue adds symbols over time. TWAP subscriptions default to
+`windowSeconds: 60`, the only window that carries data.
+
+```ts
+import { PolymarketPriceSocket } from '@tundraconnect/polymarket/sockets';
+
+const socket = new PolymarketPriceSocket({
+  auth: { apiCredentials: { apiKey: '…', secret: '…', passphrase: '…' } },
+  includeRaw: true,
+  subscriptions: [
+    // What BTC up/down markets settle on: Chainlink's 60-second TWAP.
+    { channel: 'price.crypto.twap', filter: { symbol: 'btcusd' } },
+    { channel: 'price.crypto', filter: { symbol: 'btcusd', provider: 'pyth' } },
+    { channel: 'price.equity', filter: { symbol: 'usdbrl' } },
+  ],
+});
+for await (const event of socket) {
+  if (event.type === 'subscribed') {
+    console.log(
+      event.data.channel,
+      event.data.filters,
+      'served by',
+      event.data.provider,
+    );
+  } else if (event.type === 'price' || event.type === 'price_snapshot') {
+    // fullAccuracyValue is the exact published decimal (18 places on the TWAPs).
+    console.log(event.channel, event.seq, event.data.source, event.raw);
+  } else if (event.type === 'gap') {
+    console.warn(
+      'lost frames on',
+      event.stream,
+      event.expected,
+      event.received,
+      event.missed,
+    );
+  }
+}
+```
+
+- **Provider pins.** `filter.provider` (`chainlink` | `pyth`) works on
+  `price.crypto` (since 2026-10-02, when it moved to Chainlink by default)
+  and the equity channels. A pin the venue cannot serve falls back to the
+  symbol's default; every `subscribed` event names the provider actually
+  served — read it rather than assuming the pin held. This socket never
+  puts two subscriptions on one channel in the same request, so each ack's
+  `filters` is exactly the subscription it confirms.
+- **`source`** is on every live point and once per snapshot batch. Treat
+  the value set as open, and re-read it after every reconnect: a symbol's
+  vendor can change between connections.
+- **`marketStatus`** (`open` | `closed` | `unknown`, equity channels, since
+  2026-10-21) is on every live point and snapshot; absent means not stated.
+  A status change without a new price arrives as an update repeating the
+  last price and `timestamp` with `isCarriedForward: true` — it is
+  delivered like every other frame, never de-duplicated. While a series is
+  `closed`, its snapshot carries the closing price even when it is older
+  than two minutes. Chainlink's around-the-clock equity products read
+  `open` outside exchange hours; a symbol pinned to Pyth follows its
+  exchange session.
+- **Recording a settlement stream.** Crypto up/down markets settle on
+  `price.crypto.twap` (Gamma's `cryptoMarketConfig.twapLookbackSeconds`
+  says the window). Every frame becomes one event with `receivedAt`,
+  `venueTimestamp`, the envelope's `seq`/`ts`, the exact string
+  `fullAccuracyValue`, and with `includeRaw` the frame itself; a `seq` jump
+  or a `dropped` counter is a `gap` event — nothing is resynced or filled
+  in behind your back.
+
+The legacy RTDS price topics (`wss://ws-live-data.polymarket.com`,
+`crypto_prices` and `crypto_prices_chainlink`) are no longer supported by
+this package; PolyBolt replaced them on 2026-09-15.
 
 See [Errors](Polymarket-Errors.md) for the `SOCKET_*` codes and
 [Schemas](Polymarket-Schemas.md) for the event payload schemas.

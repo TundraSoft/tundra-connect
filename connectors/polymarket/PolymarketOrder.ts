@@ -27,9 +27,13 @@ import type { DigestSigner } from './PolymarketSigner.ts';
 export const POLYGON_CHAIN_ID = 137;
 export const EXCHANGE_DOMAIN_NAME = 'Polymarket CTF Exchange';
 
+/** ExchangeV3 — the single exchange for Polymarket Protocol V2 markets (Gamma `version: "v2"`). */
+export const EXCHANGE_V3 = '0xe3333700cA9d93003F00f0F71f8515005F6c00Aa';
+
 /**
  * `verifyingContract` by (protocol version × neg-risk), Polygon 137.
- * btc/eth/sol/xrp updown markets are NOT neg-risk.
+ * btc/eth/sol/xrp updown markets are NOT neg-risk. Version 3 (ExchangeV3)
+ * settles every Protocol V2 market, neg-risk or not, on one contract.
  */
 export const VERIFYING_CONTRACT = {
   1: {
@@ -39,6 +43,10 @@ export const VERIFYING_CONTRACT = {
   2: {
     std: '0xE111180000d2663C0091e4f400237545B87B996B',
     negRisk: '0xe2222d279d744050d28e00520010520000310F59',
+  },
+  3: {
+    std: EXCHANGE_V3,
+    negRisk: EXCHANGE_V3,
   },
 } as const;
 
@@ -143,8 +151,15 @@ export function toFixed6(x: number): bigint {
   return BigInt(Math.round(x * 100)) * 10_000n;
 }
 
-/** The CLOB's order-signing protocol version, as reported by `GET /version`. */
-export type ProtocolVersion = 1 | 2;
+/**
+ * The exchange an order is signed for — also its EIP-712 domain version.
+ * `1`/`2` are the CTF exchanges `GET /version` reports (`2` since
+ * 2026-04-28) for ConditionalTokens markets (Gamma `version: "v1"`); `3` is
+ * ExchangeV3, for Polymarket Protocol V2 markets (Gamma `version: "v2"`),
+ * which `/version` never reports — the market decides it (see
+ * `orderAsset`). Version 3 signs the same struct as version 2.
+ */
+export type ProtocolVersion = 1 | 2 | 3;
 /** Which side of the book an order takes. */
 export type OrderSide = 'BUY' | 'SELL';
 
@@ -241,7 +256,7 @@ export function buildOrder(p: BuildOrderParams): BuiltOrder {
   };
 }
 
-/** EIP-712 signing digest for a built order (V1/V2 struct + the versioned, verifyingContract-scoped domain). */
+/** EIP-712 signing digest for a built order (V1 struct, or the V2 struct for versions 2 and 3, plus the versioned, verifyingContract-scoped domain). */
 export function orderDigest(built: BuiltOrder): Uint8Array {
   const domainSep = domainSeparator(
     EXCHANGE_DOMAIN_NAME,

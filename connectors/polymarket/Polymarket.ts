@@ -13,7 +13,7 @@ import {
   RESTlerTimeoutError,
 } from '@restler';
 import type { EventOptionKeys } from '@utils';
-import { type BaseGuardian, type GuardianError } from '@guardian';
+import { type BaseGuardian, Guardian, type GuardianError } from '@guardian';
 import { checksumAddress, toHex } from './PolymarketEip712.ts';
 import {
   buildL1Headers,
@@ -42,6 +42,10 @@ import {
   buildProxyMetaTx,
   buildRedeemTx,
   buildSplitTx,
+  buildV2MergeTx,
+  buildV2RedeemTxs,
+  buildV2SplitTx,
+  v2PositionId,
 } from './PolymarketRelayer.ts';
 import { PolymarketError } from './errors/mod.ts';
 import {
@@ -64,15 +68,25 @@ import {
   type ClobTradesPage,
   ClobTradesPageSchemaObject,
   ClobVersionSchemaObject,
-  type DataPosition,
-  DataPositionListSchemaObject,
-  DataValueListSchemaObject,
+  type DataActivityPage,
+  DataActivityPageSchemaObject,
+  type DataPositionsPage,
+  DataPositionsPageSchemaObject,
+  type DataResolution,
+  DataResolutionListSchemaObject,
+  type DataToken,
+  DataTokenListSchemaObject,
+  type DataTradesPage,
+  DataTradesPageSchemaObject,
+  DataValueSchemaObject,
   type GammaMarket,
   GammaMarketKeysetPageSchemaObject,
   GammaMarketListSchemaObject,
   GammaMarketSchemaObject,
   type RelayerSubmitResponse,
   RelayerSubmitResponseSchemaObject,
+  type RelayerTransaction,
+  RelayerTransactionSchemaObject,
   RelayPayloadSchemaObject,
 } from './schema/mod.ts';
 
@@ -85,7 +99,7 @@ export const GAMMA_API = 'https://gamma-api.polymarket.com';
 export const CLOB_API = 'https://clob.polymarket.com';
 /** Production Relayer API host — gasless split/merge/redeem meta-transactions. */
 export const RELAYER_API = 'https://relayer-v2.polymarket.com';
-/** Production Data API host — public, read-only portfolio view (positions, value) keyed by wallet address. */
+/** Production Data API host — public, read-only portfolio, activity, token and resolution views. Every route this client calls is under `/v2` (v1 retired 2026-11-02). */
 export const DATA_API = 'https://data-api.polymarket.com';
 /** Polygon mainnet chain id — the CLOB rejects any other chain id in production. */
 export const POLYGON_CHAIN_ID = 137;
@@ -134,7 +148,7 @@ export type PolymarketAuth =
 export type PolymarketAuthCommon = {
   type: 'CUSTOM';
   /**
-   * The proxy/funding wallet that holds USDC and appears as `maker` on
+   * The proxy/funding wallet that holds pUSD and appears as `maker` on
    * every signed order — NEVER the signer EOA itself. Required for order
    * placement; irrelevant for read-only CLOB calls (balance, tick-size,
    * ...).
@@ -219,37 +233,122 @@ export type GetFillsOptions = {
   cursor?: string;
 };
 
-/** Filters for {@link Polymarket.getPositions}. */
+/** A single id or a list of ids, sent comma-separated. */
+export type IdList = string | readonly string[];
+
+/** Filters for {@link Polymarket.getPositions} (`GET /v2/positions`). */
 export type GetPositionsOptions = {
-  /** Wallet to read. Defaults to `auth.funder` (the proxy wallet that holds positions). */
-  user?: string;
-  /** Condition id(s) to restrict to. Mutually exclusive with `eventId`. */
-  market?: string | string[];
-  /** Event id(s) to restrict to. Mutually exclusive with `market`. */
-  eventId?: string | string[];
-  /** Hide positions smaller than this many shares. Vendor default `1`. */
-  sizeThreshold?: number;
-  /** Only positions in markets resolved in the held outcome's favour. */
-  redeemable?: boolean;
-  /** Only positions where both outcomes are held. */
-  mergeable?: boolean;
-  /** Vendor default 100. */
-  limit?: number;
-  offset?: number;
-  sortBy?:
-    | 'CURRENT'
-    | 'INITIAL'
-    | 'TOKENS'
-    | 'CASHPNL'
-    | 'PERCENTPNL'
-    | 'TITLE'
-    | 'RESOLVING'
-    | 'PRICE'
-    | 'AVGPRICE';
-  sortDirection?: 'ASC' | 'DESC';
-  /** Case-insensitive market-title filter. */
+  /**
+   * Wallet to read. Defaults to `auth.funder` (the proxy wallet that holds
+   * positions). `null` drops the wallet anchor, listing a market's holders
+   * instead — then `condition` must name exactly one market.
+   */
+  user?: string | null;
+  /** Condition id(s), at most 20. With a wallet, narrows its positions. */
+  condition?: IdList;
+  /** Gamma event id(s), at most 20. Wallet-anchored reads only. */
+  eventId?: IdList;
+  /**
+   * Lifecycle filter. `OPEN` (the vendor default) is the superset, settled-
+   * but-unredeemed winners included; `REDEEMABLE` narrows to those;
+   * `REDEEMABLE_LOST` to still-held losing sides; `MERGEABLE` to pairs that
+   * can merge back to collateral; `CLOSED` to exited positions.
+   */
+  status?: 'OPEN' | 'REDEEMABLE' | 'REDEEMABLE_LOST' | 'MERGEABLE' | 'CLOSED';
+  /** Case-insensitive market-title substring. Not carried by the cursor — resend it on every page. */
   title?: string;
+  /** What `filterAmount` measures. Vendor default `TOKENS`. */
+  filterType?: 'CASH' | 'TOKENS';
+  /** Minimum current holding (shares for `TOKENS`, USDC for `CASH`). Vendor default 0.1 shares. */
+  filterAmount?: number;
+  /** Also include positions in archived markets. Not with `status: 'CLOSED'`. */
+  includeArchived?: boolean;
+  sortBy?:
+    | 'CURRENT_VALUE'
+    | 'PRICE'
+    | 'TOKENS'
+    | 'UNREALIZED_PNL'
+    | 'REALIZED_PNL'
+    | 'TOTAL_PNL'
+    | 'TIMESTAMP';
+  sortDirection?: 'ASC' | 'DESC';
+  /** Epoch seconds, inclusive bounds on each row's `lastEventAt`. Resend on every page. */
+  start?: number;
+  end?: number;
+  /** First-page size, at most 1000. Ignored with `cursor` (the cursor carries its own). */
+  limit?: number;
+  /** `pagination.nextCursor` from the previous page. Send it with the same `user`/`condition` anchor. */
+  cursor?: string;
 };
+
+/** Filters for {@link Polymarket.getActivity} (`GET /v2/activity`). */
+export type GetActivityOptions = {
+  /** Wallet to read. Defaults to `auth.funder`. */
+  user?: string;
+  /**
+   * Activity type(s): `TRADE`, `SPLIT`, `MERGE`, `REDEEM`, `CONVERSION`,
+   * `MIGRATION`, `REWARD`, `YIELD`, `MAKER_REBATE`, `TAKER_REBATE`,
+   * `REFERRAL_REWARD`, `DEPOSIT`, `WITHDRAWAL`, `TIP`, … Omitted, every type
+   * but `TIP`.
+   */
+  type?: IdList;
+  /** Condition id(s), at most 20. Mutually exclusive with `eventId`. */
+  condition?: IdList;
+  /** Gamma event id(s), at most 20. */
+  eventId?: IdList;
+  side?: 'BUY' | 'SELL';
+  /** Epoch seconds, inclusive. Vendor default: three years back (`1` for full history). */
+  start?: number;
+  /** Epoch seconds, inclusive. Vendor default: now plus one day. */
+  end?: number;
+  /** Vendor default `DESC` (newest first). Bound into the cursor. */
+  sortDirection?: 'ASC' | 'DESC';
+  /** Include `DEPOSIT`/`WITHDRAWAL` rows (the vendor drops them by default). */
+  includeDepositsWithdrawals?: boolean;
+  /** Page size, vendor default 100, at most 1000. */
+  limit?: number;
+  cursor?: string;
+};
+
+/** Filters for {@link Polymarket.getTrades} (`GET /v2/trades`). */
+export type GetTradesOptions = {
+  /** Restrict to one wallet. Omitted, this is the market/event/global feed — there is no `auth.funder` default here. */
+  user?: string;
+  /** Condition id(s), at most 20. */
+  condition?: IdList;
+  /** Gamma event id(s), at most 20. */
+  eventId?: IdList;
+  side?: 'BUY' | 'SELL';
+  /** Vendor default `true`: each fill once, on its taker side. `false` adds the maker rows. */
+  takerOnly?: boolean;
+  filterType?: 'CASH' | 'TOKENS';
+  /** Minimum trade size; vendor default 0.01. */
+  filterAmount?: number;
+  /** Epoch seconds, inclusive. Honoured on the `user` shape only. */
+  start?: number;
+  end?: number;
+  limit?: number;
+  cursor?: string;
+};
+
+/** Selector for {@link Polymarket.getTokens} — exactly one of the two. */
+export type GetTokensOptions =
+  | {
+    /** Up to 50 decimal token ids. Unknown ids are simply absent from the result. */
+    tokenIds: readonly string[];
+    conditions?: never;
+  }
+  | {
+    /** Up to 10 condition selectors: a condition id, a neg-risk market id, or a polymarket-v2 condition/event id. */
+    conditions: readonly string[];
+    tokenIds?: never;
+  };
+
+/** Selector for {@link Polymarket.getResolutions} — exactly one of the three. */
+export type GetResolutionsOptions =
+  | { questionId: string; condition?: never; eventId?: never }
+  | { condition: IdList; questionId?: never; eventId?: never }
+  | { eventId: IdList; questionId?: never; condition?: never };
 
 /** Filters for {@link Polymarket.getMarkets}. */
 export type GetMarketsOptions = {
@@ -277,6 +376,8 @@ export type GetMarketsOptions = {
   startDateMax?: string;
   /** Server-side filter to exact condition ids. */
   conditionIds?: string[];
+  /** Position system: `'v2'` lists only Polymarket Protocol V2 markets — Gamma leaves them out of an unfiltered listing. */
+  version?: 'v1' | 'v2';
   /** `'keyset'` pagination cursor from a previous call's {@link GetMarketsResult.nextCursor}. */
   cursor?: string;
   /** `'legacy'` pagination offset. */
@@ -290,21 +391,145 @@ export type GetMarketsResult = {
   nextCursor?: string;
 };
 
+/** What to put in an order for one outcome of a market — see {@link orderAsset}. */
+export type OrderAsset = {
+  /** The outcome's id: `clobTokenIds[i]` (Gamma `version: "v1"`) or `positionIds[i]` (`"v2"`). */
+  tokenId: string;
+  /** `3` (ExchangeV3) for a Protocol V2 market; absent for a v1 market, so the CLOB's `/version` decides. */
+  version?: ProtocolVersion;
+};
+
+/**
+ * The order id and exchange version for one outcome of `market`, chosen by
+ * the market's Gamma `version` as Polymarket's V2 migration guide requires:
+ * `"v1"` → `clobTokenIds[i]`, signed for whatever `/version` reports;
+ * `"v2"` → `positionIds[i]`, signed for ExchangeV3 (`version: 3`). Spread
+ * it into {@link Polymarket.submitOrder} or {@link Polymarket.prepareOrder}.
+ * Pure — no request.
+ *
+ * @param outcome - Outcome index, or its label (`'Yes'`, `'Up'`, …) as in `market.outcomes`.
+ * @throws {PolymarketError} `INVALID_OPTIONS` for a missing or unknown
+ * `version`, an unknown outcome, or a market without that outcome's id.
+ *
+ * @example
+ * ```typescript
+ * const market = (await client.getMarketBySlug(slug))!;
+ * await client.submitOrder({
+ *   ...orderAsset(market, 'Up'),
+ *   side: 'BUY', price: 0.5, shares: 10, orderType: 'GTC',
+ * });
+ * ```
+ */
+export function orderAsset(
+  market: Pick<
+    GammaMarket,
+    'version' | 'outcomes' | 'clobTokenIds' | 'positionIds'
+  >,
+  outcome: number | string,
+): OrderAsset {
+  const fail = (detail: string): never => {
+    throw new PolymarketError('INVALID_OPTIONS', {
+      method: 'orderAsset',
+      detail,
+    });
+  };
+  const index = typeof outcome === 'number'
+    ? outcome
+    : market.outcomes.indexOf(outcome);
+  if (!Number.isInteger(index) || index < 0) {
+    fail(`unknown outcome ${JSON.stringify(outcome)}`);
+  }
+  if (market.version === 'v1') {
+    const tokenId = market.clobTokenIds[index];
+    return tokenId ? { tokenId } : fail(`no clobTokenIds[${index}]`);
+  }
+  if (market.version === 'v2') {
+    const tokenId = market.positionIds?.[index];
+    return tokenId ? { tokenId, version: 3 } : fail(`no positionIds[${index}]`);
+  }
+  return fail(`unsupported market version ${JSON.stringify(market.version)}`);
+}
+
+/**
+ * Which position system a market's split/merge/redeem goes through — see
+ * {@link positionMarket}. `version` `'v1'` (the default) routes through the
+ * CTF collateral adapter `negRisk` picks; `'v2'` through the Protocol V2
+ * Router, for standard and neg-risk markets alike.
+ */
+export type PositionMarket =
+  | { conditionId: string; version?: 'v1'; negRisk: boolean }
+  | { conditionId: string; version: 'v2' };
+
+/** Inputs to {@link Polymarket.split} and {@link Polymarket.merge}. */
+export type SplitMergeOptions = PositionMarket & {
+  /** pUSD to split into (or shares of each outcome to merge back from). */
+  amountUsd: number;
+};
+
+/** Inputs to {@link Polymarket.redeem}. */
+export type RedeemOptions =
+  | { conditionId: string; version?: 'v1'; negRisk: boolean }
+  | {
+    conditionId: string;
+    version: 'v2';
+    /**
+     * Shares to redeem per outcome, by outcome index (`[yes, no]`). The
+     * Router takes an explicit amount; omitted, the wallet's whole
+     * `CONDITIONAL-V2` balance of each outcome is read first (two
+     * {@link Polymarket.getBalance} calls, which need CLOB credentials).
+     */
+    shares?: readonly number[];
+  };
+
+/**
+ * The split/merge/redeem routing for `market`, from its Gamma `version`:
+ * `"v1"` → `{ conditionId, negRisk }` (CTF collateral adapters); `"v2"` →
+ * `{ conditionId, version: 'v2' }` (the Protocol V2 Router). Spread it
+ * into {@link Polymarket.split}/{@link Polymarket.merge}/
+ * {@link Polymarket.redeem}. Pure — no request.
+ *
+ * @throws {PolymarketError} `INVALID_OPTIONS` for a missing or unknown `version`.
+ *
+ * @example
+ * ```typescript
+ * const market = (await client.getMarketBySlug(slug))!;
+ * await client.split({ ...positionMarket(market), amountUsd: 1 });
+ * ```
+ */
+export function positionMarket(
+  market: Pick<GammaMarket, 'version' | 'conditionId' | 'negRisk'>,
+): PositionMarket {
+  if (market.version === 'v1') {
+    return { conditionId: market.conditionId, negRisk: market.negRisk };
+  }
+  if (market.version === 'v2') {
+    return { conditionId: market.conditionId, version: 'v2' };
+  }
+  throw new PolymarketError('INVALID_OPTIONS', {
+    method: 'positionMarket',
+    detail: `unsupported market version ${JSON.stringify(market.version)}`,
+  });
+}
+
 /** Inputs to {@link Polymarket.submitOrder}. */
 export type SubmitOrderOptions = {
-  /** CLOB ERC-1155 token id (decimal string) — from a Gamma market's `clobTokenIds`. */
+  /**
+   * Outcome id (decimal string): a Gamma market's `clobTokenIds` entry, or
+   * a Protocol V2 market's `positionIds` entry with `version: 3` —
+   * {@link orderAsset} picks the right pair.
+   */
   tokenId: string;
   side: OrderSide;
   /** On-tick, `[0.01, 0.99]`. */
   price: number;
-  /** Cent-aligned — see {@link quantizeBuy}. */
+  /** Cent-aligned: the venue rejects a `shares × price` that is off a whole cent. */
   shares: number;
   orderType: 'GTC' | 'GTD' | 'FOK' | 'FAK';
   /** Unix SECONDS the order auto-cancels at. REQUIRED for `orderType: 'GTD'` (a GTD order with no expiration would silently behave exactly like GTC); ignored for GTC/FOK/FAK. */
   expirationTime?: number;
-  /** Looked up via {@link Polymarket.getNegRisk} when omitted. */
+  /** Looked up via {@link Polymarket.getNegRisk} when omitted. Ignored for `version: 3` — ExchangeV3 has no neg-risk variant. */
   negRisk?: boolean;
-  /** Looked up via {@link Polymarket.getVersion} when omitted. */
+  /** Looked up via {@link Polymarket.getVersion} when omitted. `3` (ExchangeV3) for a Protocol V2 market — never looked up, see {@link orderAsset}. */
   version?: ProtocolVersion;
   /** Order must rest on the book and not match immediately. Only valid for GTC/GTD. @default false */
   postOnly?: boolean;
@@ -312,14 +537,20 @@ export type SubmitOrderOptions = {
   deferExec?: boolean;
 };
 
-/** Inputs to {@link Polymarket.submitOrders} — one order; `version` is resolved once for the whole batch, not per-order. */
-export type BulkOrderInput = Omit<SubmitOrderOptions, 'version'>;
+/**
+ * Inputs to {@link Polymarket.submitOrders} — one order. The CTF exchange
+ * version is resolved once for the whole batch; only a Protocol V2 order
+ * carries its own `version: 3` (from {@link orderAsset}).
+ */
+export type BulkOrderInput = Omit<SubmitOrderOptions, 'version'> & {
+  version?: 3;
+};
 
 /** Inputs to {@link Polymarket.prepareOrder} — an order plus the two values that fix its identity. */
 export type PrepareOrderOptions = SubmitOrderOptions & {
   /** Fixed salt — an integer below 2^53. Random when omitted. */
   salt?: number;
-  /** Build clock, Unix ms: the V2 order's signed `timestamp`. @default Date.now() */
+  /** Build clock, Unix ms: the signed `timestamp` of a version 2 or 3 order. @default Date.now() */
   nowMs?: number;
 };
 
@@ -341,7 +572,7 @@ export type PreparedOrder = {
   price: number;
   shares: number;
   orderType: SubmitOrderOptions['orderType'];
-  /** The signed `timestamp` (ms) — V2's struct field; also used for V1's salt entropy. */
+  /** The signed `timestamp` (ms) — a struct field for versions 2 and 3; version 1 uses it for salt entropy only. */
   timestampMs: number;
   signature: `0x${string}`;
   /** The signed order exactly as it goes on the wire (`order` in the request body). */
@@ -361,12 +592,8 @@ export type OrderAction = OrderSide | 'SPLIT' | 'MERGE' | 'REDEEM';
  */
 export type OrderRequest =
   | ({ action: OrderSide } & Omit<SubmitOrderOptions, 'side'>)
-  | ({ action: 'SPLIT' | 'MERGE' } & {
-    conditionId: string;
-    amountUsd: number;
-    negRisk: boolean;
-  })
-  | ({ action: 'REDEEM' } & { conditionId: string; negRisk: boolean });
+  | ({ action: 'SPLIT' | 'MERGE' } & SplitMergeOptions)
+  | ({ action: 'REDEEM' } & RedeemOptions);
 
 /**
  * Convenience result of every trading/collateral action —
@@ -434,8 +661,9 @@ export type OrderResult = {
  * order are real secp256k1/EIP-712 signatures, not delegated elsewhere);
  * order placement additionally needs `auth.funder`. The Relayer's gasless
  * collateral actions ({@link split}/{@link merge}/{@link redeem}) further
- * need `auth.relayerApiKey`/`auth.relayerApiKeyAddress`. The WebSocket
- * market/user feeds are out of scope for this connect; see the README.
+ * need `auth.relayerApiKey`/`auth.relayerApiKeyAddress`. The Data API v2
+ * reads (positions, value, activity, trades, tokens, resolutions) are
+ * public. WebSocket feeds live in the separate `./sockets` export.
  *
  * @example
  * ```typescript
@@ -587,6 +815,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     if (options.conditionIds?.length) {
       query.condition_ids = options.conditionIds.join(',');
     }
+    if (options.version) query.version = options.version;
     if (usesKeyset && options.cursor) query.after_cursor = options.cursor;
     if (!usesKeyset && options.offset) query.offset = String(options.offset);
 
@@ -804,38 +1033,74 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   /**
    * Available balance as the venue sees it — the number the CLOB actually
    * checks before accepting an order, not an on-chain read. With no
-   * `tokenId` this is the USDC collateral balance; with one it is the
+   * `tokenId` this is the pUSD collateral balance; with one it is the
    * share balance of that outcome token (what a SELL can draw on).
    *
-   * @param options.tokenId - Outcome token id for a share balance; omit for USDC.
+   * @param options.tokenId - Outcome token id for a share balance; omit for pUSD.
+   * @param options.version - `3` for a Protocol V2 position (`asset_type=CONDITIONAL-V2`), as {@link orderAsset} returns it. The collateral balance's `allowances` lists ExchangeV3 once it is approved.
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`.
    *
    * @example
    * ```typescript
-   * const { balance } = await client.getBalance(); // USDC, e.g. 125.5
+   * const { balance } = await client.getBalance(); // pUSD, e.g. 125.5
    * const shares = await client.getBalance({ tokenId }); // shares of one outcome
+   * const v2 = await client.getBalance(orderAsset(market, 'Yes')); // a V2 position
    * ```
    */
   public async getBalance(
-    options: { tokenId?: string } = {},
+    options: { tokenId?: string; version?: ProtocolVersion } = {},
   ): Promise<ClobBalance> {
     const signer = this.__requireSigner();
     const creds = this.__requireApiCreds();
-    const query: Record<string, string> = {
-      asset_type: options.tokenId ? 'CONDITIONAL' : 'COLLATERAL',
-      signature_type: String(this.__signatureType),
-    };
-    if (options.tokenId) query.token_id = options.tokenId;
     return await this.__requestAndValidate(
       {
         path: '/balance-allowance',
         baseURL: this.__clobBaseURL,
         method: 'GET',
-        query,
+        query: this.__balanceQuery(options),
         auth: this.__l2Auth(signer, creds),
       },
       ClobBalanceSchemaObject,
     );
+  }
+
+  /**
+   * Has the CLOB re-read this wallet's on-chain balance and allowances
+   * (`GET /balance-allowance/update`), then returns the fresh
+   * {@link getBalance} reading. The venue checks orders against its own
+   * cached copy, which can lag the chain: call this after anything that
+   * changed the wallet outside the CLOB — a confirmed
+   * {@link split}/{@link merge}/{@link redeem}, a deposit, or a new
+   * approval — before placing an order that relies on it. Same options as
+   * {@link getBalance}; one asset per call.
+   *
+   * @param options.tokenId - Outcome token id for a share balance; omit for pUSD.
+   * @param options.version - `3` for a Protocol V2 position, as {@link orderAsset} returns it.
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`;
+   * otherwise as {@link getBalance}.
+   *
+   * @example
+   * ```typescript
+   * const { id } = await client.split({ ...positionMarket(market), amountUsd: 5 });
+   * // ...poll getRelayerTransaction(id) until STATE_CONFIRMED, then:
+   * const shares = await client.refreshBalance(orderAsset(market, 'Yes'));
+   * ```
+   */
+  public async refreshBalance(
+    options: { tokenId?: string; version?: ProtocolVersion } = {},
+  ): Promise<ClobBalance> {
+    const signer = this.__requireSigner();
+    const creds = this.__requireApiCreds();
+    // The body carries nothing to validate — a non-2xx still throws through
+    // the connect-wide error mapping.
+    await this._makeRequest({
+      path: '/balance-allowance/update',
+      baseURL: this.__clobBaseURL,
+      method: 'GET',
+      query: this.__balanceQuery(options),
+      auth: this.__l2Auth(signer, creds),
+    });
+    return await this.getBalance(options);
   }
 
   /**
@@ -885,8 +1150,10 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * for an order recorded before it was sent (see {@link prepareOrder}).
    *
    * @throws {PolymarketError} `NOT_FOUND` when the venue has no such order
-   * for this account; `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`;
-   * `RESPONSE_ERROR` when the body fails validation.
+   * for this account (it answers `200` with a `null` body) — including,
+   * briefly, an order it has only just accepted;
+   * `CONFIG_MISSING_PRIVATE_KEY` / `NO_API_CREDENTIALS`; `RESPONSE_ERROR`
+   * when the body fails validation.
    *
    * @example
    * ```typescript
@@ -897,15 +1164,19 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   public async getOrder(orderId: string): Promise<ClobOpenOrder> {
     const signer = this.__requireSigner();
     const creds = this.__requireApiCreds();
-    return await this.__requestAndValidate(
+    const order = await this.__requestAndValidate(
       {
         path: `/data/order/${encodeURIComponent(orderId)}`,
         baseURL: this.__clobBaseURL,
         method: 'GET',
         auth: this.__l2Auth(signer, creds),
       },
-      ClobOpenOrderSchemaObject,
+      ClobOpenOrderSchemaObject.nullable(),
     );
+    if (order === null) {
+      throw new PolymarketError('NOT_FOUND', { status: 200, body: null });
+    }
+    return order;
   }
 
   /**
@@ -946,66 +1217,77 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     );
   }
 
-  // ── Data API (public portfolio view) ────────────────────────────────────
+  // ── Data API v2 (public portfolio, activity, tokens, resolutions) ───────
 
   /**
-   * Open positions of a wallet with mark-to-market value and PnL, from
-   * the public Data API — no signing involved. Defaults to `auth.funder`
-   * (the proxy wallet that actually holds positions), so a client built
-   * with trading credentials reads its own book; pass `user` to read any
-   * other wallet.
+   * One cursor page of a wallet's positions with fee-exclusive basis,
+   * mark-to-market value and PnL, from the public Data API — no signing
+   * involved. Defaults to `auth.funder` (the proxy wallet that holds the
+   * positions); pass `user` to read any other wallet, or `user: null` with
+   * one `condition` to list that market's holders. Follow
+   * `pagination.nextCursor` until it is `null`.
    *
-   * Offset-paginated: the vendor returns up to `limit` (default 100) rows
-   * starting at `offset`; a page shorter than `limit` is the last.
-   *
-   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when neither
-   * `user` nor `auth.funder` is available; `RESPONSE_ERROR` when the body
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when `user` is
+   * omitted and `auth.funder` is not set; `INVALID_OPTIONS` for
+   * `user: null` without a `condition`; `RESPONSE_ERROR` when the body
    * fails validation; or `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
    *
    * @example
    * ```typescript
-   * const positions = await client.getPositions({ redeemable: true });
-   * for (const p of positions) console.log(p.title, p.outcome, p.size, p.cashPnl);
+   * let cursor: string | undefined;
+   * do {
+   *   const page = await client.getPositions({ status: 'REDEEMABLE', cursor });
+   *   for (const p of page.data) console.log(p.title, p.outcome, p.currentSize, p.unrealizedPnl);
+   *   cursor = page.pagination.nextCursor ?? undefined;
+   * } while (cursor);
    * ```
    */
   public async getPositions(
     options: GetPositionsOptions = {},
-  ): Promise<DataPosition[]> {
-    const user = options.user ?? this.__requireFunder();
-    const query: Record<string, string> = { user };
-    const list = (value: string | string[]) =>
-      Array.isArray(value) ? value.join(',') : value;
-    if (options.market !== undefined) query.market = list(options.market);
-    if (options.eventId !== undefined) query.eventId = list(options.eventId);
-    if (options.sizeThreshold !== undefined) {
-      query.sizeThreshold = String(options.sizeThreshold);
+  ): Promise<DataPositionsPage> {
+    const query: Record<string, string> = {};
+    if (options.user === null) {
+      if (options.condition === undefined) {
+        throw new PolymarketError('INVALID_OPTIONS', {
+          method: 'getPositions',
+          detail: '`user: null` (market holders) needs a `condition`',
+        });
+      }
+    } else {
+      query.user = options.user ?? this.__requireFunder();
     }
-    if (options.redeemable !== undefined) {
-      query.redeemable = String(options.redeemable);
-    }
-    if (options.mergeable !== undefined) {
-      query.mergeable = String(options.mergeable);
-    }
-    if (options.limit !== undefined) query.limit = String(options.limit);
-    if (options.offset !== undefined) query.offset = String(options.offset);
-    if (options.sortBy) query.sortBy = options.sortBy;
-    if (options.sortDirection) query.sortDirection = options.sortDirection;
-    if (options.title) query.title = options.title;
+    Polymarket.__setList(query, 'condition', options.condition);
+    Polymarket.__setList(query, 'event_id', options.eventId);
+    Polymarket.__setQuery(query, {
+      status: options.status,
+      title: options.title,
+      filter_type: options.filterType,
+      filter_amount: options.filterAmount,
+      include_archived: options.includeArchived,
+      sort_by: options.sortBy,
+      sort_direction: options.sortDirection,
+      start: options.start,
+      end: options.end,
+      limit: options.limit,
+      cursor: options.cursor,
+    });
     return await this.__requestAndValidate(
       {
-        path: '/positions',
+        path: '/v2/positions',
         baseURL: this.__dataBaseURL,
         method: 'GET',
         query,
       },
-      DataPositionListSchemaObject,
+      DataPositionsPageSchemaObject,
     );
   }
 
   /**
-   * Total mark-to-market value of a wallet's positions in USDC, from the
-   * public Data API. Defaults to `auth.funder`; `market` narrows it to
-   * one or more condition ids. Returns `0` for a wallet with no positions.
+   * Total value of a wallet's positions in USDC — single-market holdings
+   * marked to market plus unresolved combos at cost basis — from the public
+   * Data API. Defaults to `auth.funder`; `condition` narrows it to one or
+   * more markets (and drops the combo term). `0` for a wallet with no
+   * positions.
    *
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when neither
    * `user` nor `auth.funder` is available; `RESPONSE_ERROR` when the body
@@ -1019,25 +1301,195 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * ```
    */
   public async getPortfolioValue(
-    options: { user?: string; market?: string | string[] } = {},
+    options: { user?: string; condition?: IdList } = {},
   ): Promise<number> {
-    const user = options.user ?? this.__requireFunder();
-    const query: Record<string, string> = { user };
-    if (options.market !== undefined) {
-      query.market = Array.isArray(options.market)
-        ? options.market.join(',')
-        : options.market;
-    }
-    const values = await this.__requestAndValidate(
+    const query: Record<string, string> = {
+      user: options.user ?? this.__requireFunder(),
+    };
+    Polymarket.__setList(query, 'condition', options.condition);
+    const row = await this.__requestAndValidate(
       {
-        path: '/value',
+        path: '/v2/value',
         baseURL: this.__dataBaseURL,
         method: 'GET',
         query,
       },
-      DataValueListSchemaObject,
+      DataValueSchemaObject,
     );
-    return values[0]?.value ?? 0;
+    return row.value;
+  }
+
+  /**
+   * One cursor page of a wallet's on-chain activity — trades, splits,
+   * merges, redeems (one row per outcome), rewards, rebates, … — newest
+   * first by default. Defaults to `auth.funder`.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` when neither
+   * `user` nor `auth.funder` is available; `RESPONSE_ERROR` when the body
+   * fails validation; or `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const { data } = await client.getActivity({ type: ['TRADE', 'REDEEM'], limit: 50 });
+   * for (const row of data) console.log(row.type, row.size, row.usdcSize, row.transactionHash);
+   * ```
+   */
+  public async getActivity(
+    options: GetActivityOptions = {},
+  ): Promise<DataActivityPage> {
+    const query: Record<string, string> = {
+      user: options.user ?? this.__requireFunder(),
+    };
+    Polymarket.__setList(query, 'type', options.type);
+    Polymarket.__setList(query, 'condition', options.condition);
+    Polymarket.__setList(query, 'event_id', options.eventId);
+    Polymarket.__setQuery(query, {
+      side: options.side,
+      start: options.start,
+      end: options.end,
+      sort_direction: options.sortDirection,
+      exclude_deposits_withdrawals: options.includeDepositsWithdrawals ===
+          undefined
+        ? undefined
+        : !options.includeDepositsWithdrawals,
+      limit: options.limit,
+      cursor: options.cursor,
+    });
+    return await this.__requestAndValidate(
+      {
+        path: '/v2/activity',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataActivityPageSchemaObject,
+    );
+  }
+
+  /**
+   * One cursor page of the public trade feed — every fill once, on its
+   * taker side, unless `takerOnly: false`. Filter by wallet, market or
+   * event; with none, the global feed. (For the account's own CLOB fills,
+   * with maker detail, use {@link getFills}.)
+   *
+   * @throws {PolymarketError} `RESPONSE_ERROR` when the body fails
+   * validation; or `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const { data: trades } = await client.getTrades({ condition: conditionId, limit: 100 });
+   * for (const t of trades) console.log(t.side, t.size, t.price, t.timestamp);
+   * ```
+   */
+  public async getTrades(
+    options: GetTradesOptions = {},
+  ): Promise<DataTradesPage> {
+    const query: Record<string, string> = {};
+    Polymarket.__setList(query, 'condition', options.condition);
+    Polymarket.__setList(query, 'event_id', options.eventId);
+    Polymarket.__setQuery(query, {
+      user: options.user,
+      side: options.side,
+      taker_only: options.takerOnly,
+      filter_type: options.filterType,
+      filter_amount: options.filterAmount,
+      start: options.start,
+      end: options.end,
+      limit: options.limit,
+      cursor: options.cursor,
+    });
+    return await this.__requestAndValidate(
+      {
+        path: '/v2/trades',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataTradesPageSchemaObject,
+    );
+  }
+
+  /**
+   * Reference facts for outcome tokens — condition, contract module,
+   * outcome slot and label, the opposite token, and on-chain settlement
+   * (`resolved`, `finalPrice`) — by up to 50 token ids (request order kept,
+   * unknown ids absent) or for every token of up to 10 conditions.
+   *
+   * @throws {PolymarketError} `INVALID_OPTIONS` unless exactly one selector
+   * is given; `RESPONSE_ERROR` when the body fails validation; or
+   * `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const tokens = await client.getTokens({ conditions: [conditionId] });
+   * for (const t of tokens) console.log(t.outcome, t.tokenId, t.resolved, t.finalPrice);
+   * ```
+   */
+  public async getTokens(options: GetTokensOptions): Promise<DataToken[]> {
+    const query: Record<string, string> = {};
+    if (options.tokenIds !== undefined) {
+      Polymarket.__setList(query, 'token_id', options.tokenIds);
+    }
+    if (options.conditions !== undefined) {
+      Polymarket.__setList(query, 'condition', options.conditions);
+    }
+    if (Object.keys(query).length !== 1) {
+      throw new PolymarketError('INVALID_OPTIONS', {
+        method: 'getTokens',
+        detail: 'pass exactly one non-empty `tokenIds` or `conditions`',
+      });
+    }
+    return await this.__requestAndValidate(
+      {
+        path: '/v2/tokens',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataTokenListSchemaObject,
+    );
+  }
+
+  /**
+   * Resolution lifecycle by UMA question, condition(s) or Gamma event(s):
+   * status, dispute flags, payouts once settled, and — while a proposal or
+   * vote is live — `expectedSettlementTime` with its `settlementTimeBasis`.
+   * The estimate is not a deadline: a disputed vote can roll into a later
+   * round, and none is given while `extendedReview` is `true`. Answers are
+   * cached by the vendor for up to 5 seconds while any row is live.
+   *
+   * @throws {PolymarketError} `INVALID_OPTIONS` unless exactly one selector
+   * is given; `RESPONSE_ERROR` when the body fails validation; or
+   * `INVALID_REQUEST`/`RATE_LIMITED`/`SERVICE_UNAVAILABLE`/`UNKNOWN_ERROR`.
+   *
+   * @example
+   * ```typescript
+   * const [row] = await client.getResolutions({ condition: conditionId });
+   * if (row?.status !== 'resolved') console.log('settles ~', row?.expectedSettlementTime);
+   * ```
+   */
+  public async getResolutions(
+    options: GetResolutionsOptions,
+  ): Promise<DataResolution[]> {
+    const query: Record<string, string> = {};
+    Polymarket.__setQuery(query, { question_id: options.questionId });
+    Polymarket.__setList(query, 'condition', options.condition);
+    Polymarket.__setList(query, 'event_id', options.eventId);
+    if (Object.keys(query).length !== 1) {
+      throw new PolymarketError('INVALID_OPTIONS', {
+        method: 'getResolutions',
+        detail: 'pass exactly one of `questionId`, `condition` or `eventId`',
+      });
+    }
+    return await this.__requestAndValidate(
+      {
+        path: '/v2/resolutions',
+        baseURL: this.__dataBaseURL,
+        method: 'GET',
+        query,
+      },
+      DataResolutionListSchemaObject,
+    );
   }
 
   /**
@@ -1069,6 +1521,9 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     const signer = this.__requireSigner();
     const funder = this.__requireFunder();
     Polymarket.__validateOrderInput(options);
+    if (options.version === 3) {
+      return await this.__prepare(signer, funder, 3, false, options);
+    }
     const [version, negRisk] = await Promise.all([
       options.version !== undefined
         ? Promise.resolve(options.version)
@@ -1096,9 +1551,9 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     for (const order of orders) Polymarket.__validateOrderInput(order);
     const uncachedTokenIds = [
       ...new Set(
-        orders.filter((order) => order.negRisk === undefined).map((order) =>
-          order.tokenId
-        ),
+        orders.filter((order) =>
+          order.negRisk === undefined && order.version !== 3
+        ).map((order) => order.tokenId),
       ),
     ];
     const negRiskByToken = new Map<string, boolean>();
@@ -1116,7 +1571,9 @@ export class Polymarket extends RESTler<PolymarketOptions> {
         signer,
         funder,
         order.version ?? version!,
-        order.negRisk ?? negRiskByToken.get(order.tokenId)!,
+        order.version === 3
+          ? false
+          : order.negRisk ?? negRiskByToken.get(order.tokenId)!,
         order,
       )
     ));
@@ -1234,8 +1691,11 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     try {
       return await this.submitPrepared(prepared);
     } catch (err) {
+      // `/version` names the CTF exchange, never ExchangeV3 — re-signing a
+      // Protocol V2 order for it would only send it to the wrong exchange.
       if (
-        !(err instanceof PolymarketError) || err.code !== 'ORDER_VERSION_STALE'
+        !(err instanceof PolymarketError) ||
+        err.code !== 'ORDER_VERSION_STALE' || prepared.version === 3
       ) {
         throw err;
       }
@@ -1312,7 +1772,9 @@ export class Polymarket extends RESTler<PolymarketOptions> {
     const prepared = await this.prepareOrders(orders);
     const results = await this.submitPreparedBatch(prepared);
     const stale = results.flatMap((r, i) =>
-      r.rejectionCode === 'VERSION_STALE' ? [i] : []
+      r.rejectionCode === 'VERSION_STALE' && prepared[i]!.version !== 3
+        ? [i]
+        : []
     );
     if (stale.length === 0) return results;
 
@@ -1434,56 +1896,141 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * of EACH outcome (e.g. both UP and DOWN), gasless — the relayer pays
    * gas, funded from `auth.funder`'s own on-chain collateral.
    *
+   * Routing follows the market's position system — spread
+   * {@link positionMarket} in: a `v1` market goes through the CTF
+   * collateral adapter `negRisk` picks, a `version: 'v2'` market through
+   * the Protocol V2 Router (which needs the wallet's pUSD approved for
+   * it).
+   *
    * This moves real, on-chain funds and cannot be undone by this connect;
    * review `PolymarketRelayer.ts` yourself before trusting it with real
    * money — see the README's "Key custody" section.
    *
-   * @param negRisk - `false` for a binary (non-neg-risk) market — pass
-   * {@link getNegRisk} for the market's token if unsure.
-   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` (also thrown
-   * when `auth.funder` is unset) / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
+   * @throws {PolymarketError} `INVALID_OPTIONS` for a malformed
+   * `conditionId` or an amount that is not above zero;
+   * `CONFIG_MISSING_PRIVATE_KEY` (also thrown when `auth.funder` is unset)
+   * / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
    */
-  public async split(
-    options: { conditionId: string; amountUsd: number; negRisk: boolean },
-  ): Promise<OrderResult> {
-    const tx = buildSplitTx(
-      options.conditionId,
-      options.amountUsd,
-      options.negRisk,
+  public async split(options: SplitMergeOptions): Promise<OrderResult> {
+    const tx = Polymarket.__positionTx(
+      'split',
+      () =>
+        options.version === 'v2'
+          ? buildV2SplitTx(options.conditionId, options.amountUsd)
+          : buildSplitTx(
+            options.conditionId,
+            options.amountUsd,
+            options.negRisk,
+          ),
     );
-    return await this.__submitRelayerTx('SPLIT', tx, options.amountUsd);
+    return await this.__submitRelayerTx('SPLIT', [tx], options.amountUsd);
   }
 
   /**
    * MERGE: the inverse of {@link split} — burns `amountUsd` of each
    * outcome pair and returns `amountUsd` pUSD. Same routing/risk notes as
-   * `split`.
+   * `split`; on a `version: 'v2'` market the Router must be an approved
+   * PositionManager operator for the wallet.
    *
-   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
+   * @throws {PolymarketError} `INVALID_OPTIONS` for a malformed
+   * `conditionId` or an amount that is not above zero;
+   * `CONFIG_MISSING_PRIVATE_KEY` / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
    */
-  public async merge(
-    options: { conditionId: string; amountUsd: number; negRisk: boolean },
-  ): Promise<OrderResult> {
-    const tx = buildMergeTx(
-      options.conditionId,
-      options.amountUsd,
-      options.negRisk,
+  public async merge(options: SplitMergeOptions): Promise<OrderResult> {
+    const tx = Polymarket.__positionTx(
+      'merge',
+      () =>
+        options.version === 'v2'
+          ? buildV2MergeTx(options.conditionId, options.amountUsd)
+          : buildMergeTx(
+            options.conditionId,
+            options.amountUsd,
+            options.negRisk,
+          ),
     );
-    return await this.__submitRelayerTx('MERGE', tx, options.amountUsd);
+    return await this.__submitRelayerTx('MERGE', [tx], options.amountUsd);
   }
 
   /**
-   * REDEEM: convert the full held balance of a RESOLVED market's outcome
-   * shares back to pUSD (winning shares pay $1 each, losing $0). Same
-   * routing/risk notes as `split`.
+   * REDEEM: convert a RESOLVED market's outcome shares back to pUSD
+   * (winning shares pay $1 each, losing $0). Same routing/risk notes as
+   * `split`.
    *
-   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
+   * A `v1` market redeems the full held balance of both outcomes in one
+   * call. The Protocol V2 Router redeems one outcome and an explicit
+   * amount per call instead: a `version: 'v2'` redeem sends one call per
+   * outcome holding shares, all in one meta-tx, for `options.shares` — or,
+   * without it, the wallet's whole `CONDITIONAL-V2` balance of each
+   * outcome, read with {@link getBalance} first. The Router must be an
+   * approved PositionManager operator for the wallet.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` /
+   * `CONFIG_MISSING_RELAYER_CREDENTIALS`; `NO_API_CREDENTIALS` for a V2
+   * redeem without `shares` before {@link deriveApiCredentials};
+   * `INVALID_OPTIONS` for a malformed `conditionId`, or when a V2 redeem
+   * has nothing to redeem.
    */
-  public async redeem(
-    options: { conditionId: string; negRisk: boolean },
-  ): Promise<OrderResult> {
-    const tx = buildRedeemTx(options.conditionId, options.negRisk);
-    return await this.__submitRelayerTx('REDEEM', tx, 0);
+  public async redeem(options: RedeemOptions): Promise<OrderResult> {
+    if (options.version !== 'v2') {
+      const tx = Polymarket.__positionTx(
+        'redeem',
+        () => buildRedeemTx(options.conditionId, options.negRisk),
+      );
+      return await this.__submitRelayerTx('REDEEM', [tx], 0);
+    }
+    // Validate the relayer config before spending balance reads on it.
+    this.__requireSigner();
+    this.__requireFunder();
+    this.__requireRelayerCredentials();
+    const shares = options.shares ?? await Promise.all(
+      [0, 1].map(async (outcomeIndex) =>
+        (await this.getBalance({
+          tokenId: v2PositionId(options.conditionId, outcomeIndex),
+          version: 3,
+        })).balance
+      ),
+    );
+    const txs = Polymarket.__positionTx(
+      'redeem',
+      () => buildV2RedeemTxs(options.conditionId, shares),
+    );
+    return await this.__submitRelayerTx('REDEEM', txs, 0);
+  }
+
+  /**
+   * One relayed split/merge/redeem by the `id` its {@link OrderResult}
+   * carries (`GET /transaction`) — poll it until `state` is
+   * `STATE_CONFIRMED` before relying on the new balances; `STATE_FAILED`
+   * and `STATE_INVALID` are terminal. This connect does not poll for you.
+   *
+   * @throws {PolymarketError} `CONFIG_MISSING_RELAYER_CREDENTIALS`;
+   * `NOT_FOUND` for an unknown id; `RESPONSE_ERROR` when the body fails
+   * validation.
+   *
+   * @example
+   * ```typescript
+   * const { id } = await client.split({ ...positionMarket(market), amountUsd: 1 });
+   * const tx = await client.getRelayerTransaction(id);
+   * console.log(tx.state, tx.transactionHash);
+   * ```
+   */
+  public async getRelayerTransaction(
+    transactionId: string,
+  ): Promise<RelayerTransaction> {
+    const { relayerApiKey, relayerApiKeyAddress } = this
+      .__requireRelayerCredentials();
+    const [tx] = await this.__requestAndValidate(
+      {
+        path: '/transaction',
+        baseURL: this.__relayerBaseURL,
+        method: 'GET',
+        query: { id: transactionId },
+        auth: this.__relayerAuth(relayerApiKey, relayerApiKeyAddress),
+      },
+      Guardian.array(RelayerTransactionSchemaObject),
+    );
+    if (!tx) throw new PolymarketError('NOT_FOUND', { status: 200, body: [] });
+    return tx;
   }
 
   /**
@@ -1506,7 +2053,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * console.log(result.slippage);
    * ```
    *
-   * @throws {PolymarketError} Whatever the dispatched action throws — see {@link submitOrder} for BUY/SELL and {@link split}/{@link merge}/{@link redeem} for the collateral actions; plus `REQUEST_VALIDATION_ERROR` for an unrecognized `action`.
+   * @throws {PolymarketError} Whatever the dispatched action throws — see {@link submitOrder} for BUY/SELL and {@link split}/{@link merge}/{@link redeem} for the collateral actions; plus `UNKNOWN_ERROR` for an unrecognized `action`.
    */
   public async order(request: OrderRequest): Promise<OrderResult> {
     switch (request.action) {
@@ -1536,6 +2083,62 @@ export class Polymarket extends RESTler<PolymarketOptions> {
   }
 
   // ── internals ────────────────────────────────────────────────────────────
+
+  /**
+   * Builds a split/merge/redeem call, reporting a refused input (a
+   * malformed condition id, an amount that is not above zero, nothing to
+   * redeem) as `INVALID_OPTIONS` before any request is made.
+   */
+  private static __positionTx<T>(
+    method: 'split' | 'merge' | 'redeem',
+    build: () => T,
+  ): T {
+    try {
+      return build();
+    } catch (cause) {
+      throw new PolymarketError('INVALID_OPTIONS', {
+        method,
+        detail: cause instanceof Error ? cause.message : String(cause),
+      }, cause instanceof Error ? cause : undefined);
+    }
+  }
+
+  /** The `/balance-allowance` query for collateral, a CTF token, or a Protocol V2 position. */
+  private __balanceQuery(
+    options: { tokenId?: string; version?: ProtocolVersion },
+  ): Record<string, string> {
+    const query: Record<string, string> = {
+      asset_type: !options.tokenId
+        ? 'COLLATERAL'
+        : options.version === 3
+        ? 'CONDITIONAL-V2'
+        : 'CONDITIONAL',
+      signature_type: String(this.__signatureType),
+    };
+    if (options.tokenId) query.token_id = options.tokenId;
+    return query;
+  }
+
+  /** Sets each defined value as a query parameter, stringified. */
+  private static __setQuery(
+    query: Record<string, string>,
+    values: Record<string, string | number | boolean | undefined>,
+  ): void {
+    for (const [key, value] of Object.entries(values)) {
+      if (value !== undefined) query[key] = String(value);
+    }
+  }
+
+  /** Sets a comma-separated list parameter; an empty list sets nothing. */
+  private static __setList(
+    query: Record<string, string>,
+    key: string,
+    value: IdList | undefined,
+  ): void {
+    if (value === undefined) return;
+    const joined = typeof value === 'string' ? value : value.join(',');
+    if (joined !== '') query[key] = joined;
+  }
 
   /**
    * Builds a `RESTlerEndpoint`-shaped `DELETE` request carrying a JSON
@@ -1679,7 +2282,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    */
   private async __submitRelayerTx(
     action: 'SPLIT' | 'MERGE' | 'REDEEM',
-    tx: ProxyTransaction,
+    txs: readonly ProxyTransaction[],
     amountUsd: number,
   ): Promise<OrderResult> {
     const signer = this.__requireSigner();
@@ -1701,7 +2304,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
 
     const envelope = await buildProxyMetaTx(
       signer,
-      [tx],
+      txs,
       relayPayload,
       funder,
     );
@@ -1835,7 +2438,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * inside the per-order build step, so a doomed order — or a doomed
    * batch — is refused before wasting a version/neg-risk lookup.
    */
-  private static __validateOrderInput(input: BulkOrderInput): void {
+  private static __validateOrderInput(input: SubmitOrderOptions): void {
     if (input.orderType === 'GTD' && !input.expirationTime) {
       // Without this, a GTD order silently signs/sends expiration=0 (the
       // wire and, for V1, the SIGNED struct's default) and behaves exactly
@@ -2257,7 +2860,7 @@ export class Polymarket extends RESTler<PolymarketOptions> {
 
   private async __requestAndValidate<B>(
     endpoint: RESTlerEndpoint,
-    guard: BaseGuardian<B>,
+    guard: Pick<BaseGuardian<B>, 'parse'>,
   ): Promise<B> {
     try {
       const resp = await this._makeRequest(endpoint, {

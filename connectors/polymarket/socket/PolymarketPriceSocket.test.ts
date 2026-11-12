@@ -62,11 +62,190 @@ describe('PolymarketPriceSocket', () => {
     await conn.waitFor((f) => f.includes('"op":"subscribe"'));
     assertEquals(conn.json()[1], {
       op: 'subscribe',
+      rid: 's1',
       subscriptions: [{
         channel: 'price.crypto.twap',
         filter: { symbol: 'btcusd', window_seconds: 60 },
       }],
     });
+  });
+
+  it('defaults TWAP windows to 60s and never puts two subscriptions on one channel in a request', async () => {
+    socket = new PolymarketPriceSocket({
+      url: server.url(),
+      subscriptions: [
+        { channel: 'price.crypto', filter: { symbol: 'ethusd' } },
+        { channel: 'price.crypto.twap', filter: { symbol: 'btcusd' } },
+        {
+          channel: 'price.crypto',
+          filter: { symbol: 'btcusd', provider: 'pyth' },
+        },
+      ],
+    });
+    await socket.connect();
+    const conn = await server.connection();
+    await conn.waitFor(() => conn.json().length === 2);
+    assertEquals(conn.json(), [
+      {
+        op: 'subscribe',
+        rid: 's1',
+        subscriptions: [
+          { channel: 'price.crypto', filter: { symbol: 'ethusd' } },
+          {
+            channel: 'price.crypto.twap',
+            filter: { symbol: 'btcusd', window_seconds: 60 },
+          },
+        ],
+      },
+      {
+        op: 'subscribe',
+        rid: 's2',
+        subscriptions: [{
+          channel: 'price.crypto',
+          filter: { symbol: 'btcusd', provider: 'pyth' },
+        }],
+      },
+    ]);
+    socket.subscribe('price.equity.twap', { symbol: 'EURUSD' });
+    await conn.waitFor(() => conn.json().length === 3);
+    assertEquals(conn.json()[2], {
+      op: 'subscribe',
+      rid: 's3',
+      subscriptions: [{
+        channel: 'price.equity.twap',
+        filter: { symbol: 'eurusd', window_seconds: 60 },
+      }],
+    });
+  });
+
+  it('surfaces subscribed acks with the provider actually served', async () => {
+    socket = new PolymarketPriceSocket({
+      url: server.url(),
+      includeRaw: true,
+      subscriptions: [{
+        channel: 'price.crypto',
+        filter: { symbol: 'btcusd', provider: 'pyth' },
+      }],
+    });
+    const it = socket[Symbol.asyncIterator]();
+    await collectUntil(it, isType('connected'));
+    const conn = await server.connection();
+    await conn.waitFor((f) => f.includes('subscribe'));
+    // The pin could not be served: the venue falls back and says so.
+    conn.send({
+      op: 'subscribed',
+      channel: 'price.crypto',
+      rid: 's1',
+      provider: 'chainlink',
+    });
+    const events = await collectUntil(it, isType('subscribed'));
+    const ack = events.at(-1);
+    assert(ack?.type === 'subscribed');
+    assertEquals(ack.data, {
+      channel: 'price.crypto',
+      provider: 'chainlink',
+      rid: 's1',
+      filters: [{ symbol: 'btcusd', provider: 'pyth' }],
+    });
+    assert(ack.raw?.includes('"provider":"chainlink"'));
+  });
+
+  it('delivers equity market_status, including a carried-forward status change with a repeated timestamp', async () => {
+    socket = new PolymarketPriceSocket({
+      url: server.url(),
+      subscriptions: [{ channel: 'price.equity', filter: { symbol: 'aapl' } }],
+    });
+    const it = socket[Symbol.asyncIterator]();
+    await collectUntil(it, isType('connected'));
+    const conn = await server.connection();
+    await conn.waitFor((f) => f.includes('subscribe'));
+    const point = (seq: number, extra: Record<string, unknown>) => ({
+      v: 1,
+      channel: 'price.equity',
+      seq,
+      ts: 1792526399800,
+      payload: {
+        symbol: 'aapl',
+        value: 262.71,
+        full_accuracy_value: '262.71',
+        timestamp: 1792526399800,
+        received_at: 1792526401200,
+        source: 'pyth',
+        ...extra,
+      },
+    });
+    conn.send({
+      v: 1,
+      channel: 'price.equity',
+      seq: 1,
+      ts: 1792526399800,
+      snapshot: true,
+      payload: {
+        symbol: 'aapl',
+        source: 'pyth',
+        market_status: 'open',
+        data: [{
+          value: 262.71,
+          full_accuracy_value: '262.71',
+          timestamp: 1792526399800,
+        }],
+      },
+    });
+    conn.send(point(2, { market_status: 'open' }));
+    conn.send(point(3, { market_status: 'closed', is_carried_forward: true }));
+    const events = await collectUntil(
+      it,
+      (e) => e.type === 'price' && e.seq === 3,
+    );
+    const data = events.filter((e) =>
+      e.type === 'price' || e.type === 'price_snapshot'
+    );
+    assertEquals(data.length, 3);
+    const [snap, open, closed] = data;
+    assert(snap?.type === 'price_snapshot');
+    assertEquals(snap.data.marketStatus, 'open');
+    assert(open?.type === 'price' && closed?.type === 'price');
+    assertEquals(open.data.timestamp, closed.data.timestamp);
+    assertEquals(closed.data.marketStatus, 'closed');
+    assertEquals(closed.data.isCarriedForward, true);
+  });
+
+  it('records the settlement TWAP stream at full precision', async () => {
+    socket = new PolymarketPriceSocket({
+      url: server.url(),
+      includeRaw: true,
+      subscriptions: [{
+        channel: 'price.crypto.twap',
+        filter: { symbol: 'btcusd' },
+      }],
+    });
+    const it = socket[Symbol.asyncIterator]();
+    await collectUntil(it, isType('connected'));
+    const conn = await server.connection();
+    await conn.waitFor((f) => f.includes('subscribe'));
+    conn.send({
+      v: 1,
+      channel: 'price.crypto.twap',
+      seq: 1,
+      ts: 1788973002000,
+      payload: {
+        symbol: 'btcusd',
+        value: 64120.70000000001,
+        full_accuracy_value: '64120.700000000012345678',
+        timestamp: 1788973002000,
+        window_seconds: 60,
+        source: 'chainlink',
+      },
+    });
+    const events = await collectUntil(it, isType('price'));
+    const twap = events.at(-1);
+    assert(twap?.type === 'price');
+    assertEquals(twap.channel, 'price.crypto.twap');
+    assertEquals(twap.data.fullAccuracyValue, '64120.700000000012345678');
+    assertEquals(twap.data.windowSeconds, 60);
+    assertEquals(twap.venueTimestamp, 1788973002000);
+    assert(twap.raw?.includes('64120.700000000012345678'));
+    assert(typeof twap.receivedAt === 'number');
   });
 
   it('parses snapshot batches and live points, and reports seq gaps and drops', async () => {
@@ -101,18 +280,25 @@ describe('PolymarketPriceSocket', () => {
       (e) => e.type === 'price' && e.seq === 4,
     );
     const types = events.map((e) => e.type);
-    assertEquals(types, ['price_snapshot', 'price', 'gap', 'gap', 'price']);
-    const snapshot = events[0];
+    assertEquals(types, [
+      'subscribed',
+      'price_snapshot',
+      'price',
+      'gap',
+      'gap',
+      'price',
+    ]);
+    const snapshot = events[1];
     assert(snapshot?.type === 'price_snapshot' && snapshot.snapshot);
     assertEquals(snapshot.data.data[0]?.fullAccuracyValue, '1');
-    const price = events[1];
+    const price = events[2];
     assert(price?.type === 'price');
     assertEquals(price.data.fullAccuracyValue, '78794.15450441');
-    const seqGap = events[2];
+    const seqGap = events[3];
     assert(
       seqGap?.type === 'gap' && seqGap.expected === 3 && seqGap.received === 4,
     );
-    const dropGap = events[3];
+    const dropGap = events[4];
     assert(dropGap?.type === 'gap' && dropGap.missed === 3);
   });
 
@@ -228,6 +414,43 @@ describe({
         }
       }
       assert(got, 'no price within 20s');
+    });
+
+    it('PolyBolt: streams the Chainlink BTC 60s TWAP at full precision and names the served provider of a Pyth pin', async () => {
+      const socket = new PolymarketPriceSocket({
+        auth: { apiCredentials },
+        subscriptions: [
+          { channel: 'price.crypto.twap', filter: { symbol: 'btcusd' } },
+          {
+            channel: 'price.crypto',
+            filter: { symbol: 'btcusd', provider: 'pyth' },
+          },
+        ],
+        signal: AbortSignal.timeout(20_000),
+      });
+      let twap: string | undefined;
+      let pinnedSource: string | undefined;
+      const acks: string[] = [];
+      for await (const event of socket) {
+        if (event.type === 'error' || event.type === 'invalid') {
+          throw event.error;
+        }
+        if (event.type === 'subscribed') acks.push(event.data.channel);
+        if (event.type !== 'price' && event.type !== 'price_snapshot') {
+          continue;
+        }
+        if (event.channel === 'price.crypto') pinnedSource = event.data.source;
+        if (event.channel !== 'price.crypto.twap') continue;
+        if (event.type === 'price') twap = event.data.fullAccuracyValue;
+        else {
+          assertEquals(event.data.windowSeconds, 60);
+          twap = event.data.data.at(-1)?.fullAccuracyValue ?? twap;
+        }
+        if (twap && pinnedSource) break;
+      }
+      assert(twap && /^\d+\.\d+$/.test(twap), `twap ${twap}`);
+      assert(pinnedSource, 'no price.crypto point');
+      assertEquals(acks.sort(), ['price.crypto', 'price.crypto.twap']);
     });
 
     it('user channel: authenticates and stays connected', async () => {

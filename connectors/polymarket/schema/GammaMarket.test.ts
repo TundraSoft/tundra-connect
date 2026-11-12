@@ -1,6 +1,7 @@
 import * as asserts from '@asserts';
 import { describe, it } from '@test';
 import {
+  CryptoMarketConfigSchemaObject,
   FeeScheduleSchemaObject,
   GammaMarketListSchemaObject,
   GammaMarketSchemaObject,
@@ -83,6 +84,87 @@ describe('GammaMarket', () => {
     asserts.assertEquals(fees.rate, 0.07);
     asserts.assertEquals(fees.rebateRate, undefined);
     asserts.assertEquals(fees.takerOnly, undefined);
+  });
+
+  it('types the fee, crypto-TWAP, resolution and protocol fields of a live up/down market', () => {
+    // Live-shaped (gamma-api /markets/keyset, 2026-11-06), trimmed.
+    const market = GammaMarketSchemaObject.parse({
+      ...MINIMAL,
+      slug: 'sol-updown-5m-1794090000',
+      eventStartTime: '2026-11-07T22:20:00Z',
+      feesEnabled: true,
+      feeType: 'crypto_fees_v2',
+      feeSchedule: {
+        exponent: 1,
+        rate: 0.07,
+        takerOnly: true,
+        rebateRate: 0.2,
+      },
+      takerBaseFee: 1000,
+      makerBaseFee: 1000,
+      cryptoMarketConfig: {
+        id: 'sol-5m-twap-60',
+        asset: 'sol',
+        duration: '5m',
+        twapEnabled: true,
+        twapLookbackSeconds: 60,
+      },
+      resolutionMechanism: 'oracle',
+      fallbackResolutionType: 'none',
+      clearBookOnStart: true,
+      rfqEnabled: false,
+      version: 'v1',
+      makerRebatesFeeShareBps: 10000,
+    });
+    asserts.assertEquals(market.feeSchedule?.rate, 0.07);
+    asserts.assertEquals(market.feeSchedule?.takerOnly, true);
+    asserts.assertEquals(market.feeType, 'crypto_fees_v2');
+    asserts.assertEquals(market.takerBaseFee, 1000);
+    asserts.assertEquals(market.cryptoMarketConfig?.twapLookbackSeconds, 60);
+    asserts.assertEquals(market.cryptoMarketConfig?.asset, 'sol');
+    asserts.assertEquals(market.resolutionMechanism, 'oracle');
+    asserts.assertEquals(market.fallbackResolutionType, 'none');
+    asserts.assertEquals(market.eventStartTime, '2026-11-07T22:20:00Z');
+    asserts.assertEquals(market.clearBookOnStart, true);
+    asserts.assertEquals(market.rfqEnabled, false);
+    asserts.assertEquals(market.version, 'v1');
+    asserts.assertEquals(
+      (market as unknown as { makerRebatesFeeShareBps: number })
+        .makerRebatesFeeShareBps,
+      10000,
+    );
+  });
+
+  it('accepts a non-TWAP up/down config without twapLookbackSeconds (live xag)', () => {
+    const config = CryptoMarketConfigSchemaObject.parse({
+      id: 'xag-15m',
+      asset: 'xag',
+      duration: '15m',
+      twapEnabled: false,
+    });
+    asserts.assertEquals(config.twapEnabled, false);
+    asserts.assertEquals(config.twapLookbackSeconds, undefined);
+  });
+
+  it('accepts null for the optional new fields, rejects a malformed TWAP config', () => {
+    const market = GammaMarketSchemaObject.parse({
+      ...MINIMAL,
+      feeSchedule: null,
+      cryptoMarketConfig: null,
+      version: null,
+      positionIds: null,
+    });
+    asserts.assertEquals(market.feeSchedule, null);
+    asserts.assertExists(
+      GammaMarketSchemaObject.safeParse({
+        ...MINIMAL,
+        cryptoMarketConfig: {
+          asset: 'btc',
+          duration: '5m',
+          twapEnabled: 'yes',
+        },
+      })[0],
+    );
   });
 
   it('validates a list of markets', () => {
