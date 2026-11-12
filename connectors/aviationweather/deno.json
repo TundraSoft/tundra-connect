@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/aviationweather",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed aviationweather.gov Data API client for Deno, Bun, Node.js and Cloudflare Workers: METAR and SPECI observations, TAFs and the bulk METAR cache, with raw report text and the exact remark T-group temperatures.",
   "exports": {
     ".": "./mod.ts",

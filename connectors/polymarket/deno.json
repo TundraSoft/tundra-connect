@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/polymarket",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Typed Polymarket client: Gamma market discovery, CLOB trading with secp256k1/EIP-712 order signing, Data API v2 positions, activity, tokens and resolutions, fee estimates, gasless split/merge/redeem, and WebSocket feeds for order books, your orders and PolyBolt reference prices and TWAPs.",
   "exports": {
     ".": "./mod.ts",

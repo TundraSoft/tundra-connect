@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.4.0](https://github.com/TundraSoft/tundra-connect/compare/polymarket-v0.3.1...polymarket-v0.4.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **polymarket:** getPositions() returns `{ data, pagination }` instead of an array, takes v2 options (`condition`, `status`, `cursor`, `filterType`/ `filterAmount`, ...) instead of `market`/`offset`/`sizeThreshold`/ `redeemable`/`mergeable`, and its rows use the v2 field names. getPortfolioValue() takes `condition` instead of `market`. DataPositionListSchemaObject and DataValueListSchemaObject are replaced by DataPositionsPageSchemaObject and DataValueSchemaObject. PolymarketLiveDataSocket, PolymarketLiveDataPrice(SchemaObject) and POLYMARKET_LIVE_DATA_WS_URL are removed. PolymarketPriceSocket now emits `subscribed` events and sends a `rid` on every subscribe request.
+
+### Features
+
+* **polymarket:** move to Data API v2, drop legacy RTDS prices, type PolyBolt and Gamma updates ([6a72924](https://github.com/TundraSoft/tundra-connect/commit/6a729242b4bf203ffe49d72f660a410e732842c2))
+* **polymarket:** refresh the CLOB's cached balance with refreshBalance() ([8dc8672](https://github.com/TundraSoft/tundra-connect/commit/8dc86729d058142d3f279da20276c7b9e11957d8))
+* **polymarket:** sign orders for Protocol V2 markets on ExchangeV3 ([fb79bdb](https://github.com/TundraSoft/tundra-connect/commit/fb79bdb62bb48b7f4d150f6d615edd4d5d2a81fd))
+* **polymarket:** split, merge and redeem Protocol V2 positions through the Router ([7236f3f](https://github.com/TundraSoft/tundra-connect/commit/7236f3f239188f7364caccf31b30df5cd6ffe5f8))
+
+
+### Bug Fixes
+
+* **polymarket:** accept up/down markets with no TWAP lookback ([8f8317f](https://github.com/TundraSoft/tundra-connect/commit/8f8317f84946575baaeb1061650c6118c55241d6))
+* **polymarket:** report an unknown order from getOrder as NOT_FOUND ([e961e1d](https://github.com/TundraSoft/tundra-connect/commit/e961e1d664088b59d455a3d5162ad6298164aa03))
+* **polymarket:** report bad split/merge/redeem input as INVALID_OPTIONS ([537636f](https://github.com/TundraSoft/tundra-connect/commit/537636f5ec9df200d7f54d3146eb8bc477b96a6d))
+
+
+### Documentation
+
+* **polymarket:** correct the redeem example, batch errors and V2 migration notes ([b83ca9a](https://github.com/TundraSoft/tundra-connect/commit/b83ca9ab4481d776f7cfc9e045aa82a3a5cf6bed))
+* **polymarket:** say Gamma already lists Protocol V2 crypto markets ([07ffb4e](https://github.com/TundraSoft/tundra-connect/commit/07ffb4e9f2484bef63fcc8e1cc98a315665b2471))
+
 ## [0.3.1](https://github.com/TundraSoft/tundra-connect/compare/polymarket-v0.3.0...polymarket-v0.3.1) (2026-10-19)
 
 

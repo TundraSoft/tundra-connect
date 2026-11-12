@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/open-meteo",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed Open-Meteo weather client for Deno, Bun, Node.js, browsers and Cloudflare Workers: Forecast, Ensemble (every member), Previous Runs, Historical Forecast, Single Runs and archive APIs, with explicit model choice (GFS, HRRR, ECMWF IFS, ICON, ...) and any variable by name.",
   "exports": {
     ".": "./mod.ts",

@@ -1,6 +1,6 @@
 {
   "name": "@tundraconnect/eia",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Typed U.S. EIA Open Data API v2 client for Deno, Bun, Node.js, browsers and Cloudflare Workers: any route and facet, auto-pagination past the 5,000-row limit, and helpers for WTI/Brent spot prices and Weekly Petroleum Status Report stocks.",
   "keywords": [
