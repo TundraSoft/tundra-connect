@@ -81,6 +81,10 @@ component_management:
         name: ntfy
         paths:
           - connectors/ntfy/**
+      - component_id: open-meteo
+        name: open-meteo
+        paths:
+          - connectors/open-meteo/**
       - component_id: openexchange
         name: openexchange
         paths:
