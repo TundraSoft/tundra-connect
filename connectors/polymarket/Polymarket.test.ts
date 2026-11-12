@@ -1651,6 +1651,41 @@ describe('Polymarket — Protocol V2 split/merge/redeem (Router)', () => {
     asserts.assertEquals(c.requests.length, 0);
   });
 
+  it('refuses a bad split/merge/redeem input as INVALID_OPTIONS before any request', async () => {
+    const c = client();
+    const V1_CID = `0x${'ab'.repeat(32)}`;
+    const refused: Array<[string, () => Promise<unknown>]> = [
+      [
+        'split',
+        () => c.split({ conditionId: V2_CID, version: 'v2', amountUsd: -1 }),
+      ],
+      [
+        'split',
+        () => c.split({ conditionId: V2_CID, version: 'v2', amountUsd: NaN }),
+      ],
+      // A v1 condition id on the V2 route: its final byte is not zero.
+      [
+        'merge',
+        () => c.merge({ conditionId: V1_CID, version: 'v2', amountUsd: 1 }),
+      ],
+      [
+        'split',
+        () => c.split({ conditionId: V1_CID, negRisk: false, amountUsd: 0 }),
+      ],
+      [
+        'merge',
+        () => c.merge({ conditionId: '0x1234', negRisk: false, amountUsd: 1 }),
+      ],
+      ['redeem', () => c.redeem({ conditionId: '0x1234', negRisk: true })],
+    ];
+    for (const [method, call] of refused) {
+      const err = await asserts.assertRejects(call, PolymarketError);
+      asserts.assertEquals(err.code, 'INVALID_OPTIONS');
+      asserts.assertEquals(err.getContextValue('method'), method);
+    }
+    asserts.assertEquals(c.requests.length, 0);
+  });
+
   it('order() dispatches a V2 SPLIT to the Router', async () => {
     const c = client();
     c.setResponseQueue([RELAY, { body: { transactionID: 'tx-o' } }]);

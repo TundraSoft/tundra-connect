@@ -86,6 +86,16 @@ describe('PolymarketRelayer — split/merge/redeem tx building', () => {
     asserts.assertThrows(() => buildSplitTx('0x1234', 1.0, false));
   });
 
+  it('rejects a negative or non-finite amount by name', () => {
+    for (const amount of [-1, NaN, Infinity]) {
+      asserts.assertThrows(
+        () => buildSplitTx(CID, amount, false),
+        Error,
+        'amount must be > 0',
+      );
+    }
+  });
+
   it('scales the amount to 6-decimal pUSD units', () => {
     const tx = buildSplitTx(CID, 0.01, false);
     const words = toHex(tx.data).slice(8);

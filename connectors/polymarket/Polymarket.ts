@@ -1906,13 +1906,23 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * review `PolymarketRelayer.ts` yourself before trusting it with real
    * money — see the README's "Key custody" section.
    *
-   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` (also thrown
-   * when `auth.funder` is unset) / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
+   * @throws {PolymarketError} `INVALID_OPTIONS` for a malformed
+   * `conditionId` or an amount that is not above zero;
+   * `CONFIG_MISSING_PRIVATE_KEY` (also thrown when `auth.funder` is unset)
+   * / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
    */
   public async split(options: SplitMergeOptions): Promise<OrderResult> {
-    const tx = options.version === 'v2'
-      ? buildV2SplitTx(options.conditionId, options.amountUsd)
-      : buildSplitTx(options.conditionId, options.amountUsd, options.negRisk);
+    const tx = Polymarket.__positionTx(
+      'split',
+      () =>
+        options.version === 'v2'
+          ? buildV2SplitTx(options.conditionId, options.amountUsd)
+          : buildSplitTx(
+            options.conditionId,
+            options.amountUsd,
+            options.negRisk,
+          ),
+    );
     return await this.__submitRelayerTx('SPLIT', [tx], options.amountUsd);
   }
 
@@ -1922,12 +1932,22 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * `split`; on a `version: 'v2'` market the Router must be an approved
    * PositionManager operator for the wallet.
    *
-   * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
+   * @throws {PolymarketError} `INVALID_OPTIONS` for a malformed
+   * `conditionId` or an amount that is not above zero;
+   * `CONFIG_MISSING_PRIVATE_KEY` / `CONFIG_MISSING_RELAYER_CREDENTIALS`.
    */
   public async merge(options: SplitMergeOptions): Promise<OrderResult> {
-    const tx = options.version === 'v2'
-      ? buildV2MergeTx(options.conditionId, options.amountUsd)
-      : buildMergeTx(options.conditionId, options.amountUsd, options.negRisk);
+    const tx = Polymarket.__positionTx(
+      'merge',
+      () =>
+        options.version === 'v2'
+          ? buildV2MergeTx(options.conditionId, options.amountUsd)
+          : buildMergeTx(
+            options.conditionId,
+            options.amountUsd,
+            options.negRisk,
+          ),
+    );
     return await this.__submitRelayerTx('MERGE', [tx], options.amountUsd);
   }
 
@@ -1947,11 +1967,15 @@ export class Polymarket extends RESTler<PolymarketOptions> {
    * @throws {PolymarketError} `CONFIG_MISSING_PRIVATE_KEY` /
    * `CONFIG_MISSING_RELAYER_CREDENTIALS`; `NO_API_CREDENTIALS` for a V2
    * redeem without `shares` before {@link deriveApiCredentials};
-   * `INVALID_OPTIONS` when a V2 redeem has nothing to redeem.
+   * `INVALID_OPTIONS` for a malformed `conditionId`, or when a V2 redeem
+   * has nothing to redeem.
    */
   public async redeem(options: RedeemOptions): Promise<OrderResult> {
     if (options.version !== 'v2') {
-      const tx = buildRedeemTx(options.conditionId, options.negRisk);
+      const tx = Polymarket.__positionTx(
+        'redeem',
+        () => buildRedeemTx(options.conditionId, options.negRisk),
+      );
       return await this.__submitRelayerTx('REDEEM', [tx], 0);
     }
     // Validate the relayer config before spending balance reads on it.
@@ -1966,15 +1990,10 @@ export class Polymarket extends RESTler<PolymarketOptions> {
         })).balance
       ),
     );
-    let txs: ProxyTransaction[];
-    try {
-      txs = buildV2RedeemTxs(options.conditionId, shares);
-    } catch (cause) {
-      throw new PolymarketError('INVALID_OPTIONS', {
-        method: 'redeem',
-        detail: cause instanceof Error ? cause.message : String(cause),
-      }, cause instanceof Error ? cause : undefined);
-    }
+    const txs = Polymarket.__positionTx(
+      'redeem',
+      () => buildV2RedeemTxs(options.conditionId, shares),
+    );
     return await this.__submitRelayerTx('REDEEM', txs, 0);
   }
 

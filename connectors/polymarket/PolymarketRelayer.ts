@@ -65,10 +65,10 @@ export const DEFAULT_GAS_LIMIT = 1_000_000n;
 
 const BINARY_PARTITION = [1n, 2n] as const;
 
-/** Converts a USD amount to pUSD's 6-decimal micro-unit integer. Rejects an amount that rounds to zero — the chain rejects a zero-amount split/merge. */
+/** Converts a USD amount to pUSD's 6-decimal micro-unit integer. Rejects a negative or non-finite amount and one that rounds to zero — the chain rejects a zero-amount split/merge. */
 function pusdMicroUnits(amountUsd: number): bigint {
   const micro = Math.round(amountUsd * 1_000_000);
-  if (micro === 0) {
+  if (!Number.isFinite(micro) || micro <= 0) {
     throw new Error(`amount must be > 0 (got $${amountUsd})`);
   }
   return BigInt(micro);
