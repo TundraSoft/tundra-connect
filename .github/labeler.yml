@@ -48,6 +48,9 @@ documentation:
 'connector: dodo-payments':
   - changed-files:
       - any-glob-to-any-file: connectors/dodo-payments/**
+'connector: eia':
+  - changed-files:
+      - any-glob-to-any-file: connectors/eia/**
 'connector: gcs':
   - changed-files:
       - any-glob-to-any-file: connectors/gcs/**

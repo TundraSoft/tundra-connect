@@ -15,7 +15,7 @@ if you'd like to champion one.
 
 <!-- workspace:shipped:start -->
 
-35 connects are implemented today:
+36 connects are implemented today:
 
 - **[Algolia](connectors/algolia/README.md)** — Typed Algolia Search client: search, save, fetch, delete and browse index records, and wait for indexing tasks to finish.
 - **[AviationWeather](connectors/aviationweather/README.md)** — Typed aviationweather.gov Data API client for Deno, Bun, Node.js and Cloudflare Workers: METAR and SPECI observations, TAFs and the bulk METAR cache, with raw report text and the exact remark T-group temperatures.
@@ -29,6 +29,7 @@ if you'd like to champion one.
 - **[CoinGecko](connectors/coingecko/README.md)** — Typed CoinGecko client for the demo and pro tiers: coin prices, market data and the full coin list.
 - **[Discord](connectors/discord/README.md)** — Typed Discord client: post messages through a webhook or a bot token, and verify Ed25519-signed interaction webhooks.
 - **[DodoPayments](connectors/dodo-payments/README.md)** — Typed Dodo Payments client: create, verify and refund payments, manage subscriptions and plan changes, sync products and discount codes, open the customer portal, and verify Standard Webhooks signatures.
+- **[EIA](connectors/eia/README.md)** — Typed U.S. EIA Open Data API v2 client for Deno, Bun, Node.js, browsers and Cloudflare Workers: any route and facet, auto-pagination past the 5,000-row limit, and helpers for WTI/Brent spot prices and Weekly Petroleum Status Report stocks.
 - **[GCS](connectors/gcs/README.md)** — Typed Google Cloud Storage client with bearer or service-account auth: upload, download, list, inspect and delete objects, including resumable streamed uploads for large files.
 - **[GoogleAnalytics](connectors/google-analytics/README.md)** — Typed Google Analytics 4 Measurement Protocol client: send server-side events and validate them against the debug endpoint, with GA4's event, parameter and user-property limits checked before the request is made.
 - **[GoogleCertificateManager](connectors/google-certificate-manager/README.md)** — Typed Google Cloud Certificate Manager client: create, read, list and delete managed TLS certificates and certificate map entries, poll long-running operations, with service-account auth on Workers, Deno, Bun and Node.
